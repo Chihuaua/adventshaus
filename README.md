@@ -179,17 +179,48 @@ Wer als KI hier mitarbeitet, hält sich daran – ohne Nachfrage.
    erlaubt – **lauffähig vorgeführt** (z. B. Arena-Vorschau, Screenshot,
    headless gerendertes Bild). Der Besitzer beurteilt das Ergebnis, bevor er
    irgendetwas übernimmt. *Anschauen zuerst, Übernehmen danach.*
-3. **Patch liefern.** Nach Freigabe liefert der Assistent die Änderung als
-   Git-Patch (`git format-patch`), mit deutscher Commit-Message, die sagt,
-   *was* und *warum*. Ein Feature = ein Patch. Keine losen Dateien, keine
-   „ersetze Zeile 1234“-Anweisungen.
-4. **Einspielen mit einem Befehl.** Der Besitzer legt den Patch als Datei ab
-   und führt aus: `git am < datei.patch`. Schlägt das fehl, ist der Stand
-   abgewichen – dann meldet er die Ausgabe, und der Assistent passt an.
-   Nie von Hand nacharbeiten.
-5. **Sichern.** `git push`, bei Meilensteinen Tag, Spiegel aktualisieren
-   (`docs/merkzettel.md`, Abschnitte A und B). Erst dann ist der nächste
-   Schritt dran.
+3. **Ins Postfach legen.** Nach Freigabe legt der Assistent die Änderung als
+   Git-Patch ins **Postfach** – ein öffentlicher GitHub-Gist, siehe unten.
+   Ein Feature = ein Patch = ein Commit mit deutscher Message (*was* und
+   *warum*).
+4. **Der Knopf.** Der Besitzer drückt auf seinem Desktop den Knopf
+   „Adventshaus“. Der holt den Patch aus dem Postfach, prüft die Prüfsumme,
+   spielt ihn auf einen Zweig `ki/<thema>` ein, prüft Typen und Build und
+   öffnet eine Pull Request gegen `main`. Direkt nach `main` kann niemand
+   pushen (Ruleset „main schuetzen“: PR erforderlich, keine Force-Pushes).
+5. **Merge per Klick, dann noch ein Knopfdruck.** Der Besitzer liest die
+   Änderung auf GitHub („Files changed“), klickt **Merge pull request**, drückt
+   den Knopf erneut – der zieht den Rechner nach und aktualisiert den Spiegel.
+   Tags setzt der Besitzer selbst, wenn ein Stand ein Meilenstein ist.
+
+### Das Postfach – so legt ein Assistent eine Änderung ab
+
+Das Postfach ist der Gist **`f28cc85bf67f8a7f2fa6251a2092a33c`** des Kontos
+Chihuaua: https://gist.github.com/Chihuaua/f28cc85bf67f8a7f2fa6251a2092a33c
+Öffentlich lesbar; beschreibbar nur mit einem Token, das **ausschließlich
+Gists** darf (der Besitzer gibt es im Chat). Es kann nichts im Repository
+verändern.
+
+Dort liegen immer diese Dateien:
+
+| Datei | Inhalt |
+|---|---|
+| `aktuell.patch` | der Patch, erzeugt mit `git format-patch -1 --stdout` |
+| `aktuell.json` | `{"datei":"aktuell.patch","sha256":"<erste 16 Hex-Zeichen von sha256(aktuell.patch)>","titel":"<Commit-Betreff>","basis":"<kurzer Hash von origin/main>"}` |
+| `install-knopf.sh` | Installer des Knopfs – nur ändern, wenn der Knopf selbst verbessert wird |
+| `adventshaus-knopf.sh` | der Knopf (Referenz; der Installer bettet ihn ein) |
+
+Ablegen per GitHub-API: `PATCH https://api.github.com/gists/<id>` mit
+`files.aktuell.patch.content` und `files.aktuell.json.content` – **immer beide
+gemeinsam**. Der Knopf merkt sich eingespielte Prüfsummen; derselbe Patch ein
+zweites Mal bewirkt nichts.
+
+Der Patch muss auf dem **aktuellen `origin/main`** aufsetzen. Meldet der Knopf
+„Patch passt nicht“, auf den aktuellen Stand rebasen und erneut ablegen.
+
+*Notlösung ohne Postfach-Token:* Patch im Chat liefern; der Besitzer legt ihn
+als `~/patch.patch` ab und führt `cd ~/projekte/adventshaus && git am <
+~/patch.patch` aus. Fehleranfällig – nur, wenn es nicht anders geht.
 
 ### Was der Assistent beim Start tut
 
@@ -212,11 +243,18 @@ Wer als KI hier mitarbeitet, hält sich daran – ohne Nachfrage.
 
 ### Für den Besitzer: Eröffnungstext für einen neuen Chat
 
-> Repository: https://github.com/Chihuaua/adventshaus – Stand: Tag vX.Y.
-> Lies README.md komplett, besonders „Grundsätze“ und „Arbeitsablauf mit
-> KI-Assistenten“, und halte dich daran. Klone den Stand, bestätige, dass er
-> baut, und zeig mir das Feature lauffähig, bevor du mir einen Patch gibst.
-> Aufgabe: …
+Am einfachsten: Spiel lokal starten (Knopf → „Spiel starten“) – unter dem Haus
+liegt die Leiste **ÜBERGABE** mit „Eröffnungstext kopieren“, „Token – wo?“,
+„Postfach“ und „Freigaben“ (`src/components/Uebergabe.tsx`, nur im
+Entwicklungsmodus sichtbar). Der Text dort ist die gepflegte Fassung; hier
+zur Sicherheit noch einmal:
+
+> Repository: https://github.com/Chihuaua/adventshaus – Stand: `main`
+> (oder Tag vX.Y). Lies README.md komplett, besonders „Grundsätze“ und
+> „Arbeitsablauf mit KI-Assistenten“, und halte dich daran. Klone den Stand,
+> bestätige, dass er baut, zeig mir das Feature lauffähig – und lege es erst
+> nach meinem „ja“ ins Postfach (Gist-Token bekommst du von mir). Ich
+> übernehme dann per Knopf. Aufgabe: …
 
 ---
 
@@ -242,8 +280,9 @@ Wer als KI hier mitarbeitet, hält sich daran – ohne Nachfrage.
    Mindestgröße und ohne Hover-Abhängigkeit.
 10. **Dokumente lesen, bevor man ändert:** `README.md` (Einstieg und Regeln),
     `docs/spielkonzept.md` (Zielbild) und `docs/merkzettel.md` (Werkzeuge).
-11. **Änderungen kommen als Git-Patch** – siehe „Arbeitsablauf mit
-    KI-Assistenten“. Vorher lauffähig zeigen, nachher `git am`.
+11. **Änderungen kommen über das Postfach** – siehe „Arbeitsablauf mit
+    KI-Assistenten“. Vorher lauffähig zeigen, dann Patch + Prüfsumme in den
+    Gist; der Besitzer drückt den Knopf.
 
 ---
 
@@ -256,6 +295,8 @@ Wer als KI hier mitarbeitet, hält sich daran – ohne Nachfrage.
 | `v0.3` | Aufräumen: Altlasten des Vorgängerprojekts entfernt (−4 500 Zeilen), README, `docs/` |
 | `v0.4` | Grundsätze und Plattformregeln (PC, Handy, Wii) in README und Spielkonzept |
 | `v0.5` | Arbeitsablauf mit KI-Assistenten festgeschrieben (Klonen → Zeigen → Patch → `git am`) |
+| – | PR #1: Ablauf auf Pull Requests; PR #2: Kamin entfernt (erster Durchlauf mit dem Knopf) |
+| `v0.6` | Postfach (Gist) + Desktop-Knopf: Übergabe ohne Zwischenablage; Doku dazu |
 
 ### Bekannte offene Punkte
 
