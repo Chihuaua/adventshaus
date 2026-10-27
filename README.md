@@ -13,6 +13,65 @@ Langfristiges Ziel (siehe `docs/`): ein Adventskalender ab 1. Dezember,
 zwei Hunde, Besuch von Nikolaus und Postbote, Silvester-Rückblick.
 **Davon ist noch nichts gebaut** – der aktuelle Stand ist das Haus und Lunis Alltag.
 
+Die Web-Version ist der Prototyp. **Das Spiel soll am Ende auf PC, Handy und
+Nintendo Wii laufen** – daraus folgen feste Grundsätze, siehe nächster Abschnitt.
+
+---
+
+## Grundsätze (gelten für jede Änderung)
+
+Dieses Projekt ist **das Haus als Adventskalender im Stil von Little Computer
+People**. Vier Grundsätze stehen über allem anderen und sind nicht verhandelbar:
+
+1. **Zuschauen statt gewinnen.** Keine Punkte, keine Balken, kein Game Over,
+   keine Belohnungsschleifen. Luni wird beobachtet, nicht gesteuert.
+2. **Echtzeit.** Das Haus lebt nach der echten Uhr (Europe/Berlin). Der
+   Adventskalender folgt dem echten Kalender.
+3. **Drei Zielplattformen: PC-Browser, Handy (Touch) und Nintendo Wii.**
+   Die Web-Version ist der Prototyp; die Wii-Fassung (Homebrew, C++/libogc/GX)
+   ist das Endziel. Deshalb wird nichts gebaut, was sich dort nicht nachbauen
+   lässt – siehe „Plattformregeln“.
+4. **Alles handgezeichnet, keine Assets.** Haus, Figur, Himmel, Rauch und
+   Geräusche entstehen prozedural (Canvas 2D, WebAudio). Keine Bild-, Font-
+   oder Audiodateien im Spiel.
+
+### Plattformregeln (Folgen aus Grundsatz 3)
+
+- **Nur Canvas-Primitive in der Spielwelt** (rect, rrect, disc, poly, line,
+  Gradienten, Composite-Modi). Keine DOM-Elemente, kein HTML-Text, keine
+  CSS-Effekte *innerhalb* der 960×600-Bühne. Der Monitor-Rahmen drumherum
+  darf Web-Technik sein – er wird nicht portiert.
+- **Keine Browser-Spezialitäten in `src/game/`**: kein `fetch`, keine
+  Web-Fonts, keine Bilder per URL, keine externen Dienste. Text in der
+  Spielwelt wird mit Primitiven gezeichnet oder als Pixelschrift selbst
+  gerastert.
+- **Jede Interaktion muss ohne Maus funktionieren.** Zeiger (Maus, Finger,
+  Wii-Remote) *und* Durchschalten + Bestätigen (Steuerkreuz + A). Jedes
+  anklickbare Objekt ist eine **Station** in `STATIONS` – nie ein verstecktes
+  Pixelziel. Ein sichtbarer Fokus-Ring ist Pflicht, sobald Tastatur-/
+  Controller-Steuerung eingebaut wird.
+- **Fernseher-tauglich.** Klickziele mindestens **24×24 Bühneneinheiten**,
+  Schrift in der Spielwelt mindestens **10 Einheiten** hoch, keine Information
+  nur über Hover (Touch und Wii haben kein Hover). Wichtiges nicht in die
+  äußeren 5 % des Bildes (Overscan auf Röhrenfernsehern).
+- **Seitenformat.** Die Bühne ist 960×600 (16:10). Die Wii gibt 4:3
+  (640×480) oder 16:9 aus. **Diese Entscheidung ist offen** (siehe unten);
+  bis dahin gilt: Nichts Wichtiges in die äußeren 10 % links/rechts
+  platzieren, damit ein späterer Beschnitt auf 4:3 möglich bleibt.
+- **Speicherung plattformneutral denken.** Spielstände als einfache
+  Schlüssel/Wert-Struktur (`storage.ts`), die sich 1:1 auf eine SD-Karte
+  schreiben lässt – kein Browser-spezifisches Format.
+- **Audio bleibt synthetisch.** Alle Klänge aus `audio.ts` müssen mit
+  Oszillator + Rauschen + Hüllkurve beschreibbar sein, damit sie auf der Wii
+  nachgebaut werden können.
+
+### Offene Grundsatzentscheidung
+
+- **Wii-Seitenformat: 4:3 oder 16:9?** 4:3 entspricht dem Konzept
+  (640×480), erfordert aber eine schmalere Komposition des Hauses. 16:9
+  erhält das heutige Layout fast unverändert und passt zu modernen
+  Fernsehern. Bis zur Entscheidung gilt die 10-%-Randregel oben.
+
 ---
 
 ## Starten
@@ -41,7 +100,7 @@ reproduzierbar.
 | Haus | Querschnitt mit 4 Ebenen: Keller (Krempelraum, Raucherraum, Garten), Erdgeschoss (Flur, Wohnzimmer, Küche), 1. Stock (Schlafzimmer, Bad mit WC), Dachgeschoss (Gaming-Ecke, Musikzimmer) |
 | Grafik | Komplett in Canvas 2D gezeichnet, keine Bilddateien. Tag/Nacht-Himmel, Lampenlicht als Multiply/Additiv-Ebene, Kaminfeuer, Rauch |
 | Luni | ~30 Posen und Gesichtsausdrücke (`luni.ts`), Laufen, Treppen, Sitzen, Dösen, Tanzen |
-| Interaktion | 33 anklickbare Stationen (`STATIONS` in `house.ts`): Kaffee, Tee, Herd, Bett, Dusche, WC, Klavier, Saxophon, Plattenspieler, Gitarre, Gaming … |
+| Interaktion | 32 anklickbare Stationen (plus 3 Treppen) (`STATIONS` in `house.ts`): Kaffee, Tee, Herd, Bett, Dusche, WC, Klavier, Saxophon, Plattenspieler, Gitarre, Gaming … |
 | Detail-Systeme | Zigaretten stopfen → Schachtel → Raucherraum → Aschenbecher, Rauch der durch die Gartentür abzieht; WC-Tür mit Innen/Außen-Logik; Handy am Beistelltisch; Rick-Fernseher |
 | Ton | WebAudio-Synth (`audio.ts`), stummschaltbar (Taste **M** oder Button), Einstellung wird gespeichert |
 | Werkzeug | `#studio` in der URL öffnet das **Luni-Studio**: alle Posen/Ausdrücke nebeneinander, Vergleich mit der Ursprungsfigur |
@@ -103,13 +162,20 @@ build_mappe.py          erzeugt aus docs/ eine druckbare Projektmappe (optional)
 2. **Spiellogik in `src/game/`, React nur in `src/components/`.** Die
    Spielklasse `House` weiß nichts von React.
 3. **Keine Bilddateien, keine externen Assets.** Alles wird gezeichnet.
-   Einzige Ausnahme: die zwei Google-Fonts in `index.html`.
+   Einzige Ausnahme: die zwei Google-Fonts für den Monitor-Rahmen in
+   `index.html` – sie werden nicht portiert und dürfen in der Spielwelt
+   (Canvas) nicht verwendet werden.
 4. **Keine neuen npm-Pakete ohne Rücksprache.**
 5. **Keine Punkte, Balken, Belohnungsschleifen.** Das Spiel ist zum Zuschauen.
 6. **Deutsch** in Kommentaren, Labels und Commit-Messages.
 7. Vor jedem Commit: `npx tsc --noEmit && npm run build` fehlerfrei.
 8. Ein Meilenstein = ein Git-Tag (`v0.1`, `v0.2` …). Wer einen Stand
    referenziert, nennt den Tag, nicht „main“.
+9. **Plattformregeln einhalten** (Abschnitt „Grundsätze“): nichts in die
+   Spielwelt, was auf einer Wii nicht nachbaubar ist; jede neue Station mit
+   Mindestgröße und ohne Hover-Abhängigkeit.
+10. **Dokumente lesen, bevor man ändert:** `README.md` (Einstieg und Regeln),
+    `docs/spielkonzept.md` (Zielbild) und `docs/merkzettel.md` (Arbeitsablauf).
 
 ---
 
@@ -126,4 +192,9 @@ build_mappe.py          erzeugt aus docs/ eine druckbare Projektmappe (optional)
 - Kamin-Klick hat keine Funktion (früher PDF-Download, entfernt)
 - Luni hat keinen eigenen Tagesablauf
 - `audio.ts` enthält noch ungenutzte Sounds des Vorgängers (jump, coin, hurt …)
-- Keine Touch-Optimierung (Hitboxen sind für Maus ausgelegt)
+- Keine Touch-Optimierung (Hitboxen sind für Maus ausgelegt); einige
+  Stationen unterschreiten die 24×24-Mindestgröße (z. B. Aschenbecher 21×24)
+- Keine Controller-/Tastatursteuerung (Durchschalten + Bestätigen) – für die
+  Wii Pflicht, im Browser sinnvoll als Vorbereitung
+- Wii-Seitenformat (4:3 oder 16:9) nicht entschieden
+- Hover-Label ist die einzige Objektbeschriftung – auf Touch/Wii unsichtbar

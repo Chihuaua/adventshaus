@@ -26,6 +26,40 @@ header-includes: |
 
 ---
 
+## Grundsätze (verbindlich für alle Teile des Projekts)
+
+Dieses Projekt ist **das Haus als Adventskalender im Stil von Little Computer
+People**. Alles Weitere in dieser Mappe ordnet sich vier Grundsätzen unter:
+
+1. **Zuschauen statt gewinnen.** Keine Punkte, keine Bestenliste, kein Game
+   Over. Luni lebt ihr Leben; der Spieler gibt Impulse und schaut zu.
+2. **Echtzeit.** Uhr, Himmel, Licht und der Adventskalender folgen der echten
+   Zeit (Europe/Berlin). Türchen können nachgeholt, aber nicht vorgezogen werden.
+3. **Drei Zielplattformen – PC-Browser, Handy (Touch), Nintendo Wii.**
+   Die Web-Version (React/Canvas) ist der Prototyp. Die Wii-Fassung
+   (Homebrew, C++ mit libogc/GX) ist das Endziel. **Deshalb werden Auflösung,
+   Seitenformat, Steuerung, Schriftgrößen und Technik von Anfang an so
+   gewählt, dass die Portierung ohne Neuentwurf möglich ist**:
+   - Spielwelt nur aus Zeichenprimitiven (Rechteck, Kreis, Polygon, Linie,
+     Verlauf) – keine HTML-Elemente, keine Web-Fonts, keine Bilddateien.
+   - Jede Interaktion funktioniert mit Zeiger (Maus/Finger/Wii-Remote) **und**
+     mit Steuerkreuz + Bestätigungstaste. Alle Ziele sind benannte Stationen.
+   - Fernseher-tauglich: Klickziele ≥ 24×24 Einheiten, Schrift ≥ 10 Einheiten,
+     nichts Wichtiges in den äußeren 5 % (Overscan), keine Hover-abhängige
+     Information.
+   - Speicherstände als einfache Schlüssel/Wert-Daten (SD-Karten-fähig).
+   - Klänge synthetisch (Oszillator, Rauschen, Hüllkurve), keine Audiodateien.
+4. **Alles handgezeichnet, keine Assets.** Haus, Figur, Himmel, Wetter,
+   Rauch und Deko entstehen prozedural. Das hält die Wii-Portierung
+   machbar und den Build bei einer einzigen Datei.
+
+**Offene Grundsatzentscheidung – Wii-Seitenformat:** 4:3 (640×480, wie in
+Abschnitt 7.3 geplant) oder 16:9 (behält das heutige 960×600-Layout nahezu
+bei). Bis zur Entscheidung: nichts Wichtiges in die äußeren 10 % links/rechts
+der Bühne, damit ein Beschnitt auf 4:3 möglich bleibt.
+
+---
+
 ## Fließtext: Das Spielkonzept
 
 "Little Computer Luni – Das Adventshaus" ist ein **cozies Beobachtungsspiel**, in dem der Spieler das Leben einer Frau namens Luni in einem weihnachtlich dekorierten Haus begleitet. Das Spiel läuft in **Echtzeit (MEZ, 24h-Format)** und beginnt am **1. Dezember** mit dem Eintreffen eines Adventskalenders per Post. Jeden Tag kann der Spieler ein Türchen öffnen, um neue Weihnachtsdekorationen und Aktionen freizuschalten. Luni lebt dabei ihren **eigenen Tagesablauf** – sie steht auf, trinkt Kaffee, raucht, zockt, schläft – reagiert aber auf **Impulse des Spielers** (z. B. "Gehe zum Kalender", "Mach die Kerze an").
@@ -367,7 +401,11 @@ Das Spiel ist als **Web-Version** (React/Canvas) umgesetzt und später für die 
 - **Performance**: 60 FPS, Partikel-Cap bei 460.
 
 
-#### 7.2 Wii-Portierung (später)
+#### 7.2 Wii-Portierung (Endziel – bestimmt die Regeln von heute)
+
+> Siehe „Grundsätze“ am Anfang dieser Mappe. Die Wii ist kein optionaler
+> Nachtrag, sondern die Zielplattform, aus der Auflösung, Seitenformat,
+> Steuerung und Technikwahl abgeleitet werden.
 
 - **Technologie**: C++ mit libogc/GX (Wii-Homebrew).
 - **Steuerung**: Steuerkreuz/Analog-Stick + A/B-Tasten.
