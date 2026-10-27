@@ -68,33 +68,36 @@ Nie zwei Chats gleichzeitig an denselben Dateien.
 
 ----------------------------------------------------------------------
 
-## D. Änderungen einer KI übernehmen (Patch-Weg)
+## D. Änderungen einer KI übernehmen
 
-Die KI baut das Feature in ihrer Kopie und ZEIGT es zuerst (Vorschau,
-Screenshot). Erst wenn es gefällt, kommt der Patch. Ablauf:
+Normalweg – Pull Request (die KI hat ein Token für ki/-Zweige):
 
-1. Patch-Text aus dem Chat/der Vorschau kopieren (Alles markieren → Strg+C)
-2. Als Datei ablegen:   kate ~/patch.patch   →  Strg+V  →  Strg+S  →  schließen
-3. Einspielen:          cd ~/projekte/adventshaus && git am < ~/patch.patch
-   Du solltest sehen:   Wende an: <Commit-Text>
-4. Prüfen:              npx tsc --noEmit && npm run build
-5. Anschauen:           npm run dev  →  http://localhost:5173/  →  Strg+C
-6. Sichern:             Schritt A, dann B;  danach  rm ~/patch.patch
+1. Die KI zeigt das Feature in ihrer Vorschau. Gefällt es → "ja".
+2. Die KI öffnet eine Pull Request und schickt den Link.
+3. Link öffnen → Reiter "Files changed" → Änderungen anschauen
+   (grün = neu, rot = entfernt).
+4. Reiter "Conversation" → unten "Merge pull request" → "Confirm merge".
+5. Am Rechner nachziehen:   bash ~/p.sh
+   Du solltest sehen:        AKTUALISIERT AUF <commit> – Typen OK, Build OK
+6. Bei Meilenstein: Tag setzen (Abschnitt A).
 
-Schlägt git am fehl ("Patch kann nicht angewendet werden"):
+Gefällt die PR nicht: Kommentar in der PR schreiben oder im Chat sagen –
+die KI schiebt eine Korrektur auf denselben Zweig nach, die PR aktualisiert
+sich von selbst. Oder "Close pull request" – dann passiert nichts.
 
-    git am --abort
+Rückfall – Patch-Datei (KI ohne Token):
 
-Dann die Ausgabe in den Chat – die KI passt den Patch an. Nicht von Hand
-nacharbeiten.
+    kate ~/patch.patch   →  Strg+V  →  Strg+S  →  schließen
+    cd ~/projekte/adventshaus && git am < ~/patch.patch
+    Schlägt es fehl:  git am --abort   und Ausgabe in den Chat
 
 Rückgängig (alles seit letztem Commit verwerfen):
 
     git checkout -- . && git clean -fd
 
-Letzten Commit rückgängig (z. B. Patch gefiel doch nicht, noch nicht gepusht):
-
-    git reset --hard HEAD~1
+Hinweis: Direkt nach main pushen geht nicht mehr (Schutzregel). Eigene
+Änderungen ebenfalls über einen Zweig + Pull Request – oder die KI machen
+lassen.
 
 ----------------------------------------------------------------------
 
