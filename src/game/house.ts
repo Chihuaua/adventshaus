@@ -294,10 +294,6 @@ export const STATIONS: Station[] = [
     id: "sofa", label: "Sofa & Fernseher", floor: 1, x: 372, face: 1, state: "sit", expr: "happy", yOff: -16, screen: "tv_e",
     hits: [[306, 402, 96, 46], [438, 392, 54, 56]],
   },
-  {
-    id: "kamin", label: "Kamin", floor: 1, x: 419, face: -1, state: "idle", expr: "happy",
-    hits: [[404, 378, 32, 70]],
-  },
   { id: "kellertuer", label: "Kellertür", floor: 0, x: 413, face: 1, state: "idle", expr: "neutral", hits: [[496, 366, 54, 82]] },
   { id: "kuehlschrank", label: "Kühlschrank", floor: 1, x: 593, face: 1, state: "act", expr: "happy", hits: [[574, 370, 38, 78]] },
   { id: "kaffee", label: "Kaffeemaschine", floor: 1, x: 674, face: 1, state: "act", expr: "happy", prop: "cup", hits: [[662, 386, 26, 26]] },
@@ -1287,43 +1283,6 @@ function cellarDoor(c: C, x: number, topY: number, h: number, open: number) {
   rect(c, x - 9, topY + h, 18, 1, "rgba(0,0,0,.3)");
 }
 
-/**
- * Kamin im Wohnzimmer (statischer Teil: Stein, Feuerraum, Kaminsims, Deko).
- * Die Flammen selbst zeichnet drawFireplace jeden Frame (siehe unten).
- * x = linke Kante (404), F = Bodenlinie.
- */
-function fireplace(c: C, x: number, F: number) {
-  // Sockelplatte
-  rect(c, x - 2, F - 4, 34, 4, "#6f6e6a");
-  rect(c, x - 2, F - 4, 34, 1.2, "rgba(255,255,255,.18)");
-  // Steinumrandung
-  rect(c, x, F - 64, 30, 60, "#8a8d90");
-  rect(c, x, F - 64, 30, 60, "rgba(0,0,0,0)");
-  // Mörtelfugen
-  c.fillStyle = "rgba(0,0,0,.20)";
-  for (let i = 1; i < 8; i++) c.fillRect(x, F - 64 + i * 7.5, 30, 1);
-  for (let r = 0; r < 8; r++) {
-    const off = r % 2 === 0 ? 10 : 20;
-    c.fillRect(x + off, F - 64 + r * 7.5, 1, 7.5);
-  }
-  // Seitenlicht links, Schatten rechts
-  rect(c, x, F - 64, 2, 60, "rgba(255,255,255,.14)");
-  rect(c, x + 28, F - 64, 2, 60, "rgba(0,0,0,.22)");
-  // Feuerraum (schwarz)
-  rect(c, x + 5, F - 32, 20, 28, "#0d0a08");
-  rect(c, x + 5, F - 32, 20, 2, "rgba(255,140,40,.25)");
-  // Holzscheite
-  rect(c, x + 7, F - 10, 16, 3, "#5a3a22");
-  rect(c, x + 8, F - 13, 14, 2.6, "#4a2d1a");
-  // Kaminsims aus Holz
-  rect(c, x - 4, F - 70, 38, 6, "#6f4a2a");
-  rect(c, x - 4, F - 70, 38, 1.6, "rgba(255,225,190,.28)");
-  // Deko auf dem Sims: Kerze links, Mini-Bild rechts
-  rect(c, x + 1, F - 78, 3, 8, "#e8e2d2");
-  rect(c, x + 20, F - 78, 8, 8, "#efe6d2");
-  rect(c, x + 22, F - 76, 4, 4, "#3f7f8c");
-}
-
 function drawHouse(
   c: C,
   sky: HTMLCanvasElement,
@@ -1430,7 +1389,6 @@ function drawHouse(
   c.fill();
   sofa(c, 312, FE);
   floorLamp(c, 302, FE);
-  fireplace(c, 404, FE);
   tvSet(c, 438, FE);
   kellerTuer(c, 500, FE);
   fridge(c, 574, FE);
@@ -1512,8 +1470,6 @@ interface Active {
 export interface HouseOptions {
   /** feste Uhrzeit (nur für Tests) */
   clock?: Clock;
-  /** wird aufgerufen, wenn auf den Kamin geklickt wird (PDF-Download) */
-  onFireplace?: () => void;
 }
 
 function drawProp(c: C, kind: Prop, x: number, y: number, face: 1 | -1) {
@@ -1589,7 +1545,6 @@ export class House {
   private night = 0;
 
   private fixedClock: Clock | null;
-  private onFireplace: (() => void) | null = null;
   private clock: Clock;
   private clockT = 0;
   private bucket = -1;
@@ -1729,7 +1684,6 @@ export class House {
     this.addc = this.ctx2(this.add);
     this.fixedClock = opts.clock ?? null;
     this.clock = this.fixedClock ?? berlinNow();
-    this.onFireplace = opts.onFireplace ?? null;
     this.resize();
   }
 
@@ -2018,9 +1972,6 @@ export class House {
     // Wer von Hand zum Stopfen geschickt wird, stopft auch (statt mitzunehmen)
     if (id === "tabak") this.tabakMode = "roll";
 
-    // Kamin: PDF-Download öffnen (genau einmal pro Klick – aufgeschobene
-    // Befehle laufen erneut durch command() und feuern dort).
-    if (id === "kamin") this.onFireplace?.();
 
     // Neutrale Ziele beenden einen offenen Rauchwunsch, damit sie später
     // nicht überraschend von selbst zu rauchen beginnt.
@@ -3020,9 +2971,6 @@ export class House {
       ctx.restore();
     }
 
-    // Kaminfeuer und -schein liegen über allem (Lichtquelle, auch nachts)
-    this.drawFireplace(ctx);
-
     this.drawHoverLabel(ctx);
   }
 
@@ -3644,56 +3592,6 @@ export class House {
     // Scanlines
     c.fillStyle = "rgba(0,0,0,.12)";
     for (let i = 0; i < h; i += 3) c.fillRect(x, y + i, w, 1);
-    c.restore();
-  }
-
-  /**
-   * Kaminfeuer (dynamisch, jeden Frame): drei geschichtete Flammen mit
-   * Flackern, Glutpunkte, Kerzenflamme auf dem Sims und warmer Schein,
-   * der auch nachts den Raum erhellt.
-   */
-  private drawFireplace(c: C) {
-    const cx = 419;
-    const base = 440;
-    const t = this.elapsed;
-    // Glutbett
-    for (let i = 0; i < 5; i++) {
-      const ex = cx - 7 + hash(i * 3.3 + 1) * 14;
-      const glow = 0.45 + 0.4 * Math.sin(t * 9 + i * 2.4);
-      disc(c, ex, base - 1 + Math.sin(t * 7 + i) * 0.7, 1.1, `rgba(255,${120 + Math.round(glow * 60)},40,${0.5 + glow * 0.4})`);
-    }
-    // drei Flammenschichten: außen rot-orange, Mitte orange, Kern gelb-weiß
-    const layers: [string, number, number][] = [
-      ["rgba(226,87,30,.92)", 7.5, 15],
-      ["rgba(245,166,35,.95)", 5.2, 11.5],
-      ["rgba(255,233,168,.98)", 3, 8],
-    ];
-    layers.forEach(([col, w, h0], i) => {
-      const hgt = h0 + Math.sin(t * (11 + i * 2.3) + i * 1.7) * 2.6;
-      const lean = Math.sin(t * 3.1 + i) * 1.4;
-      c.fillStyle = col;
-      c.beginPath();
-      c.moveTo(cx - w / 2, base);
-      c.quadraticCurveTo(cx - w / 2 + lean * 0.4, base - hgt * 0.6, cx + lean, base - hgt);
-      c.quadraticCurveTo(cx + w / 2 + lean * 0.4, base - hgt * 0.6, cx + w / 2, base);
-      c.closePath();
-      c.fill();
-    });
-    // Kerzenflamme auf dem Sims
-    const fl = 1 + Math.sin(t * 12) * 0.35;
-    disc(c, 405.5, 367.5 - fl * 0.5, 1.1, "#ffd166");
-    disc(c, 405.5, 367.8, 0.55, "#fff3c4");
-    // warmer Schein über allem (auch nachts sichtbar)
-    const flick = 0.16 + 0.045 * Math.sin(t * 9) + 0.025 * Math.sin(t * 23 + 1);
-    c.save();
-    c.globalCompositeOperation = "lighter";
-    const g = c.createRadialGradient(cx, base - 12, 4, cx, base - 12, 66);
-    g.addColorStop(0, `rgba(255,150,60,${flick})`);
-    g.addColorStop(1, "rgba(255,150,60,0)");
-    c.fillStyle = g;
-    c.beginPath();
-    c.arc(cx, base - 12, 66, 0, Math.PI * 2);
-    c.fill();
     c.restore();
   }
 
