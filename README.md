@@ -154,6 +154,72 @@ build_mappe.py          erzeugt aus docs/ eine druckbare Projektmappe (optional)
 
 ---
 
+## Arbeitsablauf mit KI-Assistenten (verbindlich)
+
+Der Besitzer dieses Projekts (GitHub: **Chihuaua**) ist kein Programmierer.
+Er arbeitet mit KI-Assistenten, die **nicht** in dieses Repository schreiben
+können. Damit das trotzdem reibungslos läuft, gilt ein fester Ablauf.
+Wer als KI hier mitarbeitet, hält sich daran – ohne Nachfrage.
+
+### Rollen
+
+| Wer | Macht | Macht nicht |
+|---|---|---|
+| **Besitzer** | entscheidet, schaut an, testet lokal, committet, pusht, taggt | Code schreiben |
+| **KI-Assistent** | klont das Repository in seine Umgebung, baut dort das Feature, zeigt es lauffähig, liefert einen Patch | direkt ins Repository schreiben, Dateien zum Abtippen diktieren |
+
+### Der Ablauf in fünf Schritten
+
+1. **Klonen, nicht raten.** Der Assistent holt sich den aktuellen Stand selbst
+   (`git clone https://github.com/Chihuaua/adventshaus.git`, Tag oder Commit
+   wie vom Besitzer genannt) und arbeitet in dieser Kopie. Er fragt nicht nach
+   Dateiinhalten, die er selbst lesen kann.
+2. **Bauen und zeigen.** Das Feature wird in der Kopie umgesetzt, mit
+   `npx tsc --noEmit && npm run build` geprüft und – wo die Umgebung es
+   erlaubt – **lauffähig vorgeführt** (z. B. Arena-Vorschau, Screenshot,
+   headless gerendertes Bild). Der Besitzer beurteilt das Ergebnis, bevor er
+   irgendetwas übernimmt. *Anschauen zuerst, Übernehmen danach.*
+3. **Patch liefern.** Nach Freigabe liefert der Assistent die Änderung als
+   Git-Patch (`git format-patch`), mit deutscher Commit-Message, die sagt,
+   *was* und *warum*. Ein Feature = ein Patch. Keine losen Dateien, keine
+   „ersetze Zeile 1234“-Anweisungen.
+4. **Einspielen mit einem Befehl.** Der Besitzer legt den Patch als Datei ab
+   und führt aus: `git am < datei.patch`. Schlägt das fehl, ist der Stand
+   abgewichen – dann meldet er die Ausgabe, und der Assistent passt an.
+   Nie von Hand nacharbeiten.
+5. **Sichern.** `git push`, bei Meilensteinen Tag, Spiegel aktualisieren
+   (`docs/merkzettel.md`, Abschnitte A und B). Erst dann ist der nächste
+   Schritt dran.
+
+### Was der Assistent beim Start tut
+
+1. `README.md` vollständig lesen – besonders „Grundsätze“ und diesen Abschnitt.
+2. `docs/spielkonzept.md` (Zielbild) und `docs/merkzettel.md` (Werkzeuge des
+   Besitzers) überfliegen.
+3. Den genannten Stand klonen, `npm ci`, Typprüfung und Build ausführen, um
+   zu bestätigen, dass die Ausgangslage sauber ist.
+4. Kurz zusammenfassen, was er vorhat – dann bauen.
+
+### Was der Assistent nie tut
+
+- Ausgaben, Befehle oder Code zum Abtippen diktieren, wenn ein Patch möglich ist
+- Mehrere Dinge in einem Patch vermischen
+- `package.json` / `package-lock.json` ändern (kein `npm install`, kein
+  `npm audit fix`), außer der Besitzer hat es ausdrücklich freigegeben
+- Dateien löschen oder umbenennen, ohne es in der Commit-Message zu begründen
+- Annehmen, dass der Besitzer Terminal-Ausgaben richtig deutet – jede
+  Anweisung nennt, *was zu sehen sein soll*
+
+### Für den Besitzer: Eröffnungstext für einen neuen Chat
+
+> Repository: https://github.com/Chihuaua/adventshaus – Stand: Tag vX.Y.
+> Lies README.md komplett, besonders „Grundsätze“ und „Arbeitsablauf mit
+> KI-Assistenten“, und halte dich daran. Klone den Stand, bestätige, dass er
+> baut, und zeig mir das Feature lauffähig, bevor du mir einen Patch gibst.
+> Aufgabe: …
+
+---
+
 ## Regeln für Änderungen (gelten für Menschen und KI-Assistenten)
 
 1. **Bestehende Dateien erweitern, nicht parallel neu erfinden.** Neue
@@ -175,7 +241,9 @@ build_mappe.py          erzeugt aus docs/ eine druckbare Projektmappe (optional)
    Spielwelt, was auf einer Wii nicht nachbaubar ist; jede neue Station mit
    Mindestgröße und ohne Hover-Abhängigkeit.
 10. **Dokumente lesen, bevor man ändert:** `README.md` (Einstieg und Regeln),
-    `docs/spielkonzept.md` (Zielbild) und `docs/merkzettel.md` (Arbeitsablauf).
+    `docs/spielkonzept.md` (Zielbild) und `docs/merkzettel.md` (Werkzeuge).
+11. **Änderungen kommen als Git-Patch** – siehe „Arbeitsablauf mit
+    KI-Assistenten“. Vorher lauffähig zeigen, nachher `git am`.
 
 ---
 
@@ -186,6 +254,8 @@ build_mappe.py          erzeugt aus docs/ eine druckbare Projektmappe (optional)
 | `v0.1` | Ausgangsstand 27.10. – baut, aber Haus wird im Dev-Modus nicht gezeichnet |
 | `v0.2` | Fix: Zwischenflächen in `resize()` unabhängig vom Haupt-Canvas skalieren (StrictMode-Doppelaufbau) |
 | `v0.3` | Aufräumen: Altlasten des Vorgängerprojekts entfernt (−4 500 Zeilen), README, `docs/` |
+| `v0.4` | Grundsätze und Plattformregeln (PC, Handy, Wii) in README und Spielkonzept |
+| `v0.5` | Arbeitsablauf mit KI-Assistenten festgeschrieben (Klonen → Zeigen → Patch → `git am`) |
 
 ### Bekannte offene Punkte
 

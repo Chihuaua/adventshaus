@@ -52,38 +52,49 @@ Vorher: Schritt A ausführen (push + Tag), sonst sieht die KI alten Stand.
 
 Eröffnungstext in den neuen Chat kopieren (Tag und Aufgabe anpassen):
 
-    Ich arbeite an einem Browserspiel (React/Vite/TypeScript, Canvas 2D).
-    Repository: https://github.com/Chihuaua/adventshaus – Stand: Tag v0.3
-    Lies zuerst README.md (Spiel, Codeaufbau, Regeln für Änderungen).
-    docs/spielkonzept.md ist das Zielbild, nicht der Ist-Stand.
-    Ich kann keine ZIPs hochladen, du kannst nicht ins Repository schreiben:
-    Gib mir Änderungen als vollständige Dateien oder als Shell-Skript,
-    das ich lokal ausführe. Ich teste mit
-    `npx tsc --noEmit && npm run build` und committe selbst.
-    Aufgabe heute: ...
+    Repository: https://github.com/Chihuaua/adventshaus – Stand: Tag v0.5
+    Lies README.md komplett, besonders "Grundsätze" und "Arbeitsablauf mit
+    KI-Assistenten", und halte dich daran. Klone den Stand, bestätige, dass
+    er baut, und zeig mir das Feature lauffähig, bevor du mir einen Patch
+    gibst. Aufgabe: ...
 
 Falls die KI kein GitHub lesen kann – einzelne Dateien als Rohtext:
 
-    https://raw.githubusercontent.com/Chihuaua/adventshaus/v0.3/README.md
-    https://raw.githubusercontent.com/Chihuaua/adventshaus/v0.3/src/game/house.ts
+    https://raw.githubusercontent.com/Chihuaua/adventshaus/main/README.md
+    https://raw.githubusercontent.com/Chihuaua/adventshaus/main/src/game/house.ts
 
-Nachher: Änderungen übernehmen → testen → Schritt A → Schritt B.
+Nachher: Patch einspielen (D) → Schritt A → Schritt B.
 Nie zwei Chats gleichzeitig an denselben Dateien.
 
 ----------------------------------------------------------------------
 
-## D. Änderungen einer KI übernehmen
+## D. Änderungen einer KI übernehmen (Patch-Weg)
 
-1. Datei(en) oder Skript aus dem Chat kopieren
-2. Einfügen:  kate ~/pfad/datei   →  Strg+V  →  Strg+S  (nicht vergessen!)
-   Skript:    bash ~/skript.sh
-3. Testen:    cd ~/projekte/adventshaus && npx tsc --noEmit && npm run build
-4. Anschauen: npm run dev  →  http://localhost:5173/  →  Strg+C
-5. Sichern:   Schritt A, dann B
+Die KI baut das Feature in ihrer Kopie und ZEIGT es zuerst (Vorschau,
+Screenshot). Erst wenn es gefällt, kommt der Patch. Ablauf:
+
+1. Patch-Text aus dem Chat/der Vorschau kopieren (Alles markieren → Strg+C)
+2. Als Datei ablegen:   kate ~/patch.patch   →  Strg+V  →  Strg+S  →  schließen
+3. Einspielen:          cd ~/projekte/adventshaus && git am < ~/patch.patch
+   Du solltest sehen:   Wende an: <Commit-Text>
+4. Prüfen:              npx tsc --noEmit && npm run build
+5. Anschauen:           npm run dev  →  http://localhost:5173/  →  Strg+C
+6. Sichern:             Schritt A, dann B;  danach  rm ~/patch.patch
+
+Schlägt git am fehl ("Patch kann nicht angewendet werden"):
+
+    git am --abort
+
+Dann die Ausgabe in den Chat – die KI passt den Patch an. Nicht von Hand
+nacharbeiten.
 
 Rückgängig (alles seit letztem Commit verwerfen):
 
     git checkout -- . && git clean -fd
+
+Letzten Commit rückgängig (z. B. Patch gefiel doch nicht, noch nicht gepusht):
+
+    git reset --hard HEAD~1
 
 ----------------------------------------------------------------------
 
