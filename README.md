@@ -98,7 +98,7 @@ reproduzierbar.
 | Bereich | Stand |
 |---|---|
 | Haus | Querschnitt mit 4 Ebenen: Keller (Krempelraum, Raucherraum, Garten), Erdgeschoss (Flur, Wohnzimmer, Küche), 1. Stock (Schlafzimmer, Bad mit WC), Dachgeschoss (Gaming-Ecke, Musikzimmer) |
-| Grafik | Komplett in Canvas 2D gezeichnet, keine Bilddateien. Tag/Nacht-Himmel, Lampenlicht als Multiply/Additiv-Ebene, Kaminfeuer, Rauch |
+| Grafik | Komplett in Canvas 2D gezeichnet, keine Bilddateien. Tag/Nacht-Himmel, Lampenlicht als Multiply/Additiv-Ebene, Rauch |
 | Luni | ~30 Posen und Gesichtsausdrücke (`luni.ts`), Laufen, Treppen, Sitzen, Dösen, Tanzen |
 | Interaktion | 32 anklickbare Stationen (plus 3 Treppen) (`STATIONS` in `house.ts`): Kaffee, Tee, Herd, Bett, Dusche, WC, Klavier, Saxophon, Plattenspieler, Gitarre, Gaming … |
 | Detail-Systeme | Zigaretten stopfen → Schachtel → Raucherraum → Aschenbecher, Rauch der durch die Gartentür abzieht; WC-Tür mit Innen/Außen-Logik; Handy am Beistelltisch; Rick-Fernseher |
@@ -179,23 +179,17 @@ Wer als KI hier mitarbeitet, hält sich daran – ohne Nachfrage.
    erlaubt – **lauffähig vorgeführt** (z. B. Arena-Vorschau, Screenshot,
    headless gerendertes Bild). Der Besitzer beurteilt das Ergebnis, bevor er
    irgendetwas übernimmt. *Anschauen zuerst, Übernehmen danach.*
-3. **Pull Request öffnen.** Nach Freigabe pusht der Assistent seine Änderung
-   auf einen Zweig `ki/<thema>` in diesem Repository und öffnet eine Pull
-   Request gegen `main` – mit deutscher Beschreibung, die sagt, *was* und
-   *warum*. Ein Feature = eine Pull Request. Direkt nach `main` kann niemand
-   pushen (Ruleset „main schuetzen“: Pull Request erforderlich, keine
-   Force-Pushes, kein Löschen).
-4. **Merge per Klick.** Der Besitzer liest die Änderungen auf GitHub
-   (Reiter „Files changed“) und klickt **Merge pull request**. Danach zieht er
-   seinen Rechner mit `bash ~/p.sh` nach – das Skript holt den Stand, prüft
-   Typen und Build und aktualisiert den Spiegel. Nie von Hand nacharbeiten.
-5. **Meilenstein taggen.** Wenn ein Stand ein Meilenstein ist, setzt der
-   Besitzer einen Tag (`docs/merkzettel.md`, Abschnitt A). Das entscheidet
-   er, nicht der Assistent.
-
-*Rückfalllösung ohne Schreibzugriff:* Hat ein Assistent kein Token für dieses
-Repository, liefert er die Änderung als Git-Patch (`git format-patch`), und
-der Besitzer spielt ihn mit `git am` ein (Merkzettel, Abschnitt D).
+3. **Patch liefern.** Nach Freigabe liefert der Assistent die Änderung als
+   Git-Patch (`git format-patch`), mit deutscher Commit-Message, die sagt,
+   *was* und *warum*. Ein Feature = ein Patch. Keine losen Dateien, keine
+   „ersetze Zeile 1234“-Anweisungen.
+4. **Einspielen mit einem Befehl.** Der Besitzer legt den Patch als Datei ab
+   und führt aus: `git am < datei.patch`. Schlägt das fehl, ist der Stand
+   abgewichen – dann meldet er die Ausgabe, und der Assistent passt an.
+   Nie von Hand nacharbeiten.
+5. **Sichern.** `git push`, bei Meilensteinen Tag, Spiegel aktualisieren
+   (`docs/merkzettel.md`, Abschnitte A und B). Erst dann ist der nächste
+   Schritt dran.
 
 ### Was der Assistent beim Start tut
 
@@ -221,8 +215,7 @@ der Besitzer spielt ihn mit `git am` ein (Merkzettel, Abschnitt D).
 > Repository: https://github.com/Chihuaua/adventshaus – Stand: Tag vX.Y.
 > Lies README.md komplett, besonders „Grundsätze“ und „Arbeitsablauf mit
 > KI-Assistenten“, und halte dich daran. Klone den Stand, bestätige, dass er
-> baut, und zeig mir das Feature lauffähig, bevor du eine Pull Request
-> öffnest. Du bekommst ein Token mit Schreibrecht nur für `ki/`-Zweige.
+> baut, und zeig mir das Feature lauffähig, bevor du mir einen Patch gibst.
 > Aufgabe: …
 
 ---
@@ -249,9 +242,8 @@ der Besitzer spielt ihn mit `git am` ein (Merkzettel, Abschnitt D).
    Mindestgröße und ohne Hover-Abhängigkeit.
 10. **Dokumente lesen, bevor man ändert:** `README.md` (Einstieg und Regeln),
     `docs/spielkonzept.md` (Zielbild) und `docs/merkzettel.md` (Werkzeuge).
-11. **Änderungen kommen als Pull Request von einem `ki/`-Zweig** – siehe
-    „Arbeitsablauf mit KI-Assistenten“. Vorher lauffähig zeigen, nachher
-    `bash ~/p.sh`.
+11. **Änderungen kommen als Git-Patch** – siehe „Arbeitsablauf mit
+    KI-Assistenten“. Vorher lauffähig zeigen, nachher `git am`.
 
 ---
 
@@ -267,7 +259,6 @@ der Besitzer spielt ihn mit `git am` ein (Merkzettel, Abschnitt D).
 
 ### Bekannte offene Punkte
 
-- Kamin-Klick hat keine Funktion (früher PDF-Download, entfernt)
 - Luni hat keinen eigenen Tagesablauf
 - `audio.ts` enthält noch ungenutzte Sounds des Vorgängers (jump, coin, hurt …)
 - Keine Touch-Optimierung (Hitboxen sind für Maus ausgelegt); einige
