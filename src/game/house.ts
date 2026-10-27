@@ -1771,17 +1771,27 @@ export class House {
     this.scale = Math.min(cw / W, ch / H);
     const px = Math.max(1, Math.round(W * this.scale * this.dpr));
     const py = Math.max(1, Math.round(H * this.scale * this.dpr));
+    let changed = false;
     if (this.canvas.width !== px || this.canvas.height !== py) {
       this.canvas.width = px;
       this.canvas.height = py;
-      this.canvas.style.width = `${Math.round(W * this.scale)}px`;
-      this.canvas.style.height = `${Math.round(H * this.scale)}px`;
-      for (const cv of [this.bg, this.sky, this.mul, this.add]) {
+      changed = true;
+    }
+    this.canvas.style.width = `${Math.round(W * this.scale)}px`;
+    this.canvas.style.height = `${Math.round(H * this.scale)}px`;
+    // Zwischenflächen (bg/sky/mul/add) unabhängig vom Haupt-Canvas prüfen.
+    // Wird ein zweites House auf demselben Canvas erzeugt (React StrictMode
+    // im Dev-Modus baut Komponenten doppelt auf), hat das Haupt-Canvas schon
+    // die richtige Größe, die neuen Zwischenflächen aber noch 300x150 –
+    // das Haus würde dann als Briefmarke gemalt und auf Vollbild gestreckt.
+    for (const cv of [this.bg, this.sky, this.mul, this.add]) {
+      if (cv.width !== px || cv.height !== py) {
         cv.width = px;
         cv.height = py;
+        changed = true;
       }
-      this.dirty = true;
     }
+    if (changed) this.dirty = true;
   };
 
   /** Testzugriff: feste Uhrzeit setzen */
