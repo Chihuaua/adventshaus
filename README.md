@@ -161,6 +161,29 @@ Er arbeitet mit KI-Assistenten, die **nicht** in dieses Repository schreiben
 können. Damit das trotzdem reibungslos läuft, gilt ein fester Ablauf.
 Wer als KI hier mitarbeitet, hält sich daran – ohne Nachfrage.
 
+### Regel 0: Nichts Ungefragtes
+
+Der Assistent **klont und führt aus** – er baut nicht nach. Der geklonte Stand
+ist die Wahrheit: Layout, Texte, Schriftgrößen, Hover-Labels, Rahmen, Buttons
+bleiben exakt so, wie sie sind. Hinzugefügt oder verändert wird **nur**, was
+die Aufgabe ausdrücklich verlangt. Keine Spielbeschreibung über dem Haus,
+keine Steuerungserklärung darunter, keine „Verbesserungen“ nebenbei.
+Wer etwas für verbesserungswürdig hält, schlägt es im Chat vor – als Frage,
+nicht als Tat.
+
+Beim ersten Test dieses Ablaufs hat eine KI das Haus zwar 1:1 nachgebaut,
+aber ungefragt Erklärtexte, größere Hover-Labels und ein anderes Drumherum
+ergänzt. Genau das soll diese Regel verhindern.
+
+### Zwei Ansichten: Entwicklung und Spiel
+
+| Ansicht | Start | Zeigt |
+|---|---|---|
+| **Entwicklung** | `npm run dev` | Spiel **plus** Leiste „ÜBERGABE“ unter dem Haus (Eröffnungstext, Token-Weg, Postfach, Freigaben) |
+| **Spiel** | `npm run build` → `dist/index.html` | nur das Spiel – die Leiste ist absichtlich nicht enthalten |
+
+Fehlt die Leiste, ist das kein Fehler, sondern der Produktionsbuild.
+
 ### Rollen
 
 | Wer | Macht | Macht nicht |
@@ -228,11 +251,19 @@ als `~/patch.patch` ab und führt `cd ~/projekte/adventshaus && git am <
 2. `docs/spielkonzept.md` (Zielbild) und `docs/merkzettel.md` (Werkzeuge des
    Besitzers) überfliegen.
 3. Den genannten Stand klonen, `npm ci`, Typprüfung und Build ausführen, um
-   zu bestätigen, dass die Ausgangslage sauber ist.
-4. Kurz zusammenfassen, was er vorhat – dann bauen.
+   zu bestätigen, dass die Ausgangslage sauber ist. Den Stand **unverändert**
+   als Ausgangspunkt zeigen (Regel 0).
+4. **Das Postfach-Token erfragen** – aktiv, bevor das Feature fertig ist.
+   Der Besitzer schickt es in zwei Hälften. Ohne Token kann nichts abgelegt
+   werden; dann gilt die Notlösung (Patch im Chat).
+5. Kurz zusammenfassen, was er vorhat – dann bauen.
+6. **Nur ein Assistent gleichzeitig** benutzt das Postfach. Laufen mehrere
+   Chats parallel (z. B. Battle-Modus), legt nur der ab, den der Besitzer
+   benennt – sonst überschreibt der zweite den ersten.
 
 ### Was der Assistent nie tut
 
+- Ungefragt etwas hinzufügen oder umgestalten (Regel 0)
 - Ausgaben, Befehle oder Code zum Abtippen diktieren, wenn ein Patch möglich ist
 - Mehrere Dinge in einem Patch vermischen
 - `package.json` / `package-lock.json` ändern (kein `npm install`, kein
@@ -249,12 +280,21 @@ liegt die Leiste **ÜBERGABE** mit „Eröffnungstext kopieren“, „Token – 
 Entwicklungsmodus sichtbar). Der Text dort ist die gepflegte Fassung; hier
 zur Sicherheit noch einmal:
 
-> Repository: https://github.com/Chihuaua/adventshaus – Stand: `main`
-> (oder Tag vX.Y). Lies README.md komplett, besonders „Grundsätze“ und
-> „Arbeitsablauf mit KI-Assistenten“, und halte dich daran. Klone den Stand,
-> bestätige, dass er baut, zeig mir das Feature lauffähig – und lege es erst
-> nach meinem „ja“ ins Postfach (Gist-Token bekommst du von mir). Ich
-> übernehme dann per Knopf. Aufgabe: …
+> Repository: https://github.com/Chihuaua/adventshaus – Stand: main
+> Lies README.md komplett, besonders „Grundsätze“, „Arbeitsablauf mit
+> KI-Assistenten“ und „Regel 0“. Halte dich daran.
+>
+> Regel 0: Klone den Stand und führe ihn aus – baue ihn nicht nach. Ändere
+> nichts, was ich nicht verlange: keine Texte, Erklärungen, Buttons, Styles
+> oder Größen hinzufügen oder anpassen. Nur die Aufgabe unten.
+>
+> Ablauf: 1) klonen, npm ci, npx tsc --noEmit, npm run build – bestätige,
+> dass es baut. 2) Frag mich nach dem Postfach-Token (ich schicke es in zwei
+> Hälften). 3) Setze die Aufgabe um und zeig sie mir lauffähig. 4) Erst nach
+> meinem „ja“: Patch + Prüfsumme ins Postfach, wie in der README beschrieben.
+> Ich übernehme per Knopf.
+>
+> Aufgabe: …
 
 ---
 
@@ -296,7 +336,8 @@ zur Sicherheit noch einmal:
 | `v0.4` | Grundsätze und Plattformregeln (PC, Handy, Wii) in README und Spielkonzept |
 | `v0.5` | Arbeitsablauf mit KI-Assistenten festgeschrieben (Klonen → Zeigen → Patch → `git am`) |
 | – | PR #1: Ablauf auf Pull Requests; PR #2: Kamin entfernt (erster Durchlauf mit dem Knopf) |
-| `v0.6` | Postfach (Gist) + Desktop-Knopf: Übergabe ohne Zwischenablage; Doku dazu |
+| `v0.6` | Postfach (Gist) + Desktop-Knopf: Übergabe ohne Zwischenablage; Übergabe-Leiste; Doku |
+| – | Erster Übergabetest mit fremder KI: Haus 1:1 nachgebaut, aber ungefragte Zusätze → Regel 0, Token-Pflicht in der Startroutine |
 
 ### Bekannte offene Punkte
 
