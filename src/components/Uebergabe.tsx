@@ -14,9 +14,13 @@ import { useEffect, useState } from "react";
  */
 
 export const EROEFFNUNGSTEXT = `Repository: https://github.com/Chihuaua/adventshaus – Stand: main
-Lies README.md komplett, besonders „Grundsätze“ und „Arbeitsablauf mit KI-Assistenten“, und halte dich daran.
-Klone den Stand, bestätige, dass er baut, und zeig mir das Feature lauffähig – lege es erst nach meinem „ja“ ins Postfach (Gist-Token bekommst du von mir in zwei Hälften). Ich übernehme dann per Knopf auf dem Desktop.
-Aufgabe: `;
+Lies README.md komplett, besonders „Grundsätze“, „Arbeitsablauf mit KI-Assistenten“ und „Regel 0“. Halte dich daran.
+
+Regel 0: Klone den Stand und führe ihn aus – baue ihn nicht nach. Ändere nichts, was ich nicht verlange: keine Texte, Erklärungen, Buttons, Styles oder Größen hinzufügen oder anpassen. Nur die Aufgabe unten.
+
+Ablauf: 1) klonen, npm ci, npx tsc --noEmit, npm run build – bestätige, dass es baut. 2) Frag mich nach dem Postfach-Token (ich schicke es in zwei Hälften). 3) Setze die Aufgabe um und zeig sie mir lauffähig (npm run dev, Screenshot oder Vorschau). 4) Erst nach meinem „ja“: Patch + Prüfsumme ins Postfach legen, wie in der README beschrieben. Ich übernehme per Knopf.
+
+Aufgabe: `
 
 const LINKS = {
   token: "https://github.com/settings/personal-access-tokens",

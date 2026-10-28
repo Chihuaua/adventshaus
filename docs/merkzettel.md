@@ -61,18 +61,33 @@ Eröffnungstext: Spiel starten (Knopf → Enter) → unter dem Haus Leiste
 Daneben "Token – wo?" zeigt den Weg zum Token. Zur Sicherheit der Text:
 
     Repository: https://github.com/Chihuaua/adventshaus – Stand: main
-    Lies README.md komplett, besonders "Grundsätze" und "Arbeitsablauf mit
-    KI-Assistenten", und halte dich daran. Klone den Stand, bestätige, dass
-    er baut, zeig mir das Feature lauffähig – und lege es erst nach meinem
-    "ja" ins Postfach (Gist-Token bekommst du von mir). Ich übernehme per
-    Knopf. Aufgabe: ...
+    Lies README.md komplett, besonders "Grundsätze", "Arbeitsablauf mit
+    KI-Assistenten" und "Regel 0". Halte dich daran.
+    Regel 0: Klone den Stand und führe ihn aus – baue ihn nicht nach.
+    Ändere nichts, was ich nicht verlange: keine Texte, Erklärungen,
+    Buttons, Styles oder Größen hinzufügen oder anpassen. Nur die Aufgabe.
+    Ablauf: 1) klonen, npm ci, npx tsc --noEmit, npm run build – bestätige,
+    dass es baut. 2) Frag mich nach dem Postfach-Token (zwei Hälften).
+    3) Aufgabe umsetzen und lauffähig zeigen. 4) Erst nach meinem "ja":
+    Patch + Prüfsumme ins Postfach (README). Ich übernehme per Knopf.
+    Aufgabe: ...
 
 Dann das Gist-Token geben: GitHub → Settings → Developer settings →
 Fine-grained tokens → "adventshaus-postfach". Falls abgelaufen: neues mit
 NUR "Gists: Read and write", kein Repository-Zugriff. Im Chat in zwei
 Hälften schicken, damit GitHubs Scanner es nicht zurückzieht.
 
-Nie zwei Chats gleichzeitig an denselben Dateien.
+Nie zwei Chats gleichzeitig an denselben Dateien. Im Battle-Modus (zwei
+KIs auf einmal) nur EINER das Token geben – sonst überschreibt die zweite
+das Postfach der ersten.
+
+Woran du erkennst, dass eine KI sich nicht an Regel 0 hält: Texte über oder
+unter dem Haus, andere Schriftgrößen, fehlende oder zusätzliche Knöpfe,
+"verbesserte" Farben. Dann: nicht ins Postfach legen lassen, sondern
+"Regel 0 – bitte den geklonten Stand unverändert lassen" antworten.
+
+Fehlt die Leiste ÜBERGABE unter dem Haus: Die KI zeigt den Produktionsbuild.
+Das ist richtig so – die Leiste gibt es nur bei npm run dev.
 
 ----------------------------------------------------------------------
 
