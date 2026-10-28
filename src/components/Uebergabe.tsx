@@ -20,7 +20,7 @@ Regel 0: Klone den Stand und führe ihn aus – baue ihn nicht nach. Ändere nic
 
 Ablauf: 1) klonen, npm ci, npx tsc --noEmit, npm run build – bestätige, dass es baut. 2) Frag mich nach dem Postfach-Token (ich schicke es in zwei Hälften). 3) Setze die Aufgabe um und zeig sie mir lauffähig (npm run dev, Screenshot oder Vorschau). 4) Erst nach meinem „ja“: Patch + Prüfsumme ins Postfach legen, wie in der README beschrieben. Ich übernehme per Knopf.
 
-Aufgabe: `
+Aufgabe: Noch keine. Klone den Stand, zeig ihn mir unverändert, frag nach dem Token – dann sage ich dir, was zu tun ist.`
 
 const LINKS = {
   token: "https://github.com/settings/personal-access-tokens",
@@ -88,8 +88,8 @@ export default function Uebergabe() {
       {offen === "text" && (
         <div className="mt-2 rounded-md bg-black/40 p-3 text-left">
           <div className="mb-1 text-[10px] text-mint-400/80">
-            Ist in der Zwischenablage. In den neuen Chat einfügen (Strg+V), Aufgabe ans Ende schreiben, dann das Token
-            in zwei Hälften nachschicken.
+            Ist in der Zwischenablage. In den neuen Chat einfügen (Strg+V) und abschicken – so wie er ist. Die KI
+            zeigt dann den Stand und fragt nach dem Token; die eigentliche Aufgabe nennst du danach.
           </div>
           <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-mint-50">{EROEFFNUNGSTEXT}</pre>
         </div>
