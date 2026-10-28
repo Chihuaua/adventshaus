@@ -70,7 +70,10 @@ Daneben "Token – wo?" zeigt den Weg zum Token. Zur Sicherheit der Text:
     dass es baut. 2) Frag mich nach dem Postfach-Token (zwei Hälften).
     3) Aufgabe umsetzen und lauffähig zeigen. 4) Erst nach meinem "ja":
     Patch + Prüfsumme ins Postfach (README). Ich übernehme per Knopf.
-    Aufgabe: ...
+    Aufgabe: Noch keine. Klone den Stand, zeig ihn mir unverändert, frag nach dem Token – dann sage ich dir, was zu tun ist.
+
+So abschicken. Die eigentliche Aufgabe nennst du erst, wenn die KI den
+Stand unverändert gezeigt und nach dem Token gefragt hat.
 
 Dann das Gist-Token geben: GitHub → Settings → Developer settings →
 Fine-grained tokens → "adventshaus-postfach". Falls abgelaufen: neues mit

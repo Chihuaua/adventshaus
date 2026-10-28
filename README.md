@@ -294,7 +294,12 @@ zur Sicherheit noch einmal:
 > meinem „ja“: Patch + Prüfsumme ins Postfach, wie in der README beschrieben.
 > Ich übernehme per Knopf.
 >
-> Aufgabe: …
+> Aufgabe: Noch keine. Klone den Stand, zeig ihn mir unverändert, frag nach dem Token – dann sage ich dir, was zu tun ist.
+
+Der Text ist so abschickbar. Die eigentliche Aufgabe folgt im zweiten
+Schritt – erst, wenn die KI den unveränderten Stand gezeigt und nach dem
+Token gefragt hat. Das trennt „kann sie das Projekt korrekt übernehmen?“
+von „kann sie die Aufgabe lösen?“.
 
 ---
 
