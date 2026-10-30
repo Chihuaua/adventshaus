@@ -37,20 +37,25 @@ farbig "4/6  Push"
 if git push -u origin HEAD >/dev/null 2>&1; then
   ok "auf GitHub"
 elif [ "$(git branch --show-current)" = "main" ]; then
-  warn "main ist geschützt – lege Zweig und Pull Request an"
+  warn "main ist geschuetzt - lege Zweig und Pull Request an"
   ZWEIG="ki/sicherung-$(date '+%Y%m%d-%H%M')"
   git switch -c "$ZWEIG" >/dev/null 2>&1
   git push -u origin "$ZWEIG" >/dev/null 2>&1 || ab "Push auf $ZWEIG fehlgeschlagen"
   if command -v gh >/dev/null 2>&1; then
-    gh pr create --fill --base main >/dev/null 2>&1 && ok "Pull Request angelegt" || warn "PR nicht angelegt – bitte auf GitHub"
+    gh pr create --fill --base main >/dev/null 2>&1
+    gh pr merge "$ZWEIG" --merge --delete-branch >/dev/null 2>&1 \
+      && ok "Pull Request angelegt UND gemergt" \
+      || warn "PR angelegt, aber nicht gemergt - bitte auf GitHub"
   else
-    warn "gh fehlt – PR bitte auf GitHub anlegen"
+    warn "gh fehlt - PR bitte auf GitHub anlegen"
   fi
-  echo "  PR: https://github.com/Chihuaua/adventshaus/pull/new/$ZWEIG"
+  git fetch origin --quiet 2>/dev/null
   git switch main >/dev/null 2>&1
+  git pull --ff-only >/dev/null 2>&1 || true
 else
-  ab "Push fehlgeschlagen – Zweig geschützt?"
+  ab "Push fehlgeschlagen - Zweig geschuetzt?"
 fi
+
 farbig "5/6  Tag setzen"
 TAG="v$(date '+%Y%m%d-%H%M')"
 if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
