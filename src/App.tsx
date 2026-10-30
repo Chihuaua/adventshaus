@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import HouseView from "@/components/HouseView";
+import TraumhausView from "@/components/TraumhausView";
 import StudioApp from "@/StudioApp";
 
 /** Kleine Hash-Weiche: "#studio" zeigt das Figuren-Studio, sonst das Haus. */
@@ -15,5 +16,7 @@ function useHash() {
 
 export default function App() {
   const hash = useHash();
-  return hash === "#studio" ? <StudioApp /> : <HouseView />;
+  if (hash === "#studio") return <StudioApp />;
+  if (hash === "#traumhaus") return <TraumhausView />;
+  return <HouseView />;
 }

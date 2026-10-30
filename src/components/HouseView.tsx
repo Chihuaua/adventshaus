@@ -3,7 +3,6 @@ import { House } from "@/game/house";
 import { sfx } from "@/game/audio";
 import { loadMuted, saveMuted } from "@/game/storage";
 import { Icon } from "@/components/Icons";
-import Uebergabe from "@/components/Uebergabe";
 
 
 
@@ -20,7 +19,7 @@ export default function HouseView() {
   useEffect(() => {
     const cv = canvasRef.current;
     if (!cv) return;
-    const house = new House(cv);
+    const house = new House(cv, { onTraumhaus: () => { window.location.hash = "#traumhaus"; } });
     house.mount();
     const onFonts = () => house.resize();
     if (document.fonts?.ready) void document.fonts.ready.then(onFonts);
@@ -90,7 +89,6 @@ export default function HouseView() {
         <p className="mt-2 px-1 text-center text-[11px] text-mint-400/80">
           Ein Möbelstück antippen oder anklicken – Luni geht hin. · <kbd className="font-display text-[9px]">M</kbd> Ton
         </p>
-        {(import.meta.env.DEV || import.meta.env.VITE_UEBERGABE === "1") && <Uebergabe />}
       </div>
     </div>
   );
