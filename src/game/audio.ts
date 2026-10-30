@@ -40,6 +40,13 @@ export class Sfx {
     }
   }
 
+  /** Gemeinsamer Audio-Master für längere Spielsequenzen. */
+  getSharedAudio() {
+    this.ensure();
+    if (!this.ctx || !this.master) return null;
+    return { ctx: this.ctx, master: this.master };
+  }
+
   private tone({ f, f2, dur = 0.14, type = "square", gain = 0.25, delay = 0, attack = 0.006 }: ToneOpts) {
     const ctx = this.ctx;
     const master = this.master;

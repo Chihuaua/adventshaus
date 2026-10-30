@@ -11,8 +11,45 @@
    Himmel hinter den Fenstern folgt der Tageszeit.
    ======================================================================= */
 
-import { coughPulse, drawLuni, drawZzz, smokeCycle, type LuniExpr, type LuniState } from "./luni";
+import { coughPulse, drawLuni, drawZzz, LUNI_COLORS, smokeCycle, type LuniExpr, type LuniState } from "./luni";
+import {
+  GOL_BTN,
+  GOL_RULES,
+  GOL_SIZES,
+  GOL_SPEEDS,
+  GOL_VIEW_H,
+  GOL_VIEW_W,
+  GOL_X,
+  GOL_Y,
+  advance,
+  countPopulation,
+  createState,
+  drawGolControls,
+  drawGridCoarse,
+  drawSpeedMeter,
+  golCtrlAt,
+  golView,
+  paintCells,
+  randomize,
+  resize,
+  toggleCellAt,
+  type GOLState,
+} from "./gol";
+
 import { sfx } from "./audio";
+import { Dream, drawSleepZ } from "./dream";
+import { drawStein, STEIN } from "./steine";
+import {
+  SHOWER_X,
+  curtainRect,
+  drawCurtain,
+  drawShowerWater,
+  drawSteam,
+  drawTowelOnRod,
+  drawTubFront,
+  drawWardrobeOpen,
+  showerStatic,
+} from "./shower";
 
 type C = CanvasRenderingContext2D;
 type Pt = [number, number];
@@ -311,9 +348,10 @@ export const STATIONS: Station[] = [
   { id: "bett", label: "Bett", floor: 2, x: 345, face: 1, state: "lie", expr: "sleep", yOff: -20, zzz: true, blanket: true, hits: [[282, 272, 114, 52]] },
   { id: "nachttisch", label: "Nachttisch", floor: 2, x: 409, face: -1, state: "act", expr: "neutral", hits: [[396, 284, 28, 40]] },
   { id: "kleiderschrank", label: "Kleiderschrank", floor: 2, x: 458, face: 1, state: "act", expr: "think", hits: [[434, 240, 48, 84]] },
+  { id: "brille", label: "Brille", floor: 2, x: 632, face: 1, state: "act", expr: "happy", hits: [[631, 272, 26, 24]] },
+  { id: "spiegelschrank", label: "Spiegelschrank", floor: 2, x: 636, face: 1, state: "act", expr: "happy", hits: [[633, 242, 34, 34]] },
+  { id: "buerste", label: "Haarbürste", floor: 2, x: 636, face: 1, state: "act", expr: "happy", hits: [[635, 252, 30, 24]] },
   { id: "dusche", label: "Dusche", floor: 2, x: 521, face: 1, state: "act", expr: "happy", hits: [[500, 234, 44, 90]] },
-  { id: "wctuer", label: "WC", floor: 2, x: 600, face: 1, state: "idle", expr: "neutral", hits: [[578, 236, 56, 88]] },
-  { id: "waschbecken", label: "Waschbecken", floor: 2, x: 578, face: 1, state: "act", expr: "neutral", hits: [[556, 236, 46, 88]] },
   /* ---- Dachgeschoss ---- */
   {
     id: "gaming", label: "Gaming-Ecke", floor: 3, x: 338, face: 1, state: "sit", expr: "focus", yOff: -8, prop: "pad", screen: "tv_d",
@@ -324,6 +362,11 @@ export const STATIONS: Station[] = [
     hits: [[644, 134, 36, 66]],
   },
   { id: "spielregal", label: "Spieleregal", floor: 3, x: 504, face: 1, state: "act", expr: "think", hits: [[486, 126, 38, 74]] },
+  {
+    id: "gol_game", label: "Spiel des Lebens", floor: 3, x: 490, face: 1, state: "act", expr: "focus",
+    // Oberste Regalebene, innerhalb des Schranks – nicht im Laufweg davor.
+    hits: [[486, 126, 38, 24]],
+  },
   { id: "klavier", label: "Klavier", floor: 3, x: 633, face: -1, state: "piano", expr: "happy", yOff: -10, hits: [[545, 142, 76, 58], [620, 176, 28, 24]] },
   {
     id: "platten", label: "Plattenspieler", floor: 3, x: 724, face: 1, state: "danceSway", expr: "happy",
@@ -336,6 +379,7 @@ export const STATIONS: Station[] = [
     expr: "neutral", hits: [[582, 486, 22, 88]],
   },
   { id: "krempel", label: "Krempel-Regale", floor: 0, x: 384, face: -1, state: "think", expr: "think", hits: [[354, 466, 56, 106], [528, 480, 60, 92]] },
+  { id: "traumstein", label: "Traumstein", floor: 0, x: STEIN.x, face: 1, state: "idle", expr: "neutral", hits: [STEIN.hit] },
   { id: "xmaskiste", label: "Weihnachtskiste", floor: 0, x: 548, face: 1, state: "act", expr: "happy", hits: [[526, 540, 44, 32]] },
   { id: "leinen", label: "Jacken & Hundeleinen", floor: 0, x: 640, face: 1, state: "act", expr: "neutral", hits: [[604, 486, 76, 86]] },
   {
@@ -386,7 +430,7 @@ const LAMPS: { x: number; y: number; r: number }[] = [
   { x: 650, y: 360, r: 125 },
   { x: 340, y: 236, r: 110 },
   { x: 409, y: 292, r: 80 },
-  { x: 590, y: 236, r: 110 },
+  { x: 590, y: 222, r: 96 },
   { x: 430, y: 150, r: 135 },
   { x: 700, y: 150, r: 125 },
   { x: 470, y: 484, r: 115 },
@@ -548,7 +592,17 @@ function garderobe(c: C, x: number, F: number) {
 }
 
 const BOOK_COLS = ["#c9453a", "#e2b24a", "#2f8f83", "#3f6fb0", "#8fb23a", "#8a63c9", "#d9577f", "#e6dfcf"];
-function bookshelf(c: C, x: number, F: number, w: number, h: number, rows: number, seed: number, games = false) {
+function bookshelf(
+  c: C,
+  x: number,
+  F: number,
+  w: number,
+  h: number,
+  rows: number,
+  seed: number,
+  games = false,
+  gap?: { row: number; index: number; item?: (c: C, x: number, y: number, w: number, h: number) => void },
+) {
   rect(c, x, F - h, w, h, "#6f4f2c");
   rect(c, x + 3, F - h + 3, w - 6, h - 6, "#35261a");
   const rh = (h - 6) / rows;
@@ -560,12 +614,101 @@ function bookshelf(c: C, x: number, F: number, w: number, h: number, rows: numbe
       const bw0 = games ? 6 + ((i + r + seed) % 3) : 3 + ((i * 7 + r * 3 + seed) % 4);
       const bw = Math.min(bw0, x + w - 4 - bx);
       const bh = rh - 5 - ((i * 5 + r + seed) % (games ? 3 : 6));
-      rect(c, bx, base - bh, bw, bh, BOOK_COLS[(i * 3 + r * 5 + seed) % BOOK_COLS.length]);
+      const reserved = gap && r === gap.row && i === gap.index;
+      if (reserved) {
+        if (gap.item) gap.item(c, bx, base - bh, bw, bh);
+      } else {
+        rect(c, bx, base - bh, bw, bh, BOOK_COLS[(i * 3 + r * 5 + seed) % BOOK_COLS.length]);
+      }
       bx += bw + 0.8;
       i++;
     }
     rect(c, x + 3, base, w - 6, 2, "#6f4f2c");
   }
+}
+
+/** Schlafende Luni im Bett: Seitenlage, Decke bis zum Hals, Hand unter dem Ohr. */
+function drawSleepingLuni(c: C, x: number, y: number, t: number, pj: { top: string; bottom: string } | null, hairAside: number) {
+  const breathe = Math.sin(t * 1.1) * 0.35;
+  c.save();
+  c.translate(x, y);
+  c.fillStyle = "#f4c9a0";
+  // Kopf
+  c.fillStyle = "#f4c9a0";
+  c.beginPath();
+  c.arc(0, -8, 9.2, 0, Math.PI * 2);
+  c.fill();
+  // Kopfkissen
+  rrect(c, -16, -18, 30, 14, 6, "#ffffff");
+  // Haare, ordentlich hinter das Ohr gelegt
+  c.fillStyle = "#191920";
+  c.beginPath();
+  c.arc(0, -8.6, 9.8, Math.PI * 0.9, Math.PI * 2.15);
+  c.fill();
+  c.beginPath();
+  c.moveTo(-9.4, -9);
+  c.quadraticCurveTo(-15, 2, -12, 12);
+  c.quadraticCurveTo(-6, 16, 2, 14);
+  c.quadraticCurveTo(-4, 4, -6.4, -6);
+  c.closePath();
+  c.fill();
+  if (hairAside > 0.5) {
+    c.fillStyle = "#3b3b48";
+    c.beginPath();
+    c.ellipse(8.2, -7, 2.2, 1.4, 0.4, 0, Math.PI * 2);
+    c.fill();
+  }
+  // geschlossene Augen und ruhiger Mund
+  c.strokeStyle = "#20343c";
+  c.lineWidth = 0.9;
+  c.lineCap = "round";
+  c.beginPath();
+  c.moveTo(3.4, -9);
+  c.quadraticCurveTo(4.6, -8.2, 5.8, -9);
+  c.stroke();
+  c.strokeStyle = "#a35f4a";
+  c.beginPath();
+  c.moveTo(4.4, -3.4);
+  c.lineTo(6.4, -3.4);
+  c.stroke();
+  // Pyjama-Schulter
+  rrect(c, -4, 1, 30, 13 + breathe, 6, pj ? pj.top : "#7fc6c2");
+  rrect(c, 22, 4, 20, 11 + breathe, 5, pj ? pj.bottom : "#3f6f8c");
+  // Hand unter dem Ohr
+  c.fillStyle = "#f4c9a0";
+  c.beginPath();
+  c.arc(9, 2.4, 3.1, 0, Math.PI * 2);
+  c.fill();
+  c.strokeStyle = "#e3b288";
+  c.lineWidth = 0.8;
+  c.beginPath();
+  c.moveTo(8, 3.4);
+  c.lineTo(10.4, 1.6);
+  c.stroke();
+  c.restore();
+}
+
+/** Decke bis zum Hals: der Kopf bleibt frei, der Körper ist zugedeckt. */
+function drawBlanket(c: C, t: number, lift = 1) {
+  const y = FLOOR_Y[2] - 20;
+  const breathe = Math.sin(t * 1.1) * 0.35;
+  const bx = 332;
+  const top = y + 2 - lift * 4;
+  rrect(c, bx, top, 72, 18 + breathe, 6, "#3f7f8c");
+  rect(c, bx + 3, top + 3, 66, 2, "rgba(255,255,255,.35)");
+  // umgeschlagener Rand am Hals
+  rrect(c, bx + 2, top - 2, 26, 6, 3, "#6bb4bb");
+}
+
+/** Spielmodul in der Größe eines anderen Spieleschachtes. */
+function golCartridge(c: C, x: number, y: number, w: number, h: number) {
+  rrect(c, x, y, w, h, 0.6, "#1b2422");
+  rect(c, x + 0.6, y + 0.6, Math.max(1, w - 1.2), Math.max(1.4, h * 0.5), "#143028");
+  c.fillStyle = "#3ddc84";
+  const s = Math.max(0.7, Math.min(1.2, w / 6));
+  c.fillRect(x + 1.1, y + 1.1, s, s);
+  c.fillRect(x + 1.1 + s * 1.7, y + 1.1 + s * 1.4, s, s);
+  c.fillRect(x + 1.1, y + 1.1 + s * 2.5, s, s);
 }
 
 function sofa(c: C, x: number, F: number) {
@@ -591,6 +734,123 @@ function tvSet(c: C, x: number, F: number) {
   rrect(c, x + 4, F - 56, 46, 36, 4, "#1d242a");
   rect(c, x + 7, F - 53, 40, 26, "#0b1217");
   rect(c, x + 22, F - 22, 10, 3, "#1d242a");
+}
+
+/** Bad im 1. Stock: je 18 Einheiten Luft zwischen Dusche, Tür und Waschbecken. */
+const WC_DOOR_X = 568;
+const SINK_X = 632;
+/** Oberkante des Spiegelschranks */
+const CAB_TOP = FLOOR_Y[2] - 82;
+/** Hier landet die Brille im Becken */
+const SINK_DROP: Pt = [SINK_X + 11, FLOOR_Y[2] - 37.5];
+
+/** Brille als Gegenstand: im Flug drehend, im Becken flach liegend. */
+function glassesObj(c: C, x: number, y: number, rot: number, flat = 1) {
+  c.save();
+  c.translate(x, y);
+  c.rotate(rot);
+  c.scale(1.08, 1.08 * flat);
+  c.strokeStyle = "#15151b";
+  c.fillStyle = "rgba(220,245,255,.35)";
+  c.lineWidth = 0.95;
+  for (const cx of [-3.1, 3.1]) {
+    rrPath(c, cx - 2.7, -2.4, 5.4, 4.8, 1.7);
+    c.fill();
+    c.stroke();
+  }
+  c.beginPath();
+  c.moveTo(-0.4, -0.5);
+  c.lineTo(0.4, -0.5);
+  c.moveTo(-5.8, -0.8);
+  c.lineTo(-7.6, -1.4);
+  c.moveTo(5.8, -0.8);
+  c.lineTo(7.6, -1.4);
+  c.stroke();
+  c.restore();
+}
+
+/** WC-Tür im Bad: braunes Türblatt wie die übrigen Türen, mit Zarge. */
+function wcTuer(c: C, x: number, F: number) {
+  rect(c, x - 4, F - 84, 50, 84, "#d9cfb8");
+  rect(c, x, F - 80, 42, 80, "#5a3b2a");
+  rect(c, x + 5, F - 74, 32, 28, "#4a3022");
+  rect(c, x + 5, F - 40, 32, 32, "#4a3022");
+  rect(c, x, F - 80, 42, 1.4, "rgba(255,255,255,.12)");
+  disc(c, x + 35, F - 40, 2.2, "#e6c36a");
+  rect(c, x + 32, F - 41, 5, 1.6, "#c9a14a");
+  // kleines WC-Schild
+  rrect(c, x + 15, F - 72, 12, 7, 1.5, "#efe6d2");
+  c.fillStyle = "#5a3b2a";
+  c.font = '700 5px "Silkscreen", monospace';
+  c.textAlign = "center";
+  c.fillText("WC", x + 21, F - 66.8);
+  c.textAlign = "left";
+}
+
+/** Waschbecken auf einer Säule, darüber ein Spiegelschrank. */
+function waschbeckenMitSpiegel(c: C, x: number, F: number) {
+  // Säule und Becken
+  rrect(c, x + 13, F - 30, 10, 30, 2, "#e6eeec");
+  rect(c, x + 13, F - 30, 2, 30, "rgba(255,255,255,.5)");
+  rrect(c, x, F - 38, 36, 9, 4, "#f4f8f6");
+  rect(c, x + 4, F - 37, 28, 2.4, "#cfdcda");
+  // Armatur
+  rect(c, x + 16.5, F - 45, 3, 8, "#b9c6c9");
+  rect(c, x + 16.5, F - 45, 9, 2.4, "#b9c6c9");
+  disc(c, x + 13, F - 40, 1.6, "#cfd8da");
+  // Seife und Fläschchen am Beckenrand
+  rrect(c, x + 26, F - 41, 6, 3, 1.2, "#e9c46a");
+  rrect(c, x + 4, F - 44, 3, 6, 1, "#7ec4dc");
+  // Spiegelschrank (geschlossen; offen zeichnet ihn drawCabinetOpen)
+  const top = CAB_TOP;
+  rrect(c, x + 1, top, 34, 34, 2, "#e8eeec");
+  rect(c, x + 3, top + 2, 14.6, 30, "#bcd9dc");
+  rect(c, x + 18.4, top + 2, 14.6, 30, "#b3d2d6");
+  c.globalAlpha = 0.45;
+  poly(c, [[x + 5, top + 30], [x + 11, top + 3], [x + 14, top + 3], [x + 8, top + 30]], "#ffffff");
+  poly(c, [[x + 21, top + 28], [x + 26, top + 3], [x + 28, top + 3], [x + 23, top + 28]], "#ffffff");
+  c.globalAlpha = 1;
+  rect(c, x + 17.6, top + 2, 0.8, 30, "#9fb2b6");
+  rect(c, x + 15, top + 16, 1.2, 5, "#8fa6b2");
+  rect(c, x + 19.8, top + 16, 1.2, 5, "#8fa6b2");
+}
+
+/** Haarbürste: Griff nach oben (−y), Kopf unten, Borsten auf der +x-Seite. */
+function brushObj(c: C, x: number, y: number, rot: number, face: 1 | -1 = 1) {
+  c.save();
+  c.translate(x, y);
+  c.scale(face, 1);
+  c.rotate(rot);
+  rrect(c, -1.1, -9, 2.2, 9.5, 1, "#8a5a34");
+  rrect(c, -2.4, 0, 4.4, 7.4, 1.6, "#c96f4a");
+  c.fillStyle = "#2a2420";
+  for (let i = 0; i < 5; i++) c.fillRect(2, 0.8 + i * 1.4, 1.6, 0.7);
+  c.restore();
+}
+
+/** Offener Spiegelschrank: Innenraum mit Becher und Bürste, Türen nach außen. */
+function drawCabinetOpen(c: C, open: number, brushInside: boolean) {
+  if (open <= 0.01) return;
+  const x = SINK_X;
+  const top = CAB_TOP;
+  const e = open * open * (3 - 2 * open);
+  rect(c, x + 3, top + 2, 30, 30, "#dfe9e7");
+  rect(c, x + 3, top + 2, 30, 1.5, "rgba(0,0,0,.12)");
+  rect(c, x + 3, top + 15, 30, 1.6, "#c9d6d4");
+  // oberes Fach: Zahnputzbecher, Creme
+  rrect(c, x + 6, top + 7, 5, 8, 1, "#7ec4dc");
+  rect(c, x + 7, top + 4, 1, 4, "#f2f7f4");
+  rect(c, x + 9, top + 3.6, 1, 4.4, "#ff9fb0");
+  rrect(c, x + 22, top + 10, 7, 5, 1.5, "#f2f7f4");
+  // unteres Fach: die Bürste
+  if (brushInside) brushObj(c, x + 15, top + 29.5, -Math.PI / 2);
+  // Türen klappen nach außen und werden schmaler
+  const dw = 14.6 - 11.4 * e;
+  rect(c, x + 3 - dw * e, top + 2, dw, 30, "#bcd9dc");
+  rect(c, x + 33 - dw * (1 - e), top + 2, dw, 30, "#b3d2d6");
+  c.fillStyle = "rgba(255,255,255,.35)";
+  c.fillRect(x + 3 - dw * e, top + 2, 1, 30);
+  c.fillRect(x + 33 - dw * (1 - e) + dw - 1, top + 2, 1, 30);
 }
 
 function kellerTuer(c: C, x: number, F: number) {
@@ -759,67 +1019,6 @@ function wardrobe(c: C, x: number, F: number) {
   disc(c, x + 28, F - 42, 1.6, "#e6c36a");
 }
 
-function shower(c: C, x: number, F: number) {
-  rect(c, x, F - 90, 42, 90, "#e8f0f2");
-  rect(c, x + 3, F - 87, 36, 84, "#bfe0e8");
-  for (let ty = F - 87; ty < F - 3; ty += 12) rect(c, x + 3, ty, 36, 1, "rgba(60,110,120,.3)");
-  rect(c, x + 3, F - 87, 36, 84, "rgba(190,230,240,.25)");
-  line(c, x + 34, F - 87, x + 34, F - 76, "#8fa6b2", 2.4);
-  line(c, x + 34, F - 76, x + 24, F - 72, "#8fa6b2", 2.4);
-  rrect(c, x + 18, F - 74, 12, 4, 2, "#c3d0cf");
-  rect(c, x, F - 90, 3, 90, "#cfd5d8");
-}
-
-function washbasin(c: C, x: number, F: number) {
-  rect(c, x, F - 34, 44, 34, "#e9f2f2");
-  rect(c, x + 21, F - 34, 1.5, 34, "rgba(0,0,0,.2)");
-  rrect(c, x + 3, F - 40, 38, 8, 4, "#ffffff");
-  line(c, x + 22, F - 40, x + 22, F - 50, "#8fa6b2", 2.4);
-  line(c, x + 22, F - 50, x + 28, F - 50, "#8fa6b2", 2.4);
-  rrect(c, x + 5, F - 88, 34, 36, 4, "#bfe0e8");
-  c.strokeStyle = "#efe6d2";
-  c.lineWidth = 2;
-  c.strokeRect(x + 5, F - 88, 34, 36);
-  c.globalAlpha = 0.35;
-  poly(c, [[x + 10, F - 54], [x + 20, F - 86], [x + 26, F - 86], [x + 16, F - 54]], "#ffffff");
-  c.globalAlpha = 1;
-}
-
-/**
- * Badezimmertür vor dem WC. Das Blatt schwingt nach innen auf; bei
- * geschlossener Tür ist das WC dahinter nicht sichtbar.
- */
-function wcDoor(c: C, x: number, F: number, open: number, inside = false) {
-  const w = 48;
-  const h = 88;
-  // Durchgang / dahinter liegende Nische
-  rect(c, x, F - h, w, h, "#0f1a20");
-  rect(c, x, F - h, w, 3, "rgba(0,0,0,.4)");
-  // Türblatt klappt nach innen (links) auf
-  const dw = w * (1 - open * 0.82);
-  rect(c, x, F - h, dw, h, "#e9f1f1");
-  rect(c, x + 2, F - h + 2, Math.max(0, dw - 4), h - 4, "#d3e2e4");
-  if (dw > 18) {
-    rect(c, x + 5, F - h + 8, dw - 10, 24, "#c2d6d9");
-    rect(c, x + 5, F - h + 40, dw - 10, 30, "#c2d6d9");
-    disc(c, x + dw - 6, F - h * 0.52, 2, "#8fa6b2");
-  }
-  rect(c, x - 3, F - h - 4, w + 6, 5, "#efe6d2");
-  // Schild
-  if (dw > 20 && !inside) {
-    c.fillStyle = "#7a8b90";
-    c.font = '700 5px "Silkscreen", monospace';
-    c.textAlign = "center";
-    c.fillText("WC", x + dw / 2, F - h + 4);
-    c.textAlign = "left";
-  }
-}
-
-function toilet(c: C, x: number, F: number) {
-  rrect(c, x + 10, F - 34, 18, 20, 3, "#f4f8f8");
-  rrect(c, x, F - 18, 30, 10, 5, "#ffffff");
-  rect(c, x + 6, F - 8, 18, 8, "#e6eded");
-}
 
 /* --- Möbel: Dachgeschoss --- */
 
@@ -1283,11 +1482,75 @@ function cellarDoor(c: C, x: number, topY: number, h: number, open: number) {
   rect(c, x - 9, topY + h, 18, 1, "rgba(0,0,0,.3)");
 }
 
+
+
+const TILE = 14;
+const TILE_A = "#4aa273";
+const TILE_B = "#43a06f";
+const TILE_GROUT = "#2a5c44";
+const hashTile = (r: number, q: number) => {
+  const v = Math.sin(r * 127.1 + q * 311.7) * 43758.5453;
+  return v - Math.floor(v);
+};
+
+/** Fliesen nach Vorlage: gleichmäßige grüne Quadrate mit dunkler Fuge. */
+function bathTiles(c: C, x0: number, x1: number, yTop: number, yBot: number) {
+  rect(c, x0, yTop, x1 - x0, yBot - yTop, TILE_GROUT);
+  const cols = Math.ceil((x1 - x0) / TILE);
+  const rows = Math.ceil((yBot - yTop) / TILE);
+  for (let r = 0; r < rows; r++) {
+    for (let q = 0; q < cols; q++) {
+      const tx = x0 + q * TILE + 1;
+      const ty = yTop + r * TILE + 1;
+      const tw = Math.min(TILE - 2, x1 - 1 - tx);
+      const th = Math.min(TILE - 2, yBot - 1 - ty);
+      if (tw <= 0 || th <= 0) continue;
+      rect(c, tx, ty, tw, th, hashTile(r, q) > 0.5 ? TILE_A : TILE_B);
+      rect(c, tx, ty, tw, 1, "rgba(255,255,255,.14)");
+    }
+  }
+  rect(c, x0, yBot - 3, x1 - x0, 3, TILE_GROUT);
+}
+
+/**
+ * Flache Deckenlampe. Sie ist eine halbe Schale, die genau an der Deckenkante
+ * ansetzt und niemals in die Deckengrafik hineinreicht.
+ */
+function bathCeilingLamp(c: C, x: number, ceilY: number, floorY: number, x0: number, x1: number) {
+  // warmes, breit gestreutes Licht nach unten
+  c.save();
+  c.beginPath();
+  c.rect(x0, ceilY, x1 - x0, floorY - ceilY);
+  c.clip();
+  const g = c.createRadialGradient(x, ceilY + 2, 2, x, ceilY + 34, 104);
+  g.addColorStop(0, "rgba(255, 214, 148, 0.46)");
+  g.addColorStop(0.32, "rgba(255, 196, 122, 0.15)");
+  g.addColorStop(1, "rgba(255, 186, 112, 0)");
+  c.fillStyle = g;
+  c.fillRect(x0, ceilY, x1 - x0, floorY - ceilY);
+  c.restore();
+  // Montageplatte liegt auf der Decke
+  rect(c, x - 6, ceilY, 12, 1.4, "#c9a97a");
+  // flache, runde Schale: untere Halb-Ellipse
+  c.fillStyle = "#e2c79a";
+  c.beginPath();
+  c.ellipse(x, ceilY + 1.4, 11.5, 4.6, 0, 0, Math.PI);
+  c.closePath();
+  c.fill();
+  rect(c, x - 11.5, ceilY + 1.4, 23, 1.1, "rgba(255,255,255,.22)");
+  // Leuchtrand, ebenfalls flach
+  c.fillStyle = "#fff1d2";
+  c.beginPath();
+  c.ellipse(x, ceilY + 2.4, 9.2, 2.9, 0, 0, Math.PI);
+  c.closePath();
+  c.fill();
+}
+
 function drawHouse(
   c: C,
   sky: HTMLCanvasElement,
-  wc: { open: number; inside: boolean },
   door: { open: number },
+  golOnShelf: boolean,
 ) {
   drawExterior(c);
   drawRoof(c);
@@ -1320,7 +1583,7 @@ function drawHouse(
 
   // 1. Stock
   wallBand(c, 270, 490, FD + SLAB, FO, "#b9808f", "#9c6676", 30);
-  wallBand(c, 490, OG_X1, FD + SLAB, FO, "#86c3c9", "#e9f2f2", 46);
+  bathTiles(c, 490, OG_X1, FD + SLAB, FO);
   // Treppenhaus rechts (über EG und 1. Stock)
   wallBand(c, OG_X1, HR, FD + SLAB, FE, "#cdb78f", "#b79f74", 30);
   // Erdgeschoss
@@ -1335,7 +1598,7 @@ function drawHouse(
   const WOOD = "#a06f45";
   slab(c, CEL_X0, HR, FK, [[CEL_X0, 590, "#8a8d88", "none"], [590, HR, "#777a74", "none"]], "#2a2522");
   slab(c, 98, HR, FE, [[98, 560, WOOD, "wood"], [560, HR, "#e8e2d2", "tile"]]);
-  slab(c, 98, OG_X1 + 2, FO, [[98, 490, "#a87a52", "wood"], [490, OG_X1 + 2, "#d7dedf", "tile"]]);
+  slab(c, 98, OG_X1 + 2, FO, [[98, 490, "#a87a52", "wood"], [490, OG_X1 + 2, "#4d9a66", "tile"]]);
   slab(c, DG_X0, HR, FD, [[DG_X0, 530, "#3e3b52", "none"], [530, HR, WOOD, "wood"]]);
 
   /* ---- Außenwände ---- */
@@ -1369,7 +1632,6 @@ function drawHouse(
   windowRect(c, sky, 624, 364, 50, 36);
   windowRect(c, sky, 740, 236, 44, 78, { mull: 2 });
   windowRect(c, sky, 334, 244, 62, 46, { curtain: "#7a3f55" });
-  windowRect(c, sky, 656, 250, 30, 32, { mull: 1 });
   windowRect(c, sky, 330, 98, 56, 44, { mull: 2 });
   roundWindow(c, sky, 590, 104, 20);
   windowRect(c, sky, 704, 472, 36, 20, { mull: 2 });
@@ -1416,16 +1678,19 @@ function drawHouse(
   nightstand(c, 396, FO);
   wardrobe(c, 434, FO);
   ceilingLamp(c, 340, FD + SLAB, 14, "#f2d9a0");
-  shower(c, 500, FO);
-  washbasin(c, 556, FO);
-  wcDoor(c, 578, FO, wc.open, wc.inside);
-  toilet(c, 666, FO);
-  ceilingLamp(c, 590, FD + SLAB, 14);
+  showerStatic(c, FO);
+  wcTuer(c, WC_DOOR_X, FO);
+  waschbeckenMitSpiegel(c, SINK_X, FO);
+  bathCeilingLamp(c, 590, FD + SLAB, FO, 490, OG_X1);
 
   /* ---- Dachgeschoss ---- */
   beanbag(c, 296, FD);
   lowboardTV(c, 404, FD);
-  bookshelf(c, 486, FD, 38, 74, 4, 5, true);
+  bookshelf(c, 486, FD, 38, 74, 4, 5, true, {
+    row: 0,
+    index: 1,
+    item: golOnShelf ? (cc, bx, by, bw, bh) => golCartridge(cc, bx, by, bw, bh) : undefined,
+  });
   picture(c, 412, 96, 44, 26, "#ff6f61");
   picture(c, 276, 108, 22, 30, "#35d6c0");
   piano(c, 545, FD);
@@ -1460,6 +1725,75 @@ function drawHouse(
    ======================================================================== */
 
 type Step = { k: "walk"; x: number } | { k: "stair"; s: Stair; dir: 1 | -1 };
+
+/** Ablauf beim Duschen und beim Anziehen danach, in dieser Reihenfolge. */
+const SH_SEQ = [
+  "toWardrobe", "openWardrobe", "undress", "wrap", "closeWardrobe",
+  "toSink", "glassesOff", "tossGlasses", "toShower", "closeCurtain", "towelOff", "throwTowel", "waterOn",
+  "washHair", "washBody", "rinse", "waterOff", "takeTowel", "wrapOn",
+  "openCurtain", "stepOut",
+] as const;
+const DRESS_SEQ = ["dToWardrobe", "dOpen", "dDress", "dClose"] as const;
+const GLASS_SEQ = ["gToSink", "gPick"] as const;
+const CAB_OPEN_SEQ = ["cToCab", "cOpen"] as const;
+const CAB_CLOSE_SEQ = ["kToCab", "kClose"] as const;
+const BRUSH_SEQ = ["bToCab", "bTake", "bStep", "bBend", "bBrush", "bUp", "bReturn", "bPut"] as const;
+const BED_SEQ = ["bToWardrobe", "bedOpen", "bedTop", "bedBottom", "bedPants", "bedPajama", "bedClose", "bedSit", "bedToss"] as const;
+const ALL_SEQS: readonly (readonly string[])[] = [
+  SH_SEQ, DRESS_SEQ, GLASS_SEQ, CAB_OPEN_SEQ, CAB_CLOSE_SEQ, BRUSH_SEQ, BED_SEQ,
+];
+type ShPhase =
+  | (typeof SH_SEQ)[number]
+  | (typeof DRESS_SEQ)[number]
+  | (typeof GLASS_SEQ)[number]
+  | (typeof CAB_OPEN_SEQ)[number]
+  | (typeof CAB_CLOSE_SEQ)[number]
+  | (typeof BRUSH_SEQ)[number]
+  | (typeof BED_SEQ)[number];
+/** Flugdauer der Brille in Sekunden */
+const GLASSES_FLIGHT = 1.35;
+/** Dauer in Sekunden; Laufschritte haben keine Dauer, sie enden mit der Ankunft. */
+const SH_DUR: Partial<Record<ShPhase, number>> = {
+  glassesOff: 1.3, tossGlasses: 0.9,
+  openWardrobe: 0.7, undress: 1.6, wrap: 1.5, closeWardrobe: 0.6,
+  closeCurtain: 1.3, towelOff: 1.1, throwTowel: 0.9, waterOn: 0.8,
+  washHair: 3.4, washBody: 3.4, rinse: 2.8, waterOff: 0.8,
+  takeTowel: 0.9, wrapOn: 1.5, openCurtain: 1.3,
+  dOpen: 0.7, dDress: 1.8, dClose: 0.6,
+  gPick: 2.3, cOpen: 1.2, kClose: 1.2,
+  bTake: 1.1, bBend: 1.4, bBrush: 7, bUp: 1.3, bPut: 1.1,
+  bedOpen: 0.7, bedTop: 1.1, bedBottom: 1.3, bedPants: 1.2, bedPajama: 2.2, bedClose: 0.6, bedToss: 1.3,
+};
+/** Hinter dem Vorhang: nicht unterbrechbar */
+const SH_LOCKED: ShPhase[] = [
+  "glassesOff", "tossGlasses", "openWardrobe", "undress", "wrap", "closeWardrobe", "closeCurtain", "towelOff", "throwTowel",
+  "waterOn", "washHair", "washBody", "rinse", "waterOff", "takeTowel", "wrapOn", "openCurtain",
+  "dOpen", "dDress", "dClose",
+  "gPick", "cOpen", "kClose",
+  "bTake", "bStep", "bBend", "bBrush", "bUp", "bReturn", "bPut",
+  "bedOpen", "bedTop", "bedBottom", "bedPants", "bedPajama", "bedClose", "bedSit", "bedToss",
+];
+/** In diesen Schritten steht Luni in der Wanne, also hinter dem Vorhang. */
+const SH_INSIDE: ShPhase[] = [
+  "closeCurtain", "towelOff", "throwTowel", "waterOn", "washHair", "washBody",
+  "rinse", "waterOff", "takeTowel", "wrapOn", "openCurtain",
+];
+const SH_STAND: Record<string, { x: number; face: 1 | -1 }> = {
+  toWardrobe: { x: 458, face: 1 },
+  dToWardrobe: { x: 458, face: 1 },
+  toSink: { x: 602, face: 1 },
+  toShower: { x: SHOWER_X + 21, face: 1 },
+  stepOut: { x: 574, face: 1 },
+  gToSink: { x: 632, face: 1 },
+  cToCab: { x: 636, face: 1 },
+  kToCab: { x: 636, face: 1 },
+  bToCab: { x: 636, face: 1 },
+  // ein Stück zurück, damit der Kopf beim Vorbeugen vor dem Becken hängt
+  bStep: { x: 598, face: 1 },
+  bReturn: { x: 636, face: 1 },
+  bToWardrobe: { x: 458, face: 1 },
+  bedSit: { x: 330, face: 1 },
+};
 interface Active {
   step: Step;
   t: number;
@@ -1470,6 +1804,8 @@ interface Active {
 export interface HouseOptions {
   /** feste Uhrzeit (nur für Tests) */
   clock?: Clock;
+  /** sichtbarer Traumstein wechselt in die leere Traumhausansicht */
+  onTraumhaus?: () => void;
 }
 
 function drawProp(c: C, kind: Prop, x: number, y: number, face: 1 | -1) {
@@ -1545,6 +1881,7 @@ export class House {
   private night = 0;
 
   private fixedClock: Clock | null;
+  private onTraumhaus: (() => void) | null = null;
   private clock: Clock;
   private clockT = 0;
   private bucket = -1;
@@ -1646,7 +1983,71 @@ export class House {
   private wcWant = 0;
   private wcT = 0;
   private wcInside = false; // Luni ist hinter der WC-Tür
-  private tvMode: "cozy" | "console" = "cozy";
+  private tvMode: "cozy" | "console" | "gol" = "cozy";
+  private golState: GOLState | null = null;
+  /** Zweiter Rasterpuffer, damit die Folgegeneration nichts überschreibt. */
+  private golTimer = 0;
+  /** Zwischenpuffer der Vergrößerung, wird nur bei neuer Generation neu gemalt. */
+  private golBuf = document.createElement("canvas");
+  private golImg: ImageData | null = null;
+  private golEdits = 0;
+  private golBufKey = "";
+  /** Pegel nach +/−: 1 = sichtbar, blendet aus */
+  private golMeterT = 0;
+  private golMeterKind: "speed" | "size" = "speed";
+  /** Modul liegt noch auf der obersten Regalebene (statische Schicht, hinter Luni). */
+  private golOnShelf = true;
+  /** Modul steckt in der Konsole unter dem Fernseher. */
+  private golInserted = false;
+  /** greifen, zum Fernseher tragen, einlegen, hinsetzen, oder Vergrößern */
+  private golPhase: "reach" | "carry" | "insert" | "watch" | "rise" | "toButton" | "press" | "back" | null = null;
+  private golAnimT = 0;
+  private golFullscreen = false;
+
+  // Bett-Routine und Traum
+  private bedPhase: "toss" | null = null;
+  private pyjama: { top: string; bottom: string } | null = null;
+  /** 0 = zu Hause, 1 = oben am Himmel */
+  private tossUp = 0;
+  private tossLand = 1;
+  private tossLanded = false;
+  private asleep = false;
+  private sleepT = 0;
+  private dreamCool = 0;
+  private revealT = 0;
+  private bedTimePending = false;
+  private sleepRest = 0;
+  private bedSitHair = 0;
+  private dream: Dream | null = null;
+  /** kurze Aufwachpose nach „Aufwachen“ */
+  private wakeT = 0;
+  /** Hinlegen nach dem Brillenwurf */
+  private lieDown = false;
+  private lieT = 0;
+
+  // Duschen: Kleidung, Ablauf, Vorhang, Wasser, Dampf
+  private outfit: "dressed" | "towel" | "none" = "dressed";
+  private wet = 0;
+  private shPhase: ShPhase | null = null;
+  private shT = 0;
+  private curtain = 0;
+  private water = false;
+  private steam = 0;
+  private towelOnRod = false;
+  private wardrobeOpen = 0;
+  /** Brille: auf der Nase, in der Hand, im Flug oder im Waschbecken */
+  private glassesOn = true;
+  private glassesInHand = false;
+  private glassesFly: { t: number; x0: number; y0: number } | null = null;
+  private glassesInSink = false;
+  /** Spiegelschrank 0 = zu, 1 = offen; Bürste im Schrank oder in der Hand */
+  private cabinetOpen = 0;
+  private brushInCab = true;
+  private brushInHand = false;
+  private luniBuf = document.createElement("canvas");
+  private silBuf = document.createElement("canvas");
+  /** zuletzt gezeichnete vordere Hand, für das getragene Modul */
+  private hand: Pt = [0, 0];
   private rickImg: HTMLImageElement | null = null;
   private rickTried = false;
   // Harvest save state. Crop growth is advanced only while the farmer tends
@@ -1683,6 +2084,7 @@ export class House {
     this.mulc = this.ctx2(this.mul);
     this.addc = this.ctx2(this.add);
     this.fixedClock = opts.clock ?? null;
+    this.onTraumhaus = opts.onTraumhaus ?? null;
     this.clock = this.fixedClock ?? berlinNow();
     this.resize();
   }
@@ -1699,6 +2101,8 @@ export class House {
     this.ro = new ResizeObserver(() => this.resize());
     if (this.canvas.parentElement) this.ro.observe(this.canvas.parentElement);
     window.addEventListener("resize", this.resize);
+    window.addEventListener("keydown", this.onKey);
+    document.addEventListener("visibilitychange", this.onVisibility);
     this.canvas.addEventListener("pointerdown", this.onDown);
     this.canvas.addEventListener("pointermove", this.onMove);
     this.canvas.addEventListener("pointerleave", this.onLeave);
@@ -1710,7 +2114,11 @@ export class House {
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
     this.ro?.disconnect();
+    this.dream?.destroy();
+    this.dream = null;
     window.removeEventListener("resize", this.resize);
+    window.removeEventListener("keydown", this.onKey);
+    document.removeEventListener("visibilitychange", this.onVisibility);
     this.canvas.removeEventListener("pointerdown", this.onDown);
     this.canvas.removeEventListener("pointermove", this.onMove);
     this.canvas.removeEventListener("pointerleave", this.onLeave);
@@ -1766,6 +2174,11 @@ export class House {
     let best: Station | null = null;
     let bestArea = Infinity;
     for (const st of STATIONS) {
+      // Leeres Fach: das Modul ist schon heruntergenommen.
+      if (st.id === "gol_game" && !this.golOnShelf) continue;
+      // Brille und Bürste sind nur Ziele, wenn sie wirklich da liegen.
+      if (st.id === "brille" && !this.glassesInSink) continue;
+      if (st.id === "buerste" && !(this.cabinetOpen > 0.9 && this.brushInCab)) continue;
       for (const [rx, ry, rw, rh] of st.hits) {
         if (x >= rx && x <= rx + rw && y >= ry && y <= ry + rh && rw * rh < bestArea) {
           best = st;
@@ -1779,6 +2192,20 @@ export class House {
   private onDown = (e: PointerEvent) => {
     sfx.ensure();
     const [x, y] = this.toWorld(e);
+    if (this.dream) {
+      this.dream.unlock();
+      this.dream.onDown(x, y);
+      return;
+    }
+    if (this.golFullscreen) {
+      this.onGolFullscreenClick(x, y);
+      return;
+    }
+    // Nur der Fernseher im Zockerzimmer, und nur wenn das Modul steckt.
+    if (this.golInserted && this.hitAtticTv(x, y)) {
+      this.startTvZoom();
+      return;
+    }
     const st = this.pick(x, y);
     if (st) {
       // Über command() laufen, damit Tür-, Rauch- und WC-Logik greifen
@@ -1790,8 +2217,24 @@ export class House {
   private onMove = (e: PointerEvent) => {
     if (e.pointerType === "touch") return;
     const [x, y] = this.toWorld(e);
+    if (this.dream) {
+      this.hover = null;
+      this.canvas.style.cursor = this.dream.hover(x, y) ? "pointer" : "default";
+      return;
+    }
+    if (this.golFullscreen) {
+      this.hover = null;
+      const b = GOL_BTN;
+      const onBtn = x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+      const onCtrl = !!golCtrlAt(x, y);
+      const v = this.golState ? golView(this.golState) : null;
+      const onGrid = !!v && x >= v.x && x <= v.x + v.w && y >= v.y && y <= v.y + v.h;
+      this.canvas.style.cursor = onBtn || onCtrl || onGrid ? "pointer" : "default";
+      return;
+    }
     this.hover = this.pick(x, y);
-    this.canvas.style.cursor = this.hover ? "pointer" : "default";
+    const onTv = this.golInserted && this.hitAtticTv(x, y);
+    this.canvas.style.cursor = this.hover || onTv ? "pointer" : "default";
   };
 
   private onLeave = () => {
@@ -1806,6 +2249,70 @@ export class House {
    */
   command(id: string) {
     const find = (k: string) => STATIONS.find((s) => s.id === k) ?? null;
+
+    // Duschen: hinter dem Vorhang wird nichts unterbrochen. Auf dem Weg
+    // dorthin bricht ein anderer Wunsch den Ablauf ab.
+    if (this.shPhase && SH_LOCKED.includes(this.shPhase)) return;
+    if (this.shPhase) this.cancelShower();
+    if (id === "dusche") {
+      this.chain = [];
+      this.smokeRequested = false;
+      this.startSh(this.outfit === "towel" ? "toSink" : "toWardrobe");
+      return;
+    }
+    if (id === "bett" && this.asleep && !this.dream) {
+      this.replayDream();
+      return;
+    }
+    if (this.asleep && id !== "bett") {
+      // Jede andere Aktion weckt sie und gibt das Spiel frei.
+      this.finishDream(true);
+    }
+    if (this.lieDown && id !== "bett") {
+      this.lieDown = false;
+    }
+    if (id === "bett") {
+      const hour = this.clock.hour + this.clock.min / 60;
+      const nightOrSick = hour >= 20 || hour < 6 || this.sick > 0.35;
+      if (nightOrSick) {
+        // Abends oder krank: erst umziehen, dann ins Bett.
+        this.chain = [];
+        this.startBedRoutine();
+        return;
+      }
+    }
+    if (id === "brille" && this.glassesInSink) {
+      this.chain = [];
+      this.startSh("gToSink");
+      return;
+    }
+    if (id === "buerste" && this.brushInCab && this.cabinetOpen > 0.9) {
+      this.chain = [];
+      this.startSh("bToCab");
+      return;
+    }
+    if (id === "spiegelschrank") {
+      this.chain = [];
+      this.startSh(this.cabinetOpen > 0.5 ? "kToCab" : "cToCab");
+      return;
+    }
+    if (id === "kleiderschrank" && this.outfit !== "dressed") {
+      this.chain = [];
+      this.startSh("dToWardrobe");
+      return;
+    }
+
+    // Einsetzen zu Ende bringen; ein anderer Wunsch bricht das Holen ab
+    // und legt das Modul zurück ins Regal, falls es noch nicht steckt.
+    if (this.golPhase === "insert" || this.golPhase === "press") return;
+    if ((this.golPhase === "reach" || this.golPhase === "carry") && id !== "gol_game") this.cancelGolFetch();
+    if (
+      (this.golPhase === "rise" || this.golPhase === "toButton" || this.golPhase === "back" || this.golPhase === "watch") &&
+      id !== "gol_game"
+    ) {
+      this.golPhase = null;
+      this.golAnimT = 0;
+    }
 
     // Sitzt sie gemütlich auf dem Stuhl, steht sie erst sichtbar auf,
     // bevor der Befehl ausgeführt wird. (Klick auf denselben Stuhl ändert
@@ -1972,6 +2479,21 @@ export class House {
     // Wer von Hand zum Stopfen geschickt wird, stopft auch (statt mitzunehmen)
     if (id === "tabak") this.tabakMode = "roll";
 
+
+    // Spiel des Lebens: aus dem Regal holen, zur Konsole tragen, einstecken.
+    if (id === "traumstein") {
+      this.onTraumhaus?.();
+      return;
+    }
+
+    if (id === "gol_game") {
+      if (this.golPhase || !this.golOnShelf) return;
+      this.smokeRequested = false;
+      this.golPhase = "reach";
+      this.golAnimT = 0;
+      this.goTo("gol_game");
+      return;
+    }
 
     // Neutrale Ziele beenden einen offenen Rauchwunsch, damit sie später
     // nicht überraschend von selbst zu rauchen beginnt.
@@ -2700,6 +3222,13 @@ export class House {
     ) {
       this.runChain();
     }
+
+    this.updateGolCarry(dt);
+    this.updateShower(dt);
+    this.updateBedToss(dt);
+    this.updateBedState(dt);
+    this.updateDream(dt);
+    if (this.golInserted && this.golState?.running) this.updateGOL(dt);
   }
 
   /** Aktuelle Aktion beenden und den nächsten Befehl der Kette starten */
@@ -2892,9 +3421,10 @@ export class House {
     drawHouse(
       this.bgc,
       this.sky,
-      { open: this.wcOpenFinal, inside: this.wcInside },
       { open: this.gardenDoor },
+      this.golOnShelf,
     );
+    drawStein(this.bgc, "traum");
 
     // Licht: Multiplikationsebene (Dunkelheit) + additive Wärme
     const night = this.night;
@@ -2947,6 +3477,9 @@ export class House {
     this.drawKellerDoor(ctx);
     cellarDoor(ctx, 590, FK - 80, 80, this.cellarDoorV);
     this.drawScreens(ctx);
+    this.drawTvButton(ctx);
+    // Eingestecktes Modul sitzt in der Konsole, Luni geht davor vorbei.
+    if (this.golInserted && this.golPhase !== "insert") golCartridge(ctx, 446, 167, 6, 11);
     this.drawClock(ctx);
     this.drawSax(ctx);
     this.drawCigPile(ctx);
@@ -2954,7 +3487,13 @@ export class House {
     // Zigarette im Aschenbecher liegt AUF der Platte: Luni geht davor vorbei
     // und verdeckt sie wie jedes andere Objekt auf dem Tisch.
     this.drawAshtrayButt(ctx);
-    this.drawLuniNow(ctx);
+    drawWardrobeOpen(ctx, 434, FLOOR_Y[2], this.wardrobeOpen, this.outfit !== "dressed" || this.towelOnRod);
+    if (this.glassesInSink) glassesObj(ctx, SINK_DROP[0], SINK_DROP[1], 0.12, 0.45);
+    this.drawBedToss(ctx);
+    drawCabinetOpen(ctx, this.cabinetOpen, this.brushInCab);
+    this.drawLuniLayered(ctx);
+    this.drawGlassesMoving(ctx);
+    this.drawGolInHand(ctx);
 
     // Rauch liegt über allem – Luni sieht erst wieder etwas, wenn die Tür auf ist
     this.drawSmoke(ctx);
@@ -2971,7 +3510,10 @@ export class House {
       ctx.restore();
     }
 
+
     this.drawHoverLabel(ctx);
+    if (this.golFullscreen) this.drawGolFullscreen(ctx);
+    if (this.dream) this.dream.draw(ctx, this.elapsed);
   }
 
   private drawKellerDoor(c: C) {
@@ -3398,8 +3940,23 @@ export class House {
 
   /** Läuft auf dem Fernseher, während Luni spielt */
   private drawScreens(c: C) {
+    // Eingestecktes Spiel bleibt auf dem Zockerzimmer-Fernseher, auch wenn
+    // Luni woanders ist. Die Fläche liegt vor Luni im Zeichenablauf, also
+    // hinter ihr, wenn sie vorbeigeht.
+    if (this.golInserted && this.tvMode === "gol" && this.golState) {
+      const x = 410, y = 137, w = 54, h = 34;
+      c.save();
+      c.beginPath();
+      c.rect(x, y, w, h);
+      c.clip();
+      drawGridCoarse(c, this.golState, x, y, w, h);
+      c.fillStyle = "rgba(0,0,0,.12)";
+      for (let i = 0; i < h; i += 3) c.fillRect(x, y + i, w, 1);
+      c.restore();
+    }
     const st = this.activity;
     if (!st || !st.screen || this.cur) return;
+    if (st.screen === "tv_d" && this.tvMode === "gol") return;
     const cozy = this.tvMode === "cozy";
     const r: Rect4 = st.screen === "tv_e"
       ? (cozy ? [435, 392, 44, 32] : [445, 395, 40, 26])
@@ -3573,6 +4130,8 @@ export class House {
       c.fillStyle = "#ff5d8f";
       c.fillText("♪", x + w - 6, y + 5);
 
+    } else if (this.tvMode === "gol" && this.golState) {
+      drawGridCoarse(c, this.golState, x, y, w, h);
     } else {
       // Konsole im Dachgeschoss: dunkler Hintergrund, Level, Figuren
       const flick = 0.75 + Math.sin(t * 19) * 0.08;
@@ -3593,6 +4152,859 @@ export class House {
     c.fillStyle = "rgba(0,0,0,.12)";
     for (let i = 0; i < h; i += 3) c.fillRect(x, y + i, w, 1);
     c.restore();
+  }
+
+  private onKey = (e: KeyboardEvent) => {
+    if (this.dream) {
+      if (this.dream.onKey(e.code)) {
+        e.preventDefault();
+        return;
+      }
+    }
+    if (e.code === "Escape" && this.golFullscreen) this.golFullscreen = false;
+  };
+
+  /** Versteckter Tab hält den Traum an. */
+  private onVisibility = () => {
+    if (document.visibilityState === "hidden" && this.dream && !this.dream.paused) this.dream.pause();
+  };
+
+  /** Bildfläche des Fernsehers im Zockerzimmer. */
+  private hitAtticTv(x: number, y: number) {
+    return x >= 410 && x <= 464 && y >= 137 && y <= 171;
+  }
+
+  /** Standplatz direkt vor dem Fernseher im Zockerzimmer. */
+  private golTvStand(): Station {
+    return {
+      id: "gol_tv",
+      label: "Fernseher",
+      floor: 3,
+      x: 436,
+      face: 1,
+      state: "act",
+      expr: "focus",
+      hits: [],
+    };
+  }
+
+  /** Klick auf den Fernseher: aufstehen, Knopf drücken, Bild groß, wieder setzen. */
+  private startTvZoom() {
+    if (
+      this.golPhase === "insert" ||
+      this.golPhase === "press" ||
+      this.golPhase === "reach" ||
+      this.golPhase === "carry" ||
+      this.golPhase === "rise" ||
+      this.golPhase === "toButton" ||
+      this.golPhase === "back"
+    ) return;
+    if (this.golFullscreen) return;
+    this.golAnimT = 0;
+    const sitting = this.activity?.id === "gaming" && !this.cur && this.path.length === 0;
+    if (sitting) {
+      this.golPhase = "rise";
+      return;
+    }
+    this.golPhase = "toButton";
+    this.goTo(this.golTvStand());
+  }
+
+  /* ------------------------------ Duschen -------------------------------- */
+
+  private shStation(phase: ShPhase): Station {
+    const st = SH_STAND[phase];
+    return { id: `sh_${phase}`, label: "", floor: 2, x: st.x, face: st.face, state: "idle", expr: "happy", hits: [] };
+  }
+
+  private startSh(phase: ShPhase) {
+    // Ohne Brille (weder auf der Nase noch in der Hand) gibt es nichts zu werfen.
+    if (!this.glassesOn && !this.glassesInHand && (phase === "toSink" || phase === "glassesOff" || phase === "tossGlasses")) {
+      phase = "toShower";
+    }
+    this.shPhase = phase;
+    this.shT = 0;
+    if (SH_STAND[phase]) this.goTo(this.shStation(phase));
+    if (phase === "stepOut") this.wet = 1;
+  }
+
+  private nextSh() {
+    const p = this.shPhase;
+    if (!p) return;
+    const seq = (ALL_SEQS.find((q) => q.includes(p)) ?? []) as readonly ShPhase[];
+    const i = seq.indexOf(p);
+    if (i < 0 || i === seq.length - 1) {
+      this.shPhase = null;
+      this.shT = 0;
+      return;
+    }
+    this.startSh(seq[i + 1]);
+  }
+
+  /** Abbruch auf dem Weg: Schrank zu, sonst bleibt alles, wie es ist. */
+  private cancelShower() {
+    this.shPhase = null;
+    this.shT = 0;
+    this.wardrobeOpen = 0;
+  }
+
+  private updateShower(dt: number) {
+    if (this.bedTimePending && this.sick < 0.35 && this.night < 0.45) this.bedTimePending = false;
+    if (this.asleep) {
+      this.sleepT += dt;
+      if (this.dreamCool > 0) this.dreamCool = Math.max(0, this.dreamCool - dt);
+    }
+    if (this.revealT > 0) this.revealT = Math.max(0, this.revealT - dt);
+    this.updateBedRoutine(dt);
+    if (this.glassesFly) {
+      this.glassesFly.t += dt;
+      if (this.glassesFly.t >= GLASSES_FLIGHT) {
+        this.glassesFly = null;
+        this.glassesInSink = true;
+        sfx.ui();
+      }
+    }
+    this.steam = this.water ? Math.min(1, this.steam + dt * 0.3) : Math.max(0, this.steam - dt * 0.12);
+    if (!this.shPhase && this.wet > 0) this.wet = Math.max(0, this.wet - dt / 90);
+    const ph = this.shPhase;
+    if (!ph) return;
+    const dur = SH_DUR[ph];
+    if (dur === undefined) {
+      // Laufschritt: endet, sobald sie am Ziel steht
+      const arrived = !this.cur && this.path.length === 0 && !this.pending;
+      if (arrived && this.activity?.id === `sh_${ph}`) this.nextSh();
+      return;
+    }
+    this.shT += dt;
+    const p = clamp(this.shT / dur, 0, 1);
+    const e = p * p * (3 - 2 * p);
+    switch (ph) {
+      case "openWardrobe":
+      case "dOpen":
+        this.wardrobeOpen = e;
+        break;
+      case "closeWardrobe":
+      case "dClose":
+        this.wardrobeOpen = 1 - e;
+        break;
+      case "undress":
+        // Arme oben, Oberteil ist über dem Kopf: Handtuch kommt aus dem Schrank
+        if (p >= 0.5) this.outfit = "towel";
+        break;
+      case "dDress":
+        if (p >= 0.5) this.outfit = "dressed";
+        break;
+      case "closeCurtain":
+        this.curtain = e;
+        break;
+      case "openCurtain":
+        this.curtain = 1 - e;
+        break;
+      case "towelOff":
+        if (p >= 0.6) this.outfit = "none";
+        break;
+      case "throwTowel":
+        if (p >= 0.55 && !this.towelOnRod) {
+          this.towelOnRod = true;
+          sfx.ui();
+        }
+        break;
+      case "waterOn":
+        if (p >= 0.6) this.water = true;
+        break;
+      case "gPick":
+        if (p >= 0.38 && this.glassesInSink) {
+          this.glassesInSink = false;
+          this.glassesInHand = true;
+          sfx.ui();
+        }
+        if (p >= 0.84 && this.glassesInHand) {
+          this.glassesInHand = false;
+          this.glassesOn = true;
+        }
+        break;
+      case "cOpen":
+        this.cabinetOpen = clamp((p - 0.3) / 0.45, 0, 1);
+        break;
+      case "kClose":
+        this.cabinetOpen = 1 - clamp((p - 0.3) / 0.45, 0, 1);
+        break;
+      case "bTake":
+        if (p >= 0.5 && this.brushInCab) {
+          this.brushInCab = false;
+          this.brushInHand = true;
+        }
+        break;
+      case "bPut":
+        if (p >= 0.5 && this.brushInHand) {
+          this.brushInHand = false;
+          this.brushInCab = true;
+        }
+        break;
+      case "glassesOff":
+        if (p >= 0.55 && this.glassesOn) {
+          this.glassesOn = false;
+          this.glassesInHand = true;
+        }
+        break;
+      case "tossGlasses":
+        if (p >= 0.55 && this.glassesInHand) {
+          this.glassesInHand = false;
+          this.glassesFly = { t: 0, x0: this.hand[0] + 3, y0: this.hand[1] - 1 };
+        }
+        break;
+      case "waterOff":
+        if (p >= 0.4) this.water = false;
+        break;
+      case "takeTowel":
+        if (p >= 0.45) this.towelOnRod = false;
+        break;
+      case "wrapOn":
+        if (p >= 0.3) this.outfit = "towel";
+        break;
+    }
+    if (p >= 1) this.nextSh();
+  }
+
+  /** Abendroutine: umziehen, aufs Bett setzen, Brille werfen. */
+  private updateBedRoutine(dt: number) {
+    const ph = this.shPhase;
+    if (!ph || !(BED_SEQ as readonly string[]).includes(ph)) return;
+    const dur = SH_DUR[ph];
+    if (dur === undefined) {
+      const arrived = !this.cur && this.path.length === 0 && !this.pending;
+      if (arrived && this.activity?.id === `sh_${ph}`) this.nextSh();
+      return;
+    }
+    this.shT += dt;
+    const p = clamp(this.shT / dur, 0, 1);
+    const e = p * p * (3 - 2 * p);
+    switch (ph) {
+      case "bedOpen":
+      case "bedClose":
+        this.wardrobeOpen = ph === "bedOpen" ? e : 1 - e;
+        break;
+      case "bedTop":
+        if (p >= 0.3) this.outfit = "towel";
+        break;
+      case "bedBottom":
+        if (p >= 0.55) this.outfit = "none";
+        break;
+      case "bedPants":
+        if (p >= 0.4) this.outfit = "towel";
+        break;
+      case "bedPajama":
+        if (p >= 0.75) this.outfit = "dressed";
+        break;
+      case "bedToss":
+        // Der Wurf beginnt genau einmal; danach gehört die Zeitachse dem Flug.
+        if (!this.bedPhase) {
+          this.beginBedToss();
+          this.shPhase = null;
+          this.shT = 0;
+        }
+        return;
+    }
+    if (p >= 1) {
+      if (ph === "bedSit") {
+        this.shPhase = null;
+        this.shT = 0;
+        return;
+      }
+      this.nextSh();
+    }
+  }
+
+  /** Pose, Blickrichtung und Rückenansicht für den aktuellen Duschschritt. */
+  private showerPose(): { state: LuniState; face: 1 | -1; phase: number; back: boolean } | null {
+    const ph = this.shPhase;
+    if (!ph || SH_DUR[ph] === undefined) return null;
+    const p = clamp(this.shT / (SH_DUR[ph] as number), 0, 1);
+    switch (ph) {
+      case "openWardrobe":
+      case "closeWardrobe":
+      case "dOpen":
+      case "dClose":
+        return { state: "act", face: 1, phase: 0, back: true };
+      case "undress":
+      case "dDress":
+        return { state: "undress", face: 1, phase: p, back: true };
+      case "wrap":
+        return { state: "wrap", face: 1, phase: p, back: true };
+      case "towelOff":
+        return { state: "wrap", face: 1, phase: 1 - p, back: false };
+      case "throwTowel":
+      case "takeTowel":
+        return { state: "throw", face: 1, phase: p, back: false };
+      case "wrapOn":
+        return { state: "wrap", face: 1, phase: p, back: false };
+      case "closeCurtain":
+        return { state: "act", face: 1, phase: 0, back: false };
+      case "openCurtain":
+      case "waterOn":
+      case "waterOff":
+        return { state: "act", face: -1, phase: 0, back: false };
+      case "gPick":
+        return { state: "glassesOn", face: 1, phase: p, back: false };
+      case "bedOpen":
+      case "bedClose":
+        return { state: "act", face: 1, phase: p, back: false };
+      case "bedTop":
+      case "bedPants":
+        return { state: "undress", face: 1, phase: p, back: true };
+      case "bedBottom":
+        return { state: "undress", face: 1, phase: p, back: true };
+      case "bedPajama":
+        return { state: "wrap", face: 1, phase: p, back: true };
+      case "bedSit":
+        return { state: "sleepBend", face: -1, phase: 1, back: false };
+      case "cOpen":
+      case "kClose":
+      case "bTake":
+      case "bPut":
+        return { state: "reachUp", face: 1, phase: p, back: false };
+      case "bBend":
+        return { state: "bend", face: 1, phase: p, back: false };
+      case "bBrush":
+        return { state: "brush", face: 1, phase: 1, back: false };
+      case "bUp":
+        return { state: "bend", face: 1, phase: 1 - p, back: false };
+      case "glassesOff":
+        return { state: "glasses", face: 1, phase: p, back: false };
+      case "tossGlasses":
+        return { state: "toss", face: 1, phase: p, back: false };
+      case "washHair":
+        return { state: "wash", face: 1, phase: 0.5, back: false };
+      case "washBody":
+        return { state: "wash", face: 1, phase: 1.5, back: false };
+      case "rinse":
+        return { state: "wash", face: 1, phase: 2.5, back: false };
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Luni mit Duschvorhang. Was hinter dem Vorhang liegt, erscheint als graue
+   * Silhouette auf dem Stoff; der Rest (z. B. die Füße darunter) normal.
+   */
+  private drawLuniLayered(c: C) {
+    const F = FLOOR_Y[2];
+    const t = this.elapsed;
+    if (this.water) drawShowerWater(c, F, t);
+    const r = curtainRect(F, this.curtain);
+    const inShower = !!this.shPhase && SH_INSIDE.includes(this.shPhase) && this.lf === 2;
+    if (!inShower) {
+      // Wer an der Dusche vorbeigeht, ist vor dem Vorhang.
+      drawCurtain(c, F, this.curtain, t);
+      this.drawLuniNow(c);
+    } else if (this.curtain < 0.02) {
+      // In der Wanne bei offenem Vorhang: der zusammengeschobene Stoff ist vorn.
+      this.drawLuniNow(c);
+      drawCurtain(c, F, this.curtain, t);
+      drawTubFront(c, F);
+    } else {
+      const pw = this.canvas.width;
+      const phh = this.canvas.height;
+      for (const b of [this.luniBuf, this.silBuf]) {
+        if (b.width !== pw || b.height !== phh) {
+          b.width = pw;
+          b.height = phh;
+        }
+      }
+      const bc = this.luniBuf.getContext("2d");
+      const sc = this.silBuf.getContext("2d");
+      if (!bc || !sc) return;
+      const k = this.scale * this.dpr;
+      bc.setTransform(1, 0, 0, 1, 0, 0);
+      bc.clearRect(0, 0, pw, phh);
+      bc.setTransform(k, 0, 0, k, 0, 0);
+      this.drawLuniNow(bc);
+      sc.setTransform(1, 0, 0, 1, 0, 0);
+      sc.globalCompositeOperation = "source-over";
+      sc.clearRect(0, 0, pw, phh);
+      sc.drawImage(this.luniBuf, 0, 0);
+      sc.globalCompositeOperation = "source-in";
+      sc.fillStyle = "#59636a";
+      sc.fillRect(0, 0, pw, phh);
+      sc.globalCompositeOperation = "source-over";
+
+      // Was nicht vom Vorhang bedeckt ist, normal zeichnen
+      c.save();
+      c.beginPath();
+      c.rect(0, 0, W, H);
+      c.rect(r.x, r.y, r.w, r.h);
+      c.clip("evenodd");
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.drawImage(this.luniBuf, 0, 0);
+      c.restore();
+
+      drawCurtain(c, F, this.curtain, t);
+      if (this.water) drawShowerWater(c, F, t, 0.35);
+
+      // Hinter dem Vorhang: grauer Schatten auf dem Stoff
+      c.save();
+      c.beginPath();
+      c.rect(r.x, r.y, r.w, r.h);
+      c.clip();
+      c.globalAlpha = 0.6;
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.drawImage(this.silBuf, 0, 0);
+      c.restore();
+
+      // Die Wannenvorderseite verdeckt die Füße.
+      drawTubFront(c, F);
+    }
+    drawSteam(c, F, this.steam, t);
+    if (this.towelOnRod) drawTowelOnRod(c, F);
+  }
+
+  /* ------------------------------ Bett-Routine --------------------------- */
+
+  /** Jeder Pyjama sieht anders aus: Oberteil und Hose unabhängig. */
+  private makePajama() {
+    const tops = ["#7fc6c2", "#6c8fd0", "#c98fb5", "#8fbf7a", "#e0b46a", "#a99bd6", "#d98f7a"];
+    const bottoms = ["#3f6f8c", "#6b5a96", "#4a7a6a", "#8c5a72", "#5b6f9a", "#7a6a4a"];
+    const top = tops[Math.floor(Math.random() * tops.length)];
+    const bottom = bottoms[Math.floor(Math.random() * bottoms.length)];
+    this.pyjama = { top, bottom };
+  }
+
+  private startBedRoutine() {
+    // Nutzeraktion Bettklick: Audio für den später automatischen Traum freigeben.
+    sfx.ensure();
+    this.chain = [];
+    this.smokeRequested = false;
+    this.bedTimePending = false;
+    if (!this.pyjama) this.makePajama();
+    this.startSh("bToWardrobe");
+  }
+
+  private beginBedToss() {
+    // Brille vom Bett aus hochwerfen. 20 %: bleibt an Gardinenstange, Lampe
+    // oder Schrank hängen; 40 %: Nachttisch; sonst: Bett oder Boden.
+    const r = Math.random();
+    this.tossLand = r < 0.4 ? 0 : r < 0.6 ? 1 + Math.floor(Math.random() * 3) : Math.random() < 0.5 ? 4 : 5;
+    this.tossUp = 0;
+    this.tossLanded = false;
+    this.bedPhase = "toss";
+    this.glassesOn = false;
+    this.glassesInHand = true;
+    sfx.ui();
+  }
+
+  /** Landeplätze: 0 Nachttisch, 1 Gardinenstange, 2 Lampe, 3 Schrank, 4 Bett, 5 Boden */
+  private tossTarget(): Pt {
+    switch (this.tossLand) {
+      case 1:
+        return [352, 226];
+      case 2:
+        return [348, 216];
+      case 3:
+        return [470, 246];
+      case 4:
+        return [340, 286];
+      case 5:
+        return [392, FLOOR_Y[2] + 2];
+      default:
+        return [404, FLOOR_Y[2] - 40];
+    }
+  }
+
+  private updateBedToss(dt: number) {
+    if (this.bedPhase !== "toss") return;
+    const T = 1.25;
+    if (!this.tossLanded) {
+      this.tossUp += dt;
+      const u = clamp(this.tossUp / T, 0, 1);
+      const [tx, ty] = this.tossTarget();
+      if (u >= 1) {
+        this.tossLanded = true;
+        sfx.ui();
+      }
+      void tx;
+      void ty;
+      return;
+    }
+    if (this.tossLanded && this.bedPhase === "toss") {
+      // Nach dem Landen: hinsetzen, zudecken, Hand unter das Ohr.
+      this.bedPhase = null;
+      this.pending = null;
+      this.activity = null;
+      this.target = null;
+      this.cur = null;
+      this.path = [];
+      // Erst sichtbar hinlegen, dann schlafen.
+      this.lieDown = true;
+      this.lieT = 0;
+      this.dirty = true;
+    }
+  }
+
+  /** Brille im Flug vom Bett: hoher Bogen, drehend. */
+  private drawBedToss(c: C) {
+    if (this.bedPhase !== "toss") return;
+    const T = 1.25;
+    const u = this.tossLanded ? 1 : clamp(this.tossUp / T, 0, 1);
+    const [x1, y1] = this.tossTarget();
+    const x0 = 340;
+    const y0 = 306;
+    const hgt = 70;
+    const x = lerp(x0, x1, u);
+    const y = lerp(y0, y1, u) - 4 * hgt * u * (1 - u);
+    if (u < 1) glassesObj(c, x, y, u * Math.PI * 5, lerp(1, 0.4, u * u));
+    else if (this.tossLand === 0) glassesObj(c, x1, y1, 0.1, 0.45);
+    else if (this.tossLand === 4 || this.tossLand === 5) glassesObj(c, x1, y1, 0.6, 0.8);
+    else glassesObj(c, x1, y1, 1.35, 0.35);
+  }
+
+  private startDream() {
+    if (this.dream) return;
+    this.dream = new Dream({
+      audioOk: () => sfx.ensure(),
+      // Einmal an die tatsächlich gezeichnete Schlafpose gebunden.
+      sleepAnchor: () => [336, FLOOR_Y[2] - 57],
+      onEnd: () => this.finishDream(false),
+      onWake: () => this.finishDream(true),
+    });
+    sfx.ensure();
+  }
+
+  /** Traum vorbei: Luni bleibt schlafen oder wacht auf. */
+  private finishDream(wake: boolean) {
+    this.dream?.destroy();
+    this.dream = null;
+    if (wake) {
+      this.asleep = false;
+      this.sleepT = 0;
+      this.bedSitHair = 0;
+      this.activity = null;
+      this.target = null;
+      this.cur = null;
+      this.path = [];
+      this.pending = null;
+      this.lf = 2;
+      this.lx = 360;
+      this.dirty = true;
+      this.wakeT = 1.2;
+    } else {
+      this.asleep = true;
+      this.sleepT = 0;
+      // Kein Endlos-Loop: erst eine bewusste Aktion startet den Traum erneut.
+      this.sleepRest = 1e9;
+    }
+  }
+
+  private updateDream(dt: number) {
+    if (this.wakeT > 0) this.wakeT = Math.max(0, this.wakeT - dt);
+    if (!this.dream) return;
+    this.dream.update(dt);
+  }
+
+  /** Optionaler Neustart: Klick auf das Bett, während sie schläft. */
+  replayDream() {
+    if (this.dream) return;
+    this.sleepRest = 0;
+    this.sleepT = 99;
+    this.startDream();
+  }
+
+  /** Traum von außen starten (Tests, später ggf. Menü). */
+  startDreamNow() {
+    this.asleep = true;
+    this.startDream();
+  }
+
+  /** Ist gerade ein Traum zu sehen? */
+  get dreaming() {
+    return this.dream !== null;
+  }
+
+  private updateBedState(dt: number) {
+    if (this.sleepRest > 0) this.sleepRest = Math.max(0, this.sleepRest - dt);
+    // Wer tagsüber ins Bett geschickt wird, schläft abends trotzdem ein:
+    // das Bett ist nachts der einzige Schlafplatz.
+    if (!this.asleep && this.activity?.id === "bett" && !this.bedPhase && !this.shPhase) {
+      const hour = this.clock.hour + this.clock.min / 60;
+      if ((hour >= 20 || hour < 6 || this.sick > 0.35) && !this.cur && this.path.length === 0) {
+        this.asleep = true;
+        this.sleepT = 0;
+        this.outfit = "dressed";
+        if (!this.pyjama) this.makePajama();
+        this.glassesOn = false;
+        this.dirty = true;
+      }
+    }
+    if (this.lieDown) {
+      this.lieT += dt;
+      if (this.lieT >= 1.4) {
+        this.lieDown = false;
+        this.asleep = true;
+        this.sleepT = 0;
+        this.bedSitHair = 0;
+      }
+      return;
+    }
+    if (!this.asleep) return;
+    // Beim Einschlafen zuerst die Haare neben das Ohr legen, dann still liegen.
+    if (this.bedSitHair < 1) this.bedSitHair = Math.min(1, this.bedSitHair + dt * 0.8);
+    // Nach 5 Sekunden Schlaf beginnt der Traum – einmal pro Schlafphase.
+    if (this.sleepT > 5 && this.sleepRest <= 0 && !this.dream && this.shPhase === null) {
+      this.startDream();
+    }
+  }
+
+  /** Brille in der Hand (über dem Gesicht) oder im hohen Bogen ins Becken. */
+  private drawGlassesMoving(c: C) {
+    if (this.brushInHand) {
+      const bent = this.shPhase === "bBrush" || this.shPhase === "bBend" || this.shPhase === "bUp";
+      brushObj(c, this.hand[0], this.hand[1], bent ? 0 : -0.7, this.lface);
+    }
+    if (this.glassesInHand) {
+      const face = this.lface;
+      disc(c, this.hand[0], this.hand[1], 2.2, LUNI_COLORS.skin);
+      glassesObj(c, this.hand[0] + 2.6 * face, this.hand[1] - 1, -0.15 * face);
+    }
+    const f = this.glassesFly;
+    if (f) {
+      const u = clamp(f.t / GLASSES_FLIGHT, 0, 1);
+      const [x1, y1] = SINK_DROP;
+      // Hoher Bogen, der Scheitel bleibt unter der Decke.
+      const hgt = Math.max(18, Math.min(46, (f.y0 + y1) / 2 - (FLOOR_Y[3] + SLAB + 8)));
+      const x = lerp(f.x0, x1, u);
+      const y = lerp(f.y0, y1, u) - 4 * hgt * u * (1 - u);
+      glassesObj(c, x, y, u * Math.PI * 4, lerp(1, 0.45, u * u * u));
+    }
+  }
+
+  /** Kleiner Knopf an der Fernseherblende. */
+  private drawTvButton(c: C) {
+    const x = 458;
+    const y = 168;
+    const pressed = this.golPhase === "press" && this.golAnimT > 0.25;
+    disc(c, x, y, pressed ? 2.4 : 3.1, pressed ? "#ffe08a" : "#2a2e36");
+    disc(c, x, y, pressed ? 1.1 : 1.5, pressed ? "#fff6d0" : "#35d6c0");
+  }
+
+  /** Holen abbrechen. Liegt das Modul noch nicht in der Konsole, kommt es ins Regal zurück. */
+  private cancelGolFetch() {
+    this.golPhase = null;
+    this.golAnimT = 0;
+    if (!this.golInserted && !this.golOnShelf) {
+      this.golOnShelf = true;
+      this.dirty = true;
+    }
+  }
+
+  /** Greifen, zum Fernseher gehen, einlegen, hinsetzen – und die Vergrößerung. */
+  private updateGolCarry(dt: number) {
+    const arrived = !this.cur && this.path.length === 0 && !this.pending;
+    if (this.golPhase === "reach" && arrived && this.activity?.id === "gol_game") {
+      // Das Modul bleibt im Regal, bis die Hand es wirklich erreicht hat.
+      this.golAnimT += dt;
+      if (this.golAnimT >= 0.95) {
+        this.golOnShelf = false;
+        this.dirty = true;
+        sfx.ui();
+        this.golPhase = "carry";
+        this.golAnimT = 0;
+        this.goTo(this.golTvStand());
+      }
+      return;
+    }
+    if (this.golPhase === "carry" && arrived && this.activity?.id === "gol_tv") {
+      this.golPhase = "insert";
+      this.golAnimT = 0;
+      return;
+    }
+    if (this.golPhase === "insert") {
+      this.golAnimT += dt;
+      if (this.golAnimT >= 0.75) {
+        this.golInserted = true;
+        this.tvMode = "gol";
+        if (!this.golState) this.golState = createState();
+        sfx.ui();
+        this.golPhase = "watch";
+        this.golAnimT = 0;
+        this.goTo("gaming");
+      }
+      return;
+    }
+    if (this.golPhase === "watch" && arrived && this.activity?.id === "gaming") {
+      this.golPhase = null;
+      return;
+    }
+    if (this.golPhase === "rise") {
+      this.golAnimT += dt;
+      if (this.golAnimT >= 0.5) {
+        this.golPhase = "toButton";
+        this.golAnimT = 0;
+        this.goTo(this.golTvStand());
+      }
+      return;
+    }
+    if (this.golPhase === "toButton" && arrived && this.activity?.id === "gol_tv") {
+      this.golPhase = "press";
+      this.golAnimT = 0;
+      return;
+    }
+    if (this.golPhase === "press") {
+      this.golAnimT += dt;
+      if (this.golAnimT >= 0.7) {
+        this.golFullscreen = true;
+        sfx.ui();
+        this.golPhase = "back";
+        this.golAnimT = 0;
+        this.goTo("gaming");
+      }
+      return;
+    }
+    if (this.golPhase === "back" && arrived && this.activity?.id === "gaming") {
+      this.golPhase = null;
+    }
+  }
+
+  /**
+   * Modul an der Hand. Es hängt fest an der vorderen Hand und wird nicht
+   * über die Bühne geschoben; nur beim Einlegen legt es die letzten
+   * Millimeter in den Steckplatz unter dem Fernseher.
+   */
+  private drawGolInHand(c: C) {
+    if (this.golInserted || this.golOnShelf) return;
+    let x = this.hand[0] - 3;
+    let y = this.hand[1] - 11;
+    if (this.golPhase === "insert") {
+      const t = clamp((this.golAnimT - 0.4) / 0.32, 0, 1);
+      const e = t * t * (3 - 2 * t);
+      x = lerp(x, 446, e);
+      y = lerp(y, 167, e);
+    }
+    golCartridge(c, x, y, 6, 11);
+  }
+
+  /**
+   * Vergrößerung. Ein Pixel je Zelle in einem kleinen Puffer, der ohne
+   * Glättung auf die Bühne gezogen wird. Neu gemalt wird nur bei neuer
+   * Generation oder neuer Zellenzahl.
+   */
+  private drawGolFullscreen(c: C) {
+    rect(c, 0, 0, W, H, "#061018");
+    if (!this.golState) return;
+    const g = this.golState;
+    const view = golView(g);
+
+    const key = `${g.generation}|${g.cols}x${g.rows}|${this.golEdits}`;
+    if (key !== this.golBufKey) {
+      if (this.golBuf.width !== g.cols || this.golBuf.height !== g.rows) {
+        this.golBuf.width = g.cols;
+        this.golBuf.height = g.rows;
+        this.golImg = null;
+      }
+      const bc = this.golBuf.getContext("2d");
+      if (bc) {
+        if (!this.golImg) this.golImg = bc.createImageData(g.cols, g.rows);
+        paintCells(this.golImg, g);
+        bc.putImageData(this.golImg, 0, 0);
+      }
+      this.golBufKey = key;
+    }
+
+    c.save();
+    c.imageSmoothingEnabled = false;
+    c.drawImage(this.golBuf, view.x, view.y, view.w, view.h);
+    c.restore();
+    c.strokeStyle = "#24333a";
+    c.lineWidth = 2;
+    c.strokeRect(GOL_X - 1, GOL_Y - 1, GOL_VIEW_W + 2, GOL_VIEW_H + 2);
+
+    c.fillStyle = "rgba(6,16,24,.78)";
+    c.fillRect(GOL_X + 8, GOL_Y + 8, 178, 18);
+    c.fillStyle = "#f2f7f4";
+    c.font = '700 10px "Silkscreen", monospace';
+    c.textAlign = "left";
+    c.fillText(`Gen ${g.generation}`, GOL_X + 12, GOL_Y + 20);
+
+    drawGolControls(c);
+    const fade = clamp(this.golMeterT / 0.4, 0, 1);
+    if (this.golMeterKind === "speed") drawSpeedMeter(c, g.speedIdx, GOL_SPEEDS.length, fade);
+    else drawSpeedMeter(c, g.sizeIdx, GOL_SIZES.length, fade);
+
+    c.fillStyle = "#000000";
+    c.fillRect(GOL_BTN.x, GOL_BTN.y, GOL_BTN.w, GOL_BTN.h);
+    c.strokeStyle = "#f2f7f4";
+    c.lineWidth = 1.2;
+    c.strokeRect(GOL_BTN.x + 0.6, GOL_BTN.y + 0.6, GOL_BTN.w - 1.2, GOL_BTN.h - 1.2);
+    c.fillStyle = "#f2f7f4";
+    c.font = '700 12px "Silkscreen", monospace';
+    c.textAlign = "center";
+    c.fillText("zurück", GOL_BTN.x + GOL_BTN.w / 2, GOL_BTN.y + 22);
+    c.textAlign = "left";
+
+    const ry = GOL_BTN.y + GOL_BTN.h + 30;
+    c.fillStyle = "#8fa8a0";
+    c.font = '700 10px "Silkscreen", monospace';
+    c.fillText("REGELN", GOL_X, ry);
+    c.fillStyle = "#dfe9e4";
+    c.font = '600 11px "Silkscreen", monospace';
+    GOL_RULES.forEach((rule, i) => c.fillText(rule, GOL_X, ry + 18 + i * 16));
+  }
+
+  /** Zellenzahl, Geschwindigkeit und Neustart. */
+  private applyGolCtrl(id: ReturnType<typeof golCtrlAt>) {
+    if (!id || !this.golState) return;
+    const g = this.golState;
+    if (id === "more" || id === "fewer") {
+      const next = clamp(g.sizeIdx + (id === "more" ? 1 : -1), 0, GOL_SIZES.length - 1);
+      resize(g, next);
+      this.golMeterKind = "size";
+      this.golMeterT = 1.8;
+    } else if (id === "faster" || id === "slower") {
+      g.speedIdx = clamp(g.speedIdx + (id === "faster" ? 1 : -1), 0, GOL_SPEEDS.length - 1);
+      this.golMeterKind = "speed";
+      this.golMeterT = 1.8;
+    } else {
+      randomize(g.cells);
+      g.generation = 0;
+      g.population = countPopulation(g.cells);
+    }
+    this.golEdits++;
+    sfx.ui();
+  }
+
+  private onGolFullscreenClick(x: number, y: number) {
+    const b = GOL_BTN;
+    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+      this.golFullscreen = false;
+      return;
+    }
+    const ctrl = golCtrlAt(x, y);
+    if (ctrl) {
+      this.applyGolCtrl(ctrl);
+      return;
+    }
+    if (!this.golState) return;
+    const v = golView(this.golState);
+    if (x < v.x || y < v.y || x >= v.x + v.w || y >= v.y + v.h) return;
+    toggleCellAt(this.golState, Math.floor((x - v.x) / v.cell), Math.floor((y - v.y) / v.cell));
+    this.golState.population = countPopulation(this.golState.cells);
+    this.golEdits++;
+  }
+
+  /** Feste Taktung, unabhängig von der Bildrate; höchstens vier Schritte je Bild. */
+  private updateGOL(dt: number) {
+    if (this.golMeterT > 0) this.golMeterT = Math.max(0, this.golMeterT - dt);
+    const g = this.golState;
+    if (!g || !g.running) return;
+    this.golTimer += dt;
+    const interval = 1 / GOL_SPEEDS[g.speedIdx];
+    let steps = 0;
+    while (this.golTimer >= interval && steps < 4) {
+      this.golTimer -= interval;
+      advance(g);
+      steps++;
+    }
+    if (steps) g.population = countPopulation(g.cells);
+    if (this.golTimer > interval) this.golTimer = 0;
   }
 
   private drawClock(c: C) {
@@ -3713,6 +5125,97 @@ export class House {
         : clamp(this.takeT / 0.9, 0, 1);
     }
 
+    let back = false;
+    let hairAside = 0;
+    if (this.wakeT > 0 && !this.asleep) {
+      const p = 1 - this.wakeT / 1.2;
+      x = 380;
+      y = FLOOR_Y[2];
+      yOff = -10 * (1 - p);
+      state = "standup";
+      expr = this.wakeT > 0.7 ? "sleep" : "tired";
+      face = 1;
+      this.lastPose = "wake";
+      const wh = drawLuni(c, x, y + yOff, {
+        t: this.elapsed,
+        face,
+        state,
+        expr,
+        phase: p,
+        blink: this.wakeT > 0.6 ? 1 : 0,
+        scale: LUNI_SCALE,
+        shadow: yOff === 0,
+        glasses: true,
+      });
+      this.hand[0] = wh[0];
+      this.hand[1] = wh[1];
+      return;
+    }
+    if (this.lieDown && !this.asleep) {
+      // Sie legt sich hin: aus dem Sitzen in die Seitenlage, Decke folgt.
+      const p = clamp(this.lieT / 1.4, 0, 1);
+      const e = p * p * (3 - 2 * p);
+      c.save();
+      this.lastPose = "lie";
+      const wh = drawLuni(c, 340, FLOOR_Y[2] - 10 * (1 - e), {
+        t: this.elapsed,
+        face: 1,
+        state: "lie",
+        expr: "sleep",
+        phase: e,
+        blink: 1,
+        scale: LUNI_SCALE,
+        shadow: false,
+        glasses: false,
+      });
+      this.hand[0] = wh[0];
+      this.hand[1] = wh[1];
+      c.restore();
+      drawBlanket(c, this.elapsed, e);
+      return;
+    }
+    if (this.asleep) {
+      // Endgültige Schlafpose: auf der Seite, Decke bis zum Hals,
+      // eine Hand unter dem Ohr, die Haare ordentlich dazwischen.
+      st = STATIONS.find((sn) => sn.id === "bett") ?? null;
+      x = 330;
+      y = FLOOR_Y[2];
+      yOff = -20;
+      state = "lie";
+      expr = "sleep";
+      face = 1;
+      hairAside = this.bedSitHair;
+      this.lastPose = "sleep";
+      drawSleepingLuni(c, x, y + yOff, this.elapsed, this.pyjama, this.bedSitHair);
+      drawBlanket(c, this.elapsed);
+      if (!this.dream && this.sleepRest > 0) drawSleepZ(c, x + 6, y - 44, this.sleepT);
+      return;
+    }
+    const shp = this.showerPose();
+    if (shp && !a) {
+      state = shp.state;
+      face = shp.face;
+      posePhase = shp.phase;
+      back = shp.back;
+      expr = state === "wash" && shp.phase > 2 ? "sleep" : "happy";
+    }
+    if (this.golPhase === "rise") {
+      const seat = STATIONS.find((stn) => stn.id === "gaming");
+      if (seat) {
+        x = seat.x;
+        y = FLOOR_Y[seat.floor];
+        face = seat.face;
+      }
+      const p = clamp(this.golAnimT / 0.5, 0, 1);
+      yOff = -8 * (1 - p);
+      state = p < 0.7 ? "sit" : "idle";
+      expr = "focus";
+    } else if (this.golPhase === "press") {
+      state = "act";
+      expr = "focus";
+      face = 1;
+    }
+
     c.save();
     if (clip) {
       c.beginPath();
@@ -3736,7 +5239,15 @@ export class House {
       // Husten setzt ab mittlerer Übelkeit ein
       cough: this.sick > 0.3 ? clamp((this.sick - 0.3) / 0.4, 0, 1) : 0,
       sick: this.sick,
+      outfit: this.outfit,
+      back,
+      wet: this.wet,
+      glasses: this.glassesOn,
+      pajama: this.outfit === "dressed" ? this.pyjama : null,
+      hairAside,
     });
+    this.hand[0] = hand[0];
+    this.hand[1] = hand[1];
     // Hustenstöße: kleine Wolken vor dem Mund
     if (this.sick > 0.3) {
       const burst = coughPulse(this.elapsed) * clamp((this.sick - 0.3) / 0.4, 0, 1);
