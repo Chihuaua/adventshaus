@@ -34,8 +34,23 @@ else
   ok "committet: $(git log --oneline -1)"
 fi
 farbig "4/6  Push"
-git push -u origin HEAD >/dev/null 2>&1 || ab "Push fehlgeschlagen – Zweig geschützt?"
-ok "auf GitHub"
+if git push -u origin HEAD >/dev/null 2>&1; then
+  ok "auf GitHub"
+elif [ "$(git branch --show-current)" = "main" ]; then
+  warn "main ist geschützt – lege Zweig und Pull Request an"
+  ZWEIG="ki/sicherung-$(date '+%Y%m%d-%H%M')"
+  git switch -c "$ZWEIG" >/dev/null 2>&1
+  git push -u origin "$ZWEIG" >/dev/null 2>&1 || ab "Push auf $ZWEIG fehlgeschlagen"
+  if command -v gh >/dev/null 2>&1; then
+    gh pr create --fill --base main >/dev/null 2>&1 && ok "Pull Request angelegt" || warn "PR nicht angelegt – bitte auf GitHub"
+  else
+    warn "gh fehlt – PR bitte auf GitHub anlegen"
+  fi
+  echo "  PR: https://github.com/Chihuaua/adventshaus/pull/new/$ZWEIG"
+  git switch main >/dev/null 2>&1
+else
+  ab "Push fehlgeschlagen – Zweig geschützt?"
+fi
 farbig "5/6  Tag setzen"
 TAG="v$(date '+%Y%m%d-%H%M')"
 if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
