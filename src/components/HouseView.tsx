@@ -3,6 +3,7 @@ import { House } from "@/game/house";
 import { sfx } from "@/game/audio";
 import { loadMuted, saveMuted } from "@/game/storage";
 import { Icon } from "@/components/Icons";
+import Uebergabe from "@/components/Uebergabe";
 
 
 
@@ -51,7 +52,7 @@ export default function HouseView() {
   };
 
   return (
-    <div className="bg-room grid-floor relative flex min-h-[100dvh] w-full flex-col items-center justify-center overflow-hidden p-2 sm:p-4">
+    <div className="bg-room grid-floor relative flex min-h-[100dvh] w-full flex-col items-center justify-center overflow-x-hidden p-2 sm:p-4">
       <div className="relative w-full max-w-[1140px]">
         <div className="mb-1.5 flex items-end justify-between gap-3 px-0.5">
           <div className="flex items-baseline gap-2">
@@ -86,9 +87,7 @@ export default function HouseView() {
           </div>
         </div>
 
-        <p className="mt-2 px-1 text-center text-[11px] text-mint-400/80">
-          Ein Möbelstück antippen oder anklicken – Luni geht hin. · <kbd className="font-display text-[9px]">M</kbd> Ton
-        </p>
+        <Uebergabe />
       </div>
     </div>
   );
