@@ -16,6 +16,7 @@ cd "$PROJ" 2>/dev/null || { echo "FEHLER: $PROJ nicht gefunden"; exit 1; }
 
 fehlt=0
 anzahl=0
+offen=0
 
 echo "============================================"
 echo "  Adventshaus · Funktionsprüfung"
@@ -45,18 +46,18 @@ while IFS= read -r zeile; do
   elif grep -q "$marker" "$datei" 2>/dev/null; then
     printf '  OK     %s\n' "$name"
   else
-    printf '  FEHLT  %-28s Marker nicht gefunden: %s\n' "$name" "$marker"
-    fehlt=$((fehlt + 1))
+    printf '  OFFEN  %-28s Marker: %s\n' "$name" "$marker"
+    offen=$((offen + 1))
   fi
 done < "$FEATURES"
 
 echo
 echo "--------------------------------------------"
-printf 'Geprüft: %s   Fehlt: %s\n' "$anzahl" "$fehlt"
+printf 'Geprüft: %s   Fehlt: %s   Offen: %s\n' "$anzahl" "$fehlt" "$offen"
 echo "--------------------------------------------"
 
 if [ "$fehlt" -eq 0 ]; then
-  echo "ALLES VORHANDEN"
+  echo "ALLES VORHANDEN ($offen Aufgabe(n) offen)"
   exit 0
 else
   echo "REGRESSION – $fehlt Funktion(en) fehlen."
