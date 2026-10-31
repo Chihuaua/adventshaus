@@ -135,6 +135,24 @@ docs/                   Spielkonzept (Markdown) – Zielbild, nicht Ist-Stand
 build_mappe.py          erzeugt aus docs/ eine druckbare Projektmappe (optional)
 ```
 
+### Hauswelten
+
+Drei unabhängige Welten, jede mit eigenem Speicherplatz (`welten.ts`):
+
+| Welt | Aufruf | Stein dorthin |
+|---|---|---|
+| Normales Haus | leerer Hash | **Wachstein** (Sonne) |
+| Horrorhaus (Traumhaus) | `#traumhaus` | **Traumstein** (Mondsichel) |
+| Gruselhaus (Halloween) | `#gruselhaus` | **Horrorstein** (Totenkopf) |
+
+Die Steine liegen halb eingegraben links neben dem Keller; in jeder Welt stehen
+die zwei Steine der anderen Welten (`steine.ts`). Ein Klick wechselt, die alte
+Welt speichert vorher unter ihrem eigenen Schlüssel (`lcp1.welt.<name>.v1`).
+
+Das **Gruselhaus** beginnt als unveränderte Kopie des normalen Hauses und wird
+Raum für Raum umgestaltet (`src/game/gruselhaus/`). Jeder Raum ist ein eigenes
+Modul; das normale Haus und das Horrorhaus bleiben dabei unberührt.
+
 ### Wie `house.ts` tickt
 
 - **Koordinaten:** Spielwelt ist fest 960×600 (`W`, `H`). Alles wird in

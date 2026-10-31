@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { House } from "@/game/house";
 import { sfx } from "@/game/audio";
 import { loadMuted, saveMuted } from "@/game/storage";
+import { wechsleWelt } from "@/game/welten";
 import { Icon } from "@/components/Icons";
 import Uebergabe from "@/components/Uebergabe";
 
 
 
-export default function HouseView() {
+export default function HouseView({ welt = "normal" }: { welt?: "normal" | "gruesel" }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [muted, setMuted] = useState(false);
 
@@ -20,12 +21,12 @@ export default function HouseView() {
   useEffect(() => {
     const cv = canvasRef.current;
     if (!cv) return;
-    const house = new House(cv, { onTraumhaus: () => { window.location.hash = "#traumhaus"; } });
+    const house = new House(cv, { welt, onWelt: wechsleWelt });
     house.mount();
     const onFonts = () => house.resize();
     if (document.fonts?.ready) void document.fonts.ready.then(onFonts);
     return () => house.destroy();
-  }, []);
+  }, [welt]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -58,7 +59,7 @@ export default function HouseView() {
           <div className="flex items-baseline gap-2">
             <span className="font-display text-[11px] tracking-[0.28em] text-mint-50 sm:text-sm">LUNIS HAUS</span>
             <span className="hidden text-[10px] tracking-[0.18em] text-mint-400/80 sm:inline">
-              LITTLE COMPUTER LUNI · DAS ADVENTSHAUS
+              {welt === "gruesel" ? "LITTLE COMPUTER LUNI · GRUSELHAUS" : "LITTLE COMPUTER LUNI · DAS ADVENTSHAUS"}
             </span>
           </div>
           <div className="flex items-center gap-2">

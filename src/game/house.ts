@@ -40,7 +40,8 @@ import { sfx } from "./audio";
 import { SaxophonMusic } from "./audio/saxophonVoice";
 import { SAX_DURATION_SECONDS } from "./audio/saxophonNotes";
 import { Dream, drawSleepZ } from "./dream";
-import { drawStein, STEIN } from "./steine";
+import { drawStein, steinAn, steinSlots, type SteinSlot } from "./steine";
+import { ladeSnapshot, speichereSnapshot, type HausSnapshot, type WeltId } from "./welten";
 import {
   SHOWER_X,
   curtainRect,
@@ -402,7 +403,6 @@ export const STATIONS: Station[] = [
     expr: "neutral", hits: [[582, 486, 22, 88]],
   },
   { id: "krempel", label: "Krempel-Regale", floor: 0, x: 384, face: -1, state: "think", expr: "think", hits: [[354, 466, 56, 106], [528, 480, 60, 92]] },
-  { id: "traumstein", label: "Traumstein", floor: 0, x: STEIN.x, face: 1, state: "idle", expr: "neutral", hits: [STEIN.hit] },
   { id: "xmaskiste", label: "Weihnachtskiste", floor: 0, x: 548, face: 1, state: "act", expr: "happy", hits: [[526, 540, 44, 32]] },
   { id: "leinen", label: "Jacken & Hundeleinen", floor: 0, x: 640, face: 1, state: "act", expr: "neutral", hits: [[604, 486, 76, 86]] },
   {
@@ -1926,8 +1926,12 @@ interface Active {
 export interface HouseOptions {
   /** feste Uhrzeit (nur für Tests) */
   clock?: Clock;
-  /** sichtbarer Traumstein wechselt in die leere Traumhausansicht */
+  /** sichtbarer Traumstein wechselt in die leere Traumhausansicht (alt) */
   onTraumhaus?: () => void;
+  /** Welche Hauswelt dieses Haus zeigt: das normale oder das Gruselhaus */
+  welt?: "normal" | "gruesel";
+  /** Ein Klick auf einen Wechselstein: Ziel-Hauswelt */
+  onWelt?: (ziel: WeltId) => void;
 }
 
 function drawProp(c: C, kind: Prop, x: number, y: number, face: 1 | -1) {
@@ -2003,7 +2007,6 @@ export class House {
   private night = 0;
 
   private fixedClock: Clock | null;
-  private onTraumhaus: (() => void) | null = null;
   private clock: Clock;
   private clockT = 0;
   private bucket = -1;
@@ -2025,6 +2028,13 @@ export class House {
   private doorOpen = 0;
   private doorWant = false;
   private hover: Station | null = null;
+
+  /* ------------------------------ Hauswelt ------------------------------- */
+  private welt: "normal" | "gruesel" = "normal";
+  private onWelt: ((ziel: WeltId) => void) | null = null;
+  private steine: SteinSlot[] = [];
+  private steinStationen: Station[] = [];
+  private saveT = 0;
 
   // Raucherecke
   private gardenDoor = 0; // 0 = zu, 1 = offen
@@ -2220,7 +2230,22 @@ export class House {
     this.mulc = this.ctx2(this.mul);
     this.addc = this.ctx2(this.add);
     this.fixedClock = opts.clock ?? null;
-    this.onTraumhaus = opts.onTraumhaus ?? null;
+    this.welt = opts.welt ?? "normal";
+    const alt = opts.onTraumhaus;
+    this.onWelt = opts.onWelt ?? (alt ? (z) => { if (z === "traum") alt(); } : null);
+    this.steine = steinSlots(this.welt);
+    this.steinStationen = this.steine.map((sl) => ({
+      id: `stein_${sl.art}`,
+      label: sl.label,
+      floor: 0,
+      x: sl.x,
+      face: 1,
+      state: "idle",
+      expr: "neutral",
+      hits: [sl.hit],
+    }));
+    // Jede Hauswelt stellt ausschließlich ihren eigenen Zustand wieder her.
+    this.wiederherstellen(ladeSnapshot(this.welt));
     this.clock = this.fixedClock ?? berlinNow();
     this.resize();
   }
@@ -2239,6 +2264,7 @@ export class House {
     window.addEventListener("resize", this.resize);
     window.addEventListener("keydown", this.onKey);
     document.addEventListener("visibilitychange", this.onVisibility);
+    window.addEventListener("pagehide", this.onPageHide);
     this.canvas.addEventListener("pointerdown", this.onDown);
     this.canvas.addEventListener("pointermove", this.onMove);
     this.canvas.addEventListener("pointerleave", this.onLeave);
@@ -2247,6 +2273,8 @@ export class House {
   }
 
   destroy() {
+    this.speichern();
+    window.removeEventListener("pagehide", this.onPageHide);
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
     this.ro?.disconnect();
@@ -2310,6 +2338,78 @@ export class House {
     return [((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H];
   }
 
+  /* ----------------------- Speichern je Hauswelt ------------------------ */
+
+  private schnappschuss(): HausSnapshot {
+    return {
+      v: 1,
+      gespeichert: Date.now(),
+      lx: this.lx,
+      lf: this.lf,
+      lface: this.lface,
+      sick: this.sick,
+      pack: this.pack,
+      cigs: this.cigs,
+      cigButt: this.cigButt,
+      pyjama: this.pyjama,
+      // Ohne Brille im Waschbecken trägt Luni sie (sonst ginge sie verloren).
+      glassesOn: this.glassesOn || !this.glassesInSink,
+      glassesInSink: this.glassesInSink && !this.glassesOn,
+      brushInCab: this.brushInCab,
+      gardenDoor: this.gardenDoor >= 0.5 ? 1 : 0,
+      cellarDoorV: this.cellarDoorV >= 0.5 ? 1 : 0,
+      golOnShelf: this.golOnShelf,
+      golInserted: this.golInserted,
+      smoke: this.smoke,
+    };
+  }
+
+  /** Speichert unter dem Schlüssel DIESER Hauswelt – nie unter einem fremden. */
+  speichern() {
+    speichereSnapshot(this.welt, this.schnappschuss());
+  }
+
+  private wiederherstellen(s: HausSnapshot | null) {
+    if (!s) return;
+    const lf = clamp(Math.round(s.lf), 0, 3);
+    const [a, b] = RANGE[lf];
+    this.lf = lf;
+    this.lx = clamp(s.lx, a, b);
+    this.lface = s.lface === -1 ? -1 : 1;
+    this.sick = clamp(s.sick, 0, 1);
+    this.pack = clamp(Math.round(s.pack), 0, PACK_MAX);
+    this.cigs = clamp(Math.round(s.cigs), 0, PILE_MAX);
+    this.cigButt = !!s.cigButt;
+    this.pyjama = s.pyjama ?? null;
+    this.glassesOn = s.glassesOn;
+    this.glassesInSink = s.glassesInSink;
+    this.brushInCab = s.brushInCab;
+    this.gardenDoor = s.gardenDoor;
+    this.gardenWant = s.gardenDoor;
+    this.cellarDoorV = s.cellarDoorV;
+    this.cellarDoorWant = s.cellarDoorV;
+    // Das Spielmodul darf nie verloren gehen: weder im Regal noch in der Konsole
+    // heißt, sie trug es gerade – dann liegt es wieder im Regal.
+    this.golInserted = s.golInserted;
+    this.golOnShelf = s.golOnShelf || !s.golInserted;
+    this.smoke = clamp(s.smoke, 0, 1);
+    this.dirty = true;
+  }
+
+  /** Wechselstein unter dem Zeiger (nur die Steine der eigenen Welt). */
+  private steinUnter(x: number, y: number): Station | null {
+    const sl = steinAn(this.steine, x, y);
+    return sl ? this.steinStationen[this.steine.indexOf(sl)] : null;
+  }
+
+  private steinWechsel(st: Station) {
+    const sl = this.steine[this.steinStationen.indexOf(st)];
+    if (!sl) return;
+    sfx.ui();
+    this.speichern();
+    this.onWelt?.(sl.ziel);
+  }
+
   private pick(x: number, y: number): Station | null {
     let best: Station | null = null;
     let bestArea = Infinity;
@@ -2346,6 +2446,12 @@ export class House {
       this.startTvZoom();
       return;
     }
+    // Wechselsteine: ein Klick genügt.
+    const stein = this.steinUnter(x, y);
+    if (stein) {
+      this.steinWechsel(stein);
+      return;
+    }
     const st = this.pick(x, y);
     if (st) {
       // Über command() laufen, damit Tür-, Rauch- und WC-Logik greifen
@@ -2372,7 +2478,7 @@ export class House {
       this.canvas.style.cursor = onBtn || onCtrl || onGrid ? "pointer" : "default";
       return;
     }
-    this.hover = this.pick(x, y);
+    this.hover = this.steinUnter(x, y) ?? this.pick(x, y);
     const onTv = this.golInserted && this.hitAtticTv(x, y);
     this.canvas.style.cursor = this.hover || onTv ? "pointer" : "default";
   };
@@ -2629,11 +2735,6 @@ export class House {
 
 
     // Spiel des Lebens: aus dem Regal holen, zur Konsole tragen, einstecken.
-    if (id === "traumstein") {
-      this.onTraumhaus?.();
-      return;
-    }
-
     if (id === "gol_game") {
       if (this.golPhase || !this.golOnShelf) return;
       this.smokeRequested = false;
@@ -3377,6 +3478,12 @@ export class House {
     this.updateBedState(dt);
     this.updateDream(dt);
     this.updateSax(dt);
+    // Alle paar Sekunden sichern, damit ein Absturz nichts kostet.
+    this.saveT += dt;
+    if (this.saveT >= 4) {
+      this.saveT = 0;
+      this.speichern();
+    }
     if (this.golInserted && this.golState?.running) this.updateGOL(dt);
   }
 
@@ -3586,7 +3693,8 @@ export class House {
       { open: this.gardenDoor },
       this.golOnShelf,
     );
-    drawStein(this.bgc, "traum");
+    // Wechselsteine: jede Welt zeigt die Steine der anderen Welten.
+    for (const sl of this.steine) drawStein(this.bgc, sl.art, 0, sl.x, sl.y);
 
     // Licht: Multiplikationsebene (Dunkelheit) + additive Wärme
     const night = this.night;
@@ -4570,8 +4678,11 @@ export class House {
   };
 
   /** Versteckter Tab hält Traum und Saxophon an. */
+  private onPageHide = () => this.speichern();
+
   private onVisibility = () => {
     if (document.visibilityState === "hidden") {
+      this.speichern();
       if (this.dream && !this.dream.paused) this.dream.pause();
       if (this.saxPhase === "play" && this.saxStarted && this.saxMusic) {
         this.saxPausedAt = this.saxMusic.pause();

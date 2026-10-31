@@ -55,6 +55,15 @@ pixel-datei | src/game/pixel.ts | export
 steine-datei | src/game/steine.ts | export
 traumhaus-ansicht | src/components/TraumhausView.tsx | export
 
+## Hauswelten und Wechselsteine
+
+welten-datei | src/game/welten.ts | export
+welten-speicher | src/game/welten.ts | speichereSnapshot
+welten-wechsel | src/game/welten.ts | wechsleWelt
+wechselsteine | src/game/steine.ts | steinSlots
+horrorstein | src/game/steine.ts | horror
+gruselhaus-route | src/App.tsx | #gruselhaus
+
 ## Ton und Speicher
 
 audio-synth | src/game/audio.ts | class Sfx

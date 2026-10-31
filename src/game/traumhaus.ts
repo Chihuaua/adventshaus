@@ -8,7 +8,8 @@
    ======================================================================= */
 
 import { berlinNow, FLOOR_Y, H, HR, W } from "./house";
-import { drawStein, trifftStein } from "./steine";
+import { drawStein, steinAn, steinSlots, type SteinSlot } from "./steine";
+import type { WeltId } from "./welten";
 
 type C = CanvasRenderingContext2D;
 
@@ -97,7 +98,7 @@ function dreamFloor(c: C, x: number, y: number, w: number, h: number, color: str
   }
 }
 
-function drawEmptyHouse(c: C, hour: number, t: number) {
+function drawEmptyHouse(c: C, hour: number, t: number, steine: SteinSlot[]) {
   const night = hour < 6 || hour >= 20;
   const sky = c.createLinearGradient(0, 0, 0, H);
   sky.addColorStop(0, night ? '#081127' : '#6fa8d6');
@@ -148,11 +149,15 @@ function drawEmptyHouse(c: C, hour: number, t: number) {
   // Keller bleibt dunkler, ohne eigene Traumhandlung.
   rect(c, 350, 460, 480, 112, '#4d504a');
   drawSlab(c, 350, HR, FLOOR_Y[0], '#666a63');
-  drawStein(c, 'wach', t);
+  // Wechselsteine: Wachstein (normales Haus) und Horrorstein (Gruselhaus).
+  for (const sl of steine) drawStein(c, sl.art, t, sl.x, sl.y);
 }
 
 export interface TraumhausOptions {
+  /** alt: Wachstein zurück ins normale Haus */
   onLunisHaus?: () => void;
+  /** Ein Klick auf einen Wechselstein: Ziel-Hauswelt */
+  onWelt?: (ziel: WeltId) => void;
 }
 
 export class Traumhaus {
@@ -165,14 +170,17 @@ export class Traumhaus {
   private destroyed = false;
   private elapsed = 0;
   private last = 0;
-  private onLunisHaus: (() => void) | null;
+  private onWelt: ((ziel: WeltId) => void) | null;
+  private steine: SteinSlot[] = steinSlots("traum");
+  private hover: SteinSlot | null = null;
 
   constructor(canvas: HTMLCanvasElement, opts: TraumhausOptions = {}) {
     this.canvas = canvas;
     const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) throw new Error("2d context unavailable");
     this.ctx = ctx;
-    this.onLunisHaus = opts.onLunisHaus ?? null;
+    const alt = opts.onLunisHaus;
+    this.onWelt = opts.onWelt ?? (alt ? (z) => { if (z === "normal") alt(); } : null);
     this.resize();
   }
 
@@ -217,17 +225,37 @@ export class Traumhaus {
 
   private onDown = (e: PointerEvent) => {
     const [x, y] = this.toWorld(e);
-    if (trifftStein(x, y)) this.onLunisHaus?.();
+    const sl = steinAn(this.steine, x, y);
+    if (sl) this.onWelt?.(sl.ziel);
   };
 
   private onMove = (e: PointerEvent) => {
     const [x, y] = this.toWorld(e);
-    this.canvas.style.cursor = trifftStein(x, y) ? "pointer" : "default";
+    this.hover = steinAn(this.steine, x, y);
+    this.canvas.style.cursor = this.hover ? "pointer" : "default";
   };
 
   private onLeave = () => {
+    this.hover = null;
     this.canvas.style.cursor = "default";
   };
+
+  /** Hover-Text im Canvas – genau wie im Haus: 600 11px Space Grotesk, Box 20, Radius 5, Abstand 8. */
+  private zeichneLabel() {
+    const sl = this.hover;
+    if (!sl) return;
+    const c = this.ctx;
+    c.save();
+    c.font = '600 11px "Space Grotesk", sans-serif';
+    const tw = c.measureText(sl.label).width + 16;
+    const [rx, ry, rw] = sl.hit;
+    const lx = Math.min(Math.max(rx + rw / 2 - tw / 2, 6), W - tw - 6);
+    const ly = Math.max(ry - 8, 22);
+    roundRect(c, lx, ly - 14, tw, 20, 5, "rgba(8,20,26,.88)");
+    c.fillStyle = "#eef7f2";
+    c.fillText(sl.label, lx + 8, ly);
+    c.restore();
+  }
 
   private frame = (now: number) => {
     if (this.destroyed) return;
@@ -237,6 +265,7 @@ export class Traumhaus {
     const s = this.scale * this.dpr;
     this.ctx.setTransform(s, 0, 0, s, 0, 0);
     this.ctx.imageSmoothingEnabled = true;
-    drawEmptyHouse(this.ctx, berlinNow().hour, this.elapsed);
+    drawEmptyHouse(this.ctx, berlinNow().hour, this.elapsed, this.steine);
+    this.zeichneLabel();
   };
 }
