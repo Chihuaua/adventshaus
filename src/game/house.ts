@@ -1,7 +1,7 @@
 /* =======================================================================
    LUNIS HAUS — Querschnitt in vier Ebenen (Little-Computer-People-Stil)
 
-   Dachgeschoss : Gaming-Zimmer | Musikzimmer (Klavier, Plattenspieler)
+   Dachgeschoss : Gaming-Zimmer | Musikzimmer (Plattenspieler, Gitarre)
    1. Stock     : Schlafzimmer | Badezimmer
    Erdgeschoss  : Flur (Haustür) | Wohnzimmer | Küche
    Keller       : Krempelraum (1/3 der Breite) -> Raucherraum -> Garten
@@ -401,7 +401,6 @@ export const STATIONS: Station[] = [
     // Oberste Regalebene, innerhalb des Schranks – nicht im Laufweg davor.
     hits: [[486, 126, 38, 24]],
   },
-  { id: "klavier", label: "Klavier", floor: 3, x: 633, face: -1, state: "piano", expr: "happy", yOff: -10, hits: [[545, 142, 76, 58], [620, 176, 28, 24]] },
   {
     id: "platten", label: "Plattenspieler", floor: 3, x: 724, face: 1, state: "danceSway", expr: "happy",
     hits: [[698, 166, 52, 34], [678, 164, 16, 36], [754, 164, 16, 36], [776, 154, 30, 46]],
@@ -1178,23 +1177,7 @@ function lowboardTV(c: C, x: number, F: number) {
   disc(c, x + 56, F - 18, 1, "#35d6c0");
 }
 
-function piano(c: C, x: number, F: number) {
-  rrect(c, x, F - 56, 44, 56, 3, "#2a1f1b");
-  rect(c, x - 2, F - 58, 48, 4, "#3a2a24");
-  rect(c, x + 6, F - 46, 24, 14, "#e8e2d2");
-  for (let i = 0; i < 4; i++) rect(c, x + 9 + i * 5, F - 43, 3, 1, "rgba(0,0,0,.55)");
-  rect(c, x + 44, F - 28, 30, 4, "#f5f2ea");
-  for (let i = 0; i < 6; i++) rect(c, x + 48 + i * 5, F - 28, 2, 2.4, "#16130f");
-  rect(c, x + 44, F - 24, 30, 2, "#2a1f1b");
-  rect(c, x + 4, F - 4, 3, 4, "#1a1410");
-  rect(c, x + 37, F - 4, 3, 4, "#1a1410");
-}
 
-function pianoStool(c: C, x: number, F: number) {
-  rrect(c, x, F - 22, 26, 6, 3, "#6b3f2a");
-  rect(c, x + 3, F - 16, 3, 16, "#4a2a1c");
-  rect(c, x + 20, F - 16, 3, 16, "#4a2a1c");
-}
 
 function recordPlayer(c: C, x: number, F: number) {
   rrect(c, x, F - 24, 52, 24, 3, "#8a5a34");
@@ -1842,8 +1825,6 @@ function drawHouse(
     picture(c, 412, 96, 44, 26, "#ff6f61");
     picture(c, 276, 108, 22, 30, "#35d6c0");
   }
-  piano(c, 545, FD);
-  pianoStool(c, 620, FD);
   saxStand(c, 646, FD);
   speaker(c, 678, FD);
   recordPlayer(c, 698, FD);

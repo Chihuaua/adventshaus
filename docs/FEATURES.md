@@ -35,7 +35,6 @@ station-gartentuer | src/game/house.ts | aussentuer
 station-kleiderschrank | src/game/house.ts | kleiderschrank
 station-garderobe | src/game/house.ts | garderobe
 station-dusche | src/game/house.ts | dusche
-station-klavier | src/game/house.ts | klavier
 station-saxophon | src/game/house.ts | saxophon
 station-tabak | src/game/house.ts | tabak
 
@@ -66,6 +65,9 @@ gruselhaus-route | src/App.tsx | #gruselhaus
 gruselhaus-raeume | src/game/gruselhaus/index.ts | GRUSELRAEUME
 raumstation-moebel | src/game/gruselhaus/raumstation.ts | drawRaumstationMoebel
 raumstation-effekte | src/game/gruselhaus/raumstation.ts | RaumstationFx
+orchester-datei | src/game/gruselhaus/orchester.ts | export
+orchester-raum | src/game/gruselhaus/orchester.ts | drawOrchesterRoom
+orchester-saxophon | src/game/gruselhaus/orchester.ts | drawBoneSaxophone
 
 ## Ton und Speicher
 

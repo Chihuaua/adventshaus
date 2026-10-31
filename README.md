@@ -100,7 +100,7 @@ reproduzierbar.
 | Haus | Querschnitt mit 4 Ebenen: Keller (Krempelraum, Raucherraum, Garten), Erdgeschoss (Flur, Wohnzimmer, Küche), 1. Stock (Schlafzimmer, Bad mit WC), Dachgeschoss (Gaming-Ecke, Musikzimmer) |
 | Grafik | Komplett in Canvas 2D gezeichnet, keine Bilddateien. Tag/Nacht-Himmel, Lampenlicht als Multiply/Additiv-Ebene, Rauch |
 | Luni | ~30 Posen und Gesichtsausdrücke (`luni.ts`), Laufen, Treppen, Sitzen, Dösen, Tanzen |
-| Interaktion | 32 anklickbare Stationen (plus 3 Treppen) (`STATIONS` in `house.ts`): Kaffee, Tee, Herd, Bett, Dusche, WC, Klavier, Saxophon, Plattenspieler, Gitarre, Gaming … |
+| Interaktion | 32 anklickbare Stationen (plus 3 Treppen) (`STATIONS` in `house.ts`): Kaffee, Tee, Herd, Bett, Dusche, WC, Saxophon, Plattenspieler, Gitarre, Gaming … |
 | Detail-Systeme | Zigaretten stopfen → Schachtel → Raucherraum → Aschenbecher, Rauch der durch die Gartentür abzieht; WC-Tür mit Innen/Außen-Logik; Handy am Beistelltisch; Rick-Fernseher |
 | Ton | WebAudio-Synth (`audio.ts`), stummschaltbar (Taste **M** oder Button), Einstellung wird gespeichert |
 | Werkzeug | `#studio` in der URL öffnet das **Luni-Studio**: alle Posen/Ausdrücke nebeneinander, Vergleich mit der Ursprungsfigur |
@@ -152,6 +152,18 @@ Welt speichert vorher unter ihrem eigenen Schlüssel (`lcp1.welt.<name>.v1`).
 Das **Gruselhaus** beginnt als unveränderte Kopie des normalen Hauses und wird
 Raum für Raum umgestaltet (`src/game/gruselhaus/`). Jeder Raum ist ein eigenes
 Modul; das normale Haus und das Horrorhaus bleiben dabei unberührt.
+
+| Raum | Gruselhaus-Thema | Stand |
+|---|---|---|
+| Dachgeschoss links (Zockerzimmer) | Horror-Raumstation | fertig (`raumstation.ts`) |
+| Dachgeschoss rechts (Musikzimmer) | Orchester der vergessenen Geister | fertig (`orchester.ts`) |
+| alle übrigen | – | noch das normale Haus |
+
+Raum 02 zeichnet das Musikzimmer als eigene Szene: Holzvertäfelung, Vorhänge
+ohne Fenster, Fischglaslampen, dekorative blaue und grüne Tür, Knochensaxophon,
+Sarg-Gitarre, Geistergrammophon und geschnitzte Lautsprecher. Stationen,
+Laufwege, Anker und Größen bleiben unverändert. Ein Klavier gibt es in beiden
+Häusern nicht mehr.
 
 ### Wie `house.ts` tickt
 

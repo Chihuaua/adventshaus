@@ -272,7 +272,7 @@ function drawCarvedNotes(c: C, x: number, y: number) {
   }
 }
 
-/* ----------------------------- Rug / Piano ----------------------------- */
+/* --------------------------------- Teppich -------------------------------- */
 
 function drawMusicRug(c: C, x: number, y: number, w: number, h: number) {
   rr(c, x, y, w, h, 2, COL.velvet);
@@ -298,65 +298,7 @@ function drawMusicRug(c: C, x: number, y: number, w: number, h: number) {
   }
 }
 
-/** Kleines aufrechtes Klavier im alten Bereich (x=545..619), kein Flügel. */
-function drawGhostPiano(c: C, x: number, F: number) {
-  // hochkantiger Korpus
-  c.fillStyle = COL.plum;
-  c.beginPath();
-  c.moveTo(x, F);
-  c.lineTo(x, F - 51);
-  c.quadraticCurveTo(x + 2, F - 58, x + 12, F - 58);
-  c.lineTo(x + 39, F - 58);
-  c.quadraticCurveTo(x + 45, F - 55, x + 45, F - 48);
-  c.lineTo(x + 45, F);
-  c.closePath();
-  c.fill();
-  c.strokeStyle = COL.gold;
-  c.lineWidth = 1;
-  c.stroke();
-  // carved top and side gold pinline
-  filigree(c, x + 22, F - 56, 28, 13, COL.goldLight);
-  line(c, x + 3, F - 48, x + 3, F - 5, "rgba(229,199,126,.45)", 0.8);
-  line(c, x + 41, F - 47, x + 41, F - 5, "rgba(229,199,126,.3)", 0.7);
-  // upper keybed (matches the original piano hand zone)
-  rect(c, x + 6, F - 46, 24, 14, "#221a25");
-  rect(c, x + 7, F - 44.5, 22, 11.8, COL.bone);
-  for (let i = 0; i < 9; i++) {
-    rect(c, x + 7 + i * 2.4, F - 44.5, 0.65, 11.8, "#a99c84");
-  }
-  for (const i of [1, 3, 6, 8]) rr(c, x + 8 + i * 2.4, F - 44, 1.35, 6.4, 0.35, COL.dark);
-  // horizontal key shelf extending right to the original station boundary
-  rect(c, x + 43, F - 28, 31, 4.3, COL.boneShade);
-  rect(c, x + 44, F - 27.4, 29, 3, COL.bone);
-  for (let i = 0; i < 14; i++) rect(c, x + 44 + i * 2.05, F - 27.4, 0.6, 3, "#9e927d");
-  for (const i of [1, 3, 6, 8, 10, 12]) rr(c, x + 45 + i * 2.05, F - 27.2, 1.1, 1.8, 0.2, COL.dark);
-  // small skull above the keyboard
-  disc(c, x + 36, F - 38, 3.2, COL.bone);
-  disc(c, x + 34.8, F - 38.5, 0.7, COL.dark);
-  disc(c, x + 37.3, F - 38.5, 0.7, COL.dark);
-  rect(c, x + 34.4, F - 35.1, 3.4, 1.4, COL.boneShade);
-  line(c, x + 34.8, F - 35, x + 34.8, F - 33.8, COL.dark, 0.45);
-  line(c, x + 36, F - 35, x + 36, F - 33.8, COL.dark, 0.45);
-  line(c, x + 37, F - 35, x + 37, F - 33.8, COL.dark, 0.45);
-  // curved legs and feet
-  line(c, x + 8, F - 4, x + 10, F, COL.plum, 2);
-  line(c, x + 37, F - 4, x + 35, F, COL.plum, 2);
-  line(c, x + 5, F, x + 13, F, COL.gold, 0.8);
-  line(c, x + 32, F, x + 40, F, COL.gold, 0.8);
-  // two fixed candles (stable flame, no blinking)
-  drawStableCandle(c, x + 5, F - 58, 6);
-}
 
-function drawGhostPianoStool(c: C, x: number, F: number) {
-  // same six-by-twenty-two sitting region as the original stool
-  rr(c, x, F - 22, 26, 6, 3, COL.plum);
-  rect(c, x + 2, F - 17, 22, 1.2, COL.gold);
-  for (const xx of [x + 4, x + 20]) {
-    line(c, xx, F - 16, xx - 1, F, COL.dark, 1.5);
-    line(c, xx + 2, F - 16, xx + 3, F, COL.dark, 1.1);
-  }
-  disc(c, x + 13, F - 19, 1.5, COL.bone);
-}
 
 /* --------------------------- Bone Saxophone ---------------------------- */
 
@@ -455,18 +397,6 @@ function drawBoneSaxStand(c: C, x: number, F: number) {
   disc(c, stemX + 3, F - 28, 1.1, COL.bone);
 }
 
-function drawStableCandle(c: C, x: number, y: number, h: number) {
-  // Quiet, constant glow; deliberately no animation/flicker.
-  const g = c.createRadialGradient(x, y - h, 1, x, y - h, 12);
-  g.addColorStop(0, "rgba(255,231,160,.22)");
-  g.addColorStop(1, "rgba(255,231,160,0)");
-  c.fillStyle = g;
-  c.beginPath();
-  c.arc(x, y - h, 12, 0, Math.PI * 2);
-  c.fill();
-  rr(c, x - 1.8, y - h, 3.6, h, 0.9, COL.bone);
-  disc(c, x, y - h - 1.8, 1.1, "#ffd279");
-}
 
 function drawGhostGramophone(c: C, x: number, F: number) {
   // Small dark-purple case in the existing 52x31 record-player footprint.
@@ -683,7 +613,7 @@ export function drawOrchesterRoom(c: C, atticCeil: (x: number) => number) {
   drawFishLamp(c, 633, 138, 10.5, 1);
   drawFishLamp(c, 737, 151, 9.2, -1);
   // Decorative, closed doors: neither has a hitbox or passage function.
-  drawMysteryDoor(c, 537, 66, 36, 74, "blue");
+  drawMysteryDoor(c, 537, FD - 74, 36, 74, "blue"); // Unterkante exakt auf dem Boden
   drawMysteryDoor(c, 783, 120, 41, 63, "green");
   drawCarvedNotes(c, 700, 132);
 
@@ -697,14 +627,10 @@ export function drawOrchesterRoom(c: C, atticCeil: (x: number) => number) {
   drawMusicRug(c, 571, FD - 5, 92, 5);
 
   // Redrawn in the same furniture footprints; station hitboxes remain untouched.
-  drawGhostPiano(c, 545, FD);
-  drawGhostPianoStool(c, 620, FD);
   drawBoneSaxStand(c, 646, FD);
   drawSkullSpeaker(c, 678, FD, 0.84);
   drawGhostGramophone(c, 698, FD);
   drawSkullSpeaker(c, 754, FD, 0.84);
   drawRecordCabinet(c, 776, FD);
   drawBoneGuitar(c, 818, FD);
-  drawStableCandle(c, 554, FD - 58, 6);
-  drawStableCandle(c, 579, FD - 58, 6);
 }
