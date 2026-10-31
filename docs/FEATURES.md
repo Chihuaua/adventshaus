@@ -63,6 +63,9 @@ welten-wechsel | src/game/welten.ts | wechsleWelt
 wechselsteine | src/game/steine.ts | steinSlots
 horrorstein | src/game/steine.ts | horror
 gruselhaus-route | src/App.tsx | #gruselhaus
+gruselhaus-raeume | src/game/gruselhaus/index.ts | GRUSELRAEUME
+raumstation-moebel | src/game/gruselhaus/raumstation.ts | drawRaumstationMoebel
+raumstation-effekte | src/game/gruselhaus/raumstation.ts | RaumstationFx
 
 ## Ton und Speicher
 

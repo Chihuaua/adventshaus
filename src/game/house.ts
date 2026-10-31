@@ -42,6 +42,15 @@ import { SAX_DURATION_SECONDS } from "./audio/saxophonNotes";
 import { Dream, drawSleepZ } from "./dream";
 import { drawStein, steinAn, steinSlots, type SteinSlot } from "./steine";
 import { ladeSnapshot, speichereSnapshot, type HausSnapshot, type WeltId } from "./welten";
+import { GRUSELRAEUME, RaumstationFx, type GruselRaeume } from "./gruselhaus";
+import {
+  RS,
+  drawMetalFloor,
+  drawMetalWall,
+  drawRaumstationMoebel,
+  drawSpaceWindow,
+  drawSteelBeam,
+} from "./gruselhaus/raumstation";
 import {
   SHOWER_X,
   curtainRect,
@@ -1673,6 +1682,8 @@ function drawHouse(
   sky: HTMLCanvasElement,
   door: { open: number },
   golOnShelf: boolean,
+  /** Gruselhaus: welche Räume umgestaltet sind (null = normales Haus) */
+  gr: GruselRaeume | null = null,
 ) {
   drawExterior(c);
   drawRoof(c);
@@ -1699,7 +1710,8 @@ function drawHouse(
   c.lineTo(HR, FD);
   c.closePath();
   c.clip();
-  wallBand(c, DG_X0, 530, 30, FD, "#4a4f92", "#383d7c", 30);
+  if (gr?.raumstation) drawMetalWall(c, DG_X0, 530, 30, FD, atticCeil);
+  else wallBand(c, DG_X0, 530, 30, FD, "#4a4f92", "#383d7c", 30);
   wallBand(c, 530, HR, 30, FD, "#9a5750", "#7e433e", 30);
   c.restore();
 
@@ -1721,7 +1733,8 @@ function drawHouse(
   slab(c, CEL_X0, HR, FK, [[CEL_X0, 590, "#8a8d88", "none"], [590, HR, "#777a74", "none"]], "#2a2522");
   slab(c, 98, HR, FE, [[98, 560, WOOD, "wood"], [560, HR, "#e8e2d2", "tile"]]);
   slab(c, 98, OG_X1 + 2, FO, [[98, 490, "#a87a52", "wood"], [490, OG_X1 + 2, "#4d9a66", "tile"]]);
-  slab(c, DG_X0, HR, FD, [[DG_X0, 530, "#3e3b52", "none"], [530, HR, WOOD, "wood"]]);
+  slab(c, DG_X0, HR, FD, [[DG_X0, 530, gr?.raumstation ? "#5a5a6a" : "#3e3b52", "none"], [530, HR, WOOD, "wood"]]);
+  if (gr?.raumstation) drawMetalFloor(c, DG_X0, 530, FD);
 
   /* ---- Außenwände ---- */
   rect(c, 98, 118, 12, FE + SLAB - 118, "#4a3a33");
@@ -1746,15 +1759,23 @@ function drawHouse(
   railing(c, OG_X1 - 12, FO, 12);
 
   /* ---- Dachbalken ---- */
-  rect(c, 278, 88, 384, 6, "#5a3d28");
-  rect(c, 278, 88, 384, 1.6, "rgba(255,255,255,.18)");
+  if (gr?.raumstation) {
+    // Raumstation: Stahlträger bis zur Trennwand, danach der alte Holzbalken
+    drawSteelBeam(c, 278, 530, 88, 6);
+    rect(c, 530, 88, 132, 6, "#5a3d28");
+    rect(c, 530, 88, 132, 1.6, "rgba(255,255,255,.18)");
+  } else {
+    rect(c, 278, 88, 384, 6, "#5a3d28");
+    rect(c, 278, 88, 384, 1.6, "rgba(255,255,255,.18)");
+  }
 
   /* ---- Fenster ---- */
   windowRect(c, sky, 330, 358, 64, 38, { curtain: "#c9453a" });
   windowRect(c, sky, 624, 364, 50, 36);
   windowRect(c, sky, 740, 236, 44, 78, { mull: 2 });
   windowRect(c, sky, 334, 244, 62, 46, { curtain: "#7a3f55" });
-  windowRect(c, sky, 330, 98, 56, 44, { mull: 2 });
+  if (gr?.raumstation) drawSpaceWindow(c, RS.fenster.x, RS.fenster.y, RS.fenster.r);
+  else windowRect(c, sky, 330, 98, 56, 44, { mull: 2 });
   roundWindow(c, sky, 590, 104, 20);
   windowRect(c, sky, 704, 472, 36, 20, { mull: 2 });
 
@@ -1806,15 +1827,20 @@ function drawHouse(
   bathCeilingLamp(c, 590, FD + SLAB, FO, 490, OG_X1);
 
   /* ---- Dachgeschoss ---- */
-  beanbag(c, 296, FD);
-  lowboardTV(c, 404, FD);
-  bookshelf(c, 486, FD, 38, 74, 4, 5, true, {
-    row: 0,
-    index: 1,
-    item: golOnShelf ? (cc, bx, by, bw, bh) => golCartridge(cc, bx, by, bw, bh) : undefined,
-  });
-  picture(c, 412, 96, 44, 26, "#ff6f61");
-  picture(c, 276, 108, 22, 30, "#35d6c0");
+  if (gr?.raumstation) {
+    // Horror-Raumstation: Sessel, Terminal, Lagerregal und alle Details
+    drawRaumstationMoebel(c, atticCeil, golOnShelf ? (cc, bx, by, bw, bh) => golCartridge(cc, bx, by, bw, bh) : undefined);
+  } else {
+    beanbag(c, 296, FD);
+    lowboardTV(c, 404, FD);
+    bookshelf(c, 486, FD, 38, 74, 4, 5, true, {
+      row: 0,
+      index: 1,
+      item: golOnShelf ? (cc, bx, by, bw, bh) => golCartridge(cc, bx, by, bw, bh) : undefined,
+    });
+    picture(c, 412, 96, 44, 26, "#ff6f61");
+    picture(c, 276, 108, 22, 30, "#35d6c0");
+  }
   piano(c, 545, FD);
   pianoStool(c, 620, FD);
   saxStand(c, 646, FD);
@@ -1823,7 +1849,7 @@ function drawHouse(
   speaker(c, 754, FD);
   recordShelf(c, 776, FD);
   guitar(c, 818, FD);
-  ceilingLamp(c, 430, atticCeil(430) + 2, 36, "#f2d9a0");
+  if (!gr?.raumstation) ceilingLamp(c, 430, atticCeil(430) + 2, 36, "#f2d9a0");
   ceilingLamp(c, 700, atticCeil(700) + 2, 30, "#f2d9a0");
 
   /* ---- Keller ---- */
@@ -2035,6 +2061,8 @@ export class House {
   private steine: SteinSlot[] = [];
   private steinStationen: Station[] = [];
   private saveT = 0;
+  /** Gruselhaus, Raum 01: seltene Effekte (Notfallschalter, Funken) */
+  private raumFx = new RaumstationFx();
 
   // Raucherecke
   private gardenDoor = 0; // 0 = zu, 1 = offen
@@ -3478,6 +3506,7 @@ export class House {
     this.updateBedState(dt);
     this.updateDream(dt);
     this.updateSax(dt);
+    if (this.welt === "gruesel") this.raumFx.update(dt);
     // Alle paar Sekunden sichern, damit ein Absturz nichts kostet.
     this.saveT += dt;
     if (this.saveT >= 4) {
@@ -3692,6 +3721,7 @@ export class House {
       this.sky,
       { open: this.gardenDoor },
       this.golOnShelf,
+      this.welt === "gruesel" ? GRUSELRAEUME : null,
     );
     // Wechselsteine: jede Welt zeigt die Steine der anderen Welten.
     for (const sl of this.steine) drawStein(this.bgc, sl.art, 0, sl.x, sl.y);
@@ -3751,6 +3781,7 @@ export class House {
     // Eingestecktes Modul sitzt in der Konsole, Luni geht davor vorbei.
     if (this.golInserted && this.golPhase !== "insert") golCartridge(ctx, 446, 167, 6, 11);
     this.drawClock(ctx);
+    if (this.welt === "gruesel") this.raumFx.draw(ctx, atticCeil);
     this.drawSax(ctx);
     this.drawCigPile(ctx);
     this.drawAshtrayTray(ctx);
