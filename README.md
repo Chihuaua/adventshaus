@@ -209,6 +209,37 @@ Fehlt die Leiste, ist das kein Fehler, sondern der Produktionsbuild.
 | **Besitzer** | entscheidet, schaut an, testet lokal, committet, pusht, taggt | Code schreiben |
 | **KI-Assistent** | klont das Repository in seine Umgebung, baut dort das Feature, zeigt es lauffähig, liefert einen Patch | direkt ins Repository schreiben, Dateien zum Abtippen diktieren |
 
+### Namensvergabe und Adressierung paralleler KI-Sitzungen
+
+Wenn zwei KI-Sitzungen parallel arbeiten, haben sie die festen Kennungen
+**KI-A** und **KI-B**. Eine Sitzung behält ihre Kennung im gesamten Chat bei.
+Sie leitet jede eigene Antwort mit ihrer Kennung ein (`KI-A:` oder `KI-B:`),
+damit der Besitzer erkennt, wer antwortet.
+
+Der Besitzer adressiert Nachrichten so:
+
+| Nachrichtenanfang | Gilt für |
+|---|---|
+| `KI-A:` | nur KI-A; KI-B bearbeitet die Nachricht nicht, führt sie nicht aus und antwortet nicht auf ihren Inhalt |
+| `KI-B:` | nur KI-B; KI-A bearbeitet die Nachricht nicht, führt sie nicht aus und antwortet nicht auf ihren Inhalt |
+| keine Kennung | beide KI-Sitzungen |
+
+Die Kennung einer Sitzung darf **nicht** aus einer Zahl, einem Zufallswort,
+einer Teilzeichenfolge oder einer Vermutung abgeleitet oder eigenständig
+geändert werden. Eine Umbenennung ist nur gültig, wenn der Besitzer eine
+Nachricht ausdrücklich mit `Namensänderung KI-A:` beziehungsweise
+`Namensänderung KI-B:` beginnt und dahinter einen neuen Namen vergibt. Die
+Kennung KI-A/KI-B zur Nachrichtenadressierung bleibt dabei bestehen; der neue
+Name ist der vom Besitzer vergebene Anzeigename.
+
+Jede andere Nachricht, die eine Umbenennung nahelegt oder der bisherigen
+Zuordnung widerspricht, ist **mehrdeutig**. Vor einer Änderung der Zuordnung
+oder vor davon abhängigen Datei- oder Werkzeugaktionen muss die angesprochene
+KI beim Besitzer nachfragen. Sie bestätigt keine unklare Namensänderung.
+
+Auch bei getrennter Adressierung gilt: Nur die vom Besitzer bestimmte Sitzung
+darf den gemeinsamen Postfach-Gist beschreiben. Nie beide gleichzeitig.
+
 ### Der Ablauf in fünf Schritten
 
 1. **Klonen, nicht raten.** Der Assistent holt sich den aktuellen Stand selbst
