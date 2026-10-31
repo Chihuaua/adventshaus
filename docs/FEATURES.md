@@ -35,6 +35,7 @@ station-gartentuer | src/game/house.ts | aussentuer
 station-kleiderschrank | src/game/house.ts | kleiderschrank
 station-garderobe | src/game/house.ts | garderobe
 station-dusche | src/game/house.ts | dusche
+station-klavier | src/game/house.ts | klavier
 station-saxophon | src/game/house.ts | saxophon
 station-tabak | src/game/house.ts | tabak
 

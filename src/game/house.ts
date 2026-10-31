@@ -1,7 +1,7 @@
 /* =======================================================================
    LUNIS HAUS — Querschnitt in vier Ebenen (Little-Computer-People-Stil)
 
-   Dachgeschoss : Gaming-Zimmer | Musikzimmer (Plattenspieler, Gitarre)
+   Dachgeschoss : Gaming-Zimmer | Musikzimmer (Klavier, Plattenspieler, Gitarre)
    1. Stock     : Schlafzimmer | Badezimmer
    Erdgeschoss  : Flur (Haustür) | Wohnzimmer | Küche
    Keller       : Krempelraum (1/3 der Breite) -> Raucherraum -> Garten
@@ -394,6 +394,11 @@ export const STATIONS: Station[] = [
   {
     id: "saxophon", label: "Saxophon", floor: 3, x: 653, face: -1, state: "sax", expr: "happy",
     hits: [[644, 134, 36, 66]],
+  },
+  {
+    id: "klavier", label: "Klavier", floor: 3, x: 617, face: -1, state: "piano", expr: "happy", yOff: -10,
+    // Korpus 545–589, Klaviatur 585–627, Hocker 604–630
+    hits: [[545, 142, 46, 58], [583, 164, 48, 24], [602, 176, 32, 26]],
   },
   { id: "spielregal", label: "Spieleregal", floor: 3, x: 504, face: 1, state: "act", expr: "think", hits: [[486, 126, 38, 74]] },
   {
@@ -1168,6 +1173,86 @@ function beanbag(c: C, x: number, F: number) {
   c.globalAlpha = 1;
 }
 
+/**
+ * Altes aufrechtes Klavier im Musikzimmer des NORMALEN Hauses.
+ *
+ * Aufbau (Bühnenkoordinaten, F = Bodenlinie 200):
+ *   Korpus      545–589 (unverändert)
+ *   Klaviatur   585–627, angesetzt am Korpus, Tasten 587–621 auf y=168
+ *   Hocker      604–630, Sitzfläche 178–184
+ *   Sitzplatz   x=617, Blick nach links; Hände landen bei x≈603–605,
+ *               also in der Mitte der Tasten statt am rechten Ende.
+ *
+ * Gegenüber dem alten Stand ist die Tastatur 20 Einheiten nach links gerückt
+ * und Hocker/Sitzplatz um 16 Einheiten mitgewandert. Korpus, Notenpult und
+ * Bodenlinie bleiben unverändert.
+ */
+function piano(c: C, x: number, F: number) {
+  // Korpus und Deckel
+  rrect(c, x, F - 56, 44, 56, 3, "#2a1f1b");
+  rect(c, x - 2, F - 58, 48, 4, "#3a2a24");
+  rect(c, x - 2, F - 58, 48, 1.3, "rgba(255,255,255,.12)");
+
+  // Notenpult mit aufgelegtem Notenblatt
+  rrect(c, x + 5, F - 47, 26, 15, 2, "#241a16");
+  c.fillStyle = "#efe6cf";
+  c.fillRect(x + 7, F - 45, 22, 11);
+  c.strokeStyle = "rgba(80,58,34,.45)";
+  c.lineWidth = 0.35;
+  for (let i = 0; i < 4; i++) line(c, x + 8, F - 43 + i * 2.2, x + 28, F - 43 + i * 2.2, "rgba(80,58,34,.45)", 0.35);
+
+  /* ---- Klaviatur: sitzt jetzt am Korpus, nicht mehr rechts daneben ---- */
+  const kx = 585;
+  const ky = 168;
+  const kw = 42;
+  const kh = 7;
+  // Klaviaturkasten, an den Korpus angesetzt
+  rect(c, kx, ky - 2, kw + 2, kh + 5, "#221812");
+  rect(c, kx, ky - 2, kw + 2, 1, "rgba(255,255,255,.14)");
+  // weiße Tasten 587–621
+  const tx = 587;
+  const tw = 34;
+  rect(c, tx, ky, tw, kh, "#f5f2ea");
+  const wn = 14;
+  const ww = tw / wn;
+  for (let i = 1; i < wn; i++) rect(c, tx + i * ww, ky, 0.5, kh, "rgba(70,48,30,.55)");
+  // schwarze Tasten im Oktavmuster
+  for (let i = 0; i < wn - 1; i++) {
+    const p7 = i % 7;
+    if (p7 === 2 || p7 === 6) continue;
+    rect(c, tx + (i + 1) * ww - 0.7, ky, 1.4, kh * 0.6, "#141110");
+  }
+  // vordere Leiste und Wangen links/rechts
+  rect(c, tx - 2, ky + kh, tw + 4, 2.6, "#3a2a24");
+  rect(c, tx - 2, ky + kh, tw + 4, 0.8, "rgba(255,255,255,.1)");
+  rect(c, kx, ky - 2, 2.4, kh + 5, "#2f221b");
+  rect(c, tx + tw, ky - 2, 2.2, kh + 5, "#2f221b");
+  c.fillStyle = "#d9a83c";
+  c.fillRect(tx - 3.6, ky + kh + 0.7, 1.3, 1.1);
+  c.fillRect(tx + tw + 2.4, ky + kh + 0.7, 1.3, 1.1);
+
+  // Pedale unter dem Korpus
+  line(c, x + 16, F - 6, x + 16, F - 1, "#b8963f", 1.1);
+  line(c, x + 22, F - 6, x + 22, F - 1, "#b8963f", 1.1);
+
+  // Beine
+  rect(c, x + 4, F - 4, 3, 4, "#1a1410");
+  rect(c, x + 37, F - 4, 3, 4, "#1a1410");
+}
+
+/**
+ * Klavierhocker: Sitzfläche mittig unter Lunis Sitzplatz (x=617),
+ * vier schmale, leicht nach außen gestellte Beine.
+ */
+function pianoStool(c: C, x: number, F: number) {
+  rrect(c, x, F - 22, 26, 6, 3, "#6b3f2a");
+  rect(c, x + 2, F - 17, 22, 1.1, "rgba(217,168,60,.55)");
+  line(c, x + 4, F - 16, x + 2, F, "#4a2a1c", 1.6);
+  line(c, x + 21, F - 16, x + 23, F, "#4a2a1c", 1.6);
+  line(c, x + 6, F - 16, x + 5, F, "#4a2a1c", 1.2);
+  line(c, x + 19, F - 16, x + 20, F, "#4a2a1c", 1.2);
+}
+
 function lowboardTV(c: C, x: number, F: number) {
   rrect(c, x, F - 22, 66, 22, 3, "#2a2a38");
   rect(c, x + 4, F - 16, 26, 1.4, "rgba(255,255,255,.12)");
@@ -1825,6 +1910,13 @@ function drawHouse(
     picture(c, 412, 96, 44, 26, "#ff6f61");
     picture(c, 276, 108, 22, 30, "#35d6c0");
   }
+  // Klavier nur im normalen Haus zeichnen. Im Gruselhaus ist es (Auftrag KI-A)
+  // entfernt; das Horrorhaus (Traumhaus) ist eine eigene, leere Ansicht.
+  if (!gr) {
+    // Nur im normalen Haus (gr === null). Gruselhaus und Horrorhaus ohne Klavier.
+    piano(c, 545, FD);
+    pianoStool(c, 604, FD);
+  }
   saxStand(c, 646, FD);
   speaker(c, 678, FD);
   recordPlayer(c, 698, FD);
@@ -2426,6 +2518,8 @@ export class House {
     for (const st of STATIONS) {
       // Leeres Fach: das Modul ist schon heruntergenommen.
       if (st.id === "gol_game" && !this.golOnShelf) continue;
+      // Klavier existiert nur im normalen Haus (Auftrag KI-A: im Horrorhaus entfernt).
+      if (st.id === "klavier" && this.welt !== "normal") continue;
       // Brille und Bürste sind nur Ziele, wenn sie wirklich da liegen.
       if (st.id === "brille" && !this.glassesInSink) continue;
       if (st.id === "buerste" && !(this.cabinetOpen > 0.9 && this.brushInCab)) continue;
