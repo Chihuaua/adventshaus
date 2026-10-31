@@ -51,6 +51,7 @@ import {
   drawSpaceWindow,
   drawSteelBeam,
 } from "./gruselhaus/raumstation";
+import { drawBoneSaxophone, drawOrchesterEffects, drawOrchesterRoom } from "./gruselhaus/orchester";
 import {
   SHOWER_X,
   curtainRect,
@@ -111,7 +112,7 @@ const SAX_MOUTH_DX = 1.2;
  *  Sie liegen auf der Klappenspalte, die saxophone() zeichnet – die Hände
  *  sitzen damit immer exakt am gezeichneten Instrument. */
 const SAX_GRIP_UP: Pt = [11.4, 16];
-const SAX_GRIP_LOW: Pt = [10.7, 26];
+const SAX_GRIP_LOW: Pt = [10.7, 31];
 /** Hinstrecken, Anheben, Abstellen – jeweils in Sekunden. */
 const SAX_REACH = 0.9;
 const SAX_LIFT = 1.0;
@@ -3609,7 +3610,8 @@ export class House {
           const need = this.saxApproachX();
           if (need !== null && Math.abs(this.lx - need) > 0.8) {
             this.activity = null;
-            this.target = null;
+            // Den Saxophon-Auftrag behalten. Nach dem Nachrücken fällt
+            // updateLuni erneut in diesen Ankunftsfall und startet das Greifen.
             this.buildPath(3, need);
           } else {
             this.lx = need ?? this.lx;
@@ -3723,6 +3725,11 @@ export class House {
       this.golOnShelf,
       this.welt === "gruesel" ? GRUSELRAEUME : null,
     );
+    // Raum 02 wird als eigene Canvas-Szene über die frühere Musikzimmerfläche
+    // gemalt. Der Bereich beginnt hinter der Trennwand; kein Nachbarraum ändert sich.
+    if (this.welt === "gruesel" && GRUSELRAEUME.orchester) {
+      drawOrchesterRoom(this.bgc, atticCeil);
+    }
     // Wechselsteine: jede Welt zeigt die Steine der anderen Welten.
     for (const sl of this.steine) drawStein(this.bgc, sl.art, 0, sl.x, sl.y);
 
@@ -3796,6 +3803,9 @@ export class House {
     this.drawLuniLayered(ctx);
     this.drawGlassesMoving(ctx);
     this.drawGolInHand(ctx);
+    if (this.welt === "gruesel" && GRUSELRAEUME.orchester) {
+      drawOrchesterEffects(ctx, this.elapsed, this.saxPhase === "play" && this.saxStarted, this.saxMusic?.currentTime ?? 0);
+    }
 
     // Rauch liegt über allem – Luni sieht erst wieder etwas, wenn die Tür auf ist
     this.drawSmoke(ctx);
@@ -3927,7 +3937,11 @@ export class House {
     // Während einer Phase übernimmt drawSaxCarried den Zwischenschritt.
     if (this.saxPhase) return;
     const p = this.saxPose();
-    saxophone(c, p.ax, p.ay, SAX_SCALE, p.dir);
+    if (this.welt === "gruesel" && GRUSELRAEUME.orchester) {
+      drawBoneSaxophone(c, p.ax, p.ay, SAX_SCALE, p.dir);
+    } else {
+      saxophone(c, p.ax, p.ay, SAX_SCALE, p.dir);
+    }
   }
 
   /**
@@ -3950,7 +3964,11 @@ export class House {
       c.rotate(p.rot);
       c.translate(-p.ax, -p.ay);
     }
-    saxophone(c, p.ax, p.ay, SAX_SCALE, p.dir);
+    if (this.welt === "gruesel" && GRUSELRAEUME.orchester) {
+      drawBoneSaxophone(c, p.ax, p.ay, SAX_SCALE, p.dir);
+    } else {
+      saxophone(c, p.ax, p.ay, SAX_SCALE, p.dir);
+    }
     c.restore();
   }
 

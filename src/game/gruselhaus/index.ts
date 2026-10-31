@@ -11,10 +11,13 @@
 export interface GruselRaeume {
   /** Raum 01 · Zockerzimmer -> Horror-Raumstation (Dachgeschoss links) */
   raumstation: boolean;
+  /** Raum 02 · Musikzimmer -> Orchester der vergessenen Geister (Dachgeschoss rechts) */
+  orchester: boolean;
 }
 
 export const GRUSELRAEUME: GruselRaeume = {
   raumstation: true,
+  orchester: true,
 };
 
 export { RaumstationFx } from "./raumstation";
