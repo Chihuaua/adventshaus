@@ -1,8 +1,8 @@
 /* =======================================================================
    KLEINE INTERNE PIXELSCHRIFT
 
-   Keine Browser- oder Web-Schrift in der Spielwelt. Die Traumsequenz nutzt
-   diese 5×7-Glyphen. Kleinbuchstaben werden bewusst als Versalien gerendert;
+   Keine Browser- oder Web-Schrift in der Spielwelt. Raumstation und Schlaf-Zzz
+   nutzen diese 5×7-Glyphen. Kleinbuchstaben werden bewusst als Versalien gerendert;
    dadurch bleibt die Schrift bei kleinen Bühnenmaßen klar lesbar.
    ======================================================================= */
 

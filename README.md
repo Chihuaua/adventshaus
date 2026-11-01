@@ -156,7 +156,8 @@ Modul; das normale Haus und das Traumhaus bleiben dabei unberührt.
 | Raum | Gruselhaus-Thema | Stand |
 |---|---|---|
 | Dachgeschoss links (Zockerzimmer) | Horror-Raumstation | fertig (`raumstation.ts`) |
-| Dachgeschoss rechts (Musikzimmer) | Musikzimmer | fertig (`musikzimmer.ts`) |
+| Dachgeschoss rechts (Musikzimmer) | Musikzimmer („Der Tod spielt Klavier“) | fertig (`musikzimmer.ts`) |
+| 1. Stock links (Schlafzimmer) | Schlafstätte der Vampirkönigin | fertig (`schlafzimmer.ts`) |
 | alle übrigen | – | noch das normale Haus |
 
 Raum 02 heißt **Musikzimmer**. Seine Klavierecke besteht aus einem alten,
@@ -198,6 +199,31 @@ versteckten Auslöser und keine neue Bedienoberfläche.
 Zeitsteuerung und Noten: `src/game/gruselhaus/musikzimmer-ablauf.ts`.
 Automatische Ablaufprüfungen: `node tools/test-musikzimmer.mjs`.
 Das normale Klavier, das Traumhaus, Welt-IDs und Speicherplätze bleiben erhalten.
+
+Raum 03 heißt **Schlafstätte der Vampirkönigin** (`src/game/gruselhaus/schlafzimmer.ts`).
+Gotische Burgmauer mit Spitzbogennische, kein Fenster. An der Decke hängt ein
+geschmiedeter Kerzenkronleuchter, oben links schläft eine Fledermaus. Gotischer
+Nachttisch mit Zinnteller, Kerze und Silberkelch, gotischer Kleiderschrank.
+Statt des Betts steht ein geschlossener Körperform-Sarg aus schwarzem Lack mit
+dezenten Silberbeschlägen und einem silberweißen Totenkopf im Schulterbereich;
+innen violettes Polster. Davor ein gotischer Trittschemel mit violettem Kissen.
+
+Ein Klick auf den Sarg startet die Schlafroutine immer: Schrank öffnen (Rücken
+zum Spieler), umziehen (jedes Kleidungsstück eigene Animation, Umhang wird
+umgeschwungen), Schrank schließen, Deckel mit beiden Händen heben, über den
+Schemel einsteigen, mit Blick zur Kerze hinsetzen, Brille im hohen, drehenden
+Bogen werfen (60 % Nachttisch, 20 % Kronleuchter, der nachpendelt, 20 % zufällig
+Fledermauskrallen, Silberkelch oder Schrankspitze), Deckel mit der linken Hand
+an der Innenschlaufe zuziehen und zurücklehnen. Aus der Deckelfuge steigen Zzz.
+Jede Nacht ein anderes von acht Vampir-Outfits (`src/game/gruselhaus/vampir.ts`),
+nie zweimal hintereinander. Jeder andere Befehl weckt sie: Deckel aufdrücken,
+aufsetzen, aussteigen, Deckel schließen, erreichbare Brille holen, dann den
+Befehl ausführen. Knarzen und dumpfes Holz sind synthetisch erzeugt.
+Prüfungen: `node tools/test-schlafzimmer.mjs`.
+
+Die **Traumsequenz** ist aus dem Projekt entfernt (`dream.ts` und der
+Code-Export `traumsequenz-code.txt`). Luni schläft in allen Häusern ohne Traum;
+das Traumhaus (`#traumhaus`) als eigene Welt bleibt erhalten.
 
 ### Türen und Wege (alle Hauswelten)
 

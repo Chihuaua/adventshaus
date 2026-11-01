@@ -68,6 +68,9 @@ export interface HausSnapshot {
   golOnShelf: boolean;
   golInserted: boolean;
   smoke: number;
+  /** Gruselhaus: getragenes und zuletzt gewähltes Vampir-Outfit (Index). */
+  vampir?: number | null;
+  vampirLetzt?: number;
 }
 
 const schluessel = (welt: WeltId) => `lcp1.welt.${welt}.v1`;

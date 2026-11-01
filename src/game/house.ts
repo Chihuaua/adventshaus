@@ -39,7 +39,7 @@ import {
 import { sfx } from "./audio";
 import { SaxophonMusic } from "./audio/saxophonVoice";
 import { SAX_DURATION_SECONDS } from "./audio/saxophonNotes";
-import { Dream, drawSleepZ } from "./dream";
+import { VAMPIR_OUTFITS, naechstesOutfit } from "./gruselhaus/vampir";
 import { drawStein, steinAn, steinSlots, type SteinSlot } from "./steine";
 import { ladeSnapshot, speichereSnapshot, type HausSnapshot, type WeltId } from "./welten";
 import { GRUSELRAEUME, RaumstationFx, type GruselRaeume } from "./gruselhaus";
@@ -53,6 +53,27 @@ import {
 } from "./gruselhaus/raumstation";
 import { clipMusikzimmer, drawMusikzimmerEffects, drawMusikzimmer, drawMusiktuer, musikzimmerStationen, vorhangGriff, MUSIKZIMMER } from "./gruselhaus/musikzimmer";
 import { klavierHaende, MusikzimmerAblauf } from "./gruselhaus/musikzimmer-ablauf";
+import { drawPixelText } from "./pixel";
+import {
+  BRILLEN_ZIELE,
+  SARG,
+  SCHLAFZIMMER,
+  brilleErreichbar,
+  brillenZiel,
+  deckelGriff,
+  deckelSchlaufe,
+  drawBurgWand,
+  drawGothicWardrobeOpen,
+  drawSargDeckel,
+  drawSargFront,
+  drawSargInnen,
+  drawSchlafzimmerEffects,
+  drawTrittschemel,
+  drawVampirSchlafzimmer,
+  leuchterPunkt,
+  schlafzimmerStationen,
+  type BrillenZiel,
+} from "./gruselhaus/schlafzimmer";
 import {
   SHOWER_X,
   curtainRect,
@@ -678,10 +699,11 @@ function drawBedScene(
   t: number,
   pj: { top: string; bottom: string } | null,
   o: { pull: number; grab: number; turn: number; hair: number },
+  sarg = false,
 ) {
   const breathe = Math.sin(t * 1.1) * 0.35;
-  const topColor = pj ? pj.top : "#7fc6c2";
-  const bottomColor = pj ? pj.bottom : "#3f6f8c";
+  const topColor = pj ? pj.top : sarg ? "#2a121e" : "#7fc6c2";
+  const bottomColor = pj ? pj.bottom : sarg ? "#180a14" : "#3f6f8c";
   const turn = clamp(o.turn, 0, 1);
   const hair = clamp(o.hair, 0, 1);
   // Kinn = Unterkante des Kopfes. Die Decke endet genau dort.
@@ -695,8 +717,8 @@ function drawBedScene(
   c.translate(0, -2);
 
   /* 1. Kissen (unten) */
-  rrect(c, -24, 6, 46, 15, 7, "#ffffff");
-  rrect(c, -22, 7, 42, 5, 3, "#eef2f4");
+  rrect(c, -24, 6, 46, 15, 7, sarg ? "#5a0e19" : "#ffffff");
+  rrect(c, -22, 7, 42, 5, 3, sarg ? "#8c1b29" : "#eef2f4");
 
   /* 2. Körper */
   rrect(c, -6, 0.5, 30, 13 + breathe, 6, topColor);
@@ -704,11 +726,14 @@ function drawBedScene(
 
   /* 3. Decke bis zum Kinn – liegt über dem Körper */
   const by = edgeY;
-  rrect(c, -1, by, 72, 30, 7, "#3f7f8c");
-  rrect(c, 1, by + 1.2, 68, 4, 2, "#5da0a8");
-  rect(c, 4, by + 8, 62, 1.6, "rgba(255,255,255,.30)");
-  rect(c, 4, by + 16, 62, 1.2, "rgba(255,255,255,.18)");
-  c.strokeStyle = "rgba(20,50,58,.30)";
+  const blanketCol = sarg ? "#580f1a" : "#3f7f8c";
+  const trimCol = sarg ? "#8c1b29" : "#5da0a8";
+  const goldCol = sarg ? "#c9a46a" : "rgba(255,255,255,.30)";
+  rrect(c, -1, by, 72, 30, 7, blanketCol);
+  rrect(c, 1, by + 1.2, 68, 4, 2, trimCol);
+  rect(c, 4, by + 8, 62, 1.6, goldCol);
+  rect(c, 4, by + 16, 62, 1.2, sarg ? "#a58350" : "rgba(255,255,255,.18)");
+  c.strokeStyle = sarg ? "rgba(10,4,8,.45)" : "rgba(20,50,58,.30)";
   c.lineWidth = 1;
   c.beginPath();
   c.moveTo(-1, by + 5.5);
@@ -824,15 +849,46 @@ function drawBedScene(
 /** Decke bis zum Hals: der Kopf bleibt frei, der Körper ist zugedeckt. */
 /** Decke während des Hinlegens: exakt dieselbe Geometrie wie in der Schlafszene,
  *  damit beim Übergang keine Kante springt. */
-function drawBlanket(c: C, t: number, _lift = 1) {
+function drawBlanket(c: C, t: number, _lift = 1, sarg = false) {
   const ox = 330;
   const oy = FLOOR_Y[2] - 20;
   const breathe = Math.sin(t * 1.1) * 0.3;
   const by = 12;
-  rrect(c, ox - 13, oy + by, 84, 30 + breathe, 7, "#3f7f8c");
-  rrect(c, ox - 11, oy + by + 1.2, 80, 4, 2, "#5da0a8");
-  rect(c, ox - 8, oy + by + 8, 74, 1.6, "rgba(255,255,255,.30)");
-  rect(c, ox - 8, oy + by + 16, 74, 1.2, "rgba(255,255,255,.18)");
+  const blanketCol = sarg ? "#580f1a" : "#3f7f8c";
+  const trimCol = sarg ? "#8c1b29" : "#5da0a8";
+  const goldCol = sarg ? "#c9a46a" : "rgba(255,255,255,.30)";
+  rrect(c, ox - 13, oy + by, 84, 30 + breathe, 7, blanketCol);
+  rrect(c, ox - 11, oy + by + 1.2, 80, 4, 2, trimCol);
+  rect(c, ox - 8, oy + by + 8, 74, 1.6, goldCol);
+  rect(c, ox - 8, oy + by + 16, 74, 1.2, sarg ? "#a58350" : "rgba(255,255,255,.18)");
+}
+
+/** Schlaf-Zzz: steigen in kleinen Gruppen auf (Pixelschrift, keine Webschrift). */
+const zRnd = (n: number) => {
+  const v = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return v - Math.floor(v);
+};
+function drawSleepZ(c: C, x: number, y: number, t: number) {
+  c.save();
+  const cycle = Math.floor(t / 6);
+  for (let n = cycle - 1; n <= cycle + 1; n++) {
+    const start = n * 6 + zRnd(n * 17 + 4) * 2.2;
+    const life = 2.4 + zRnd(n * 13 + 7) * 1.5;
+    const age = t - start;
+    if (age < 0 || age > life) continue;
+    const count = 3 + Math.floor(zRnd(n * 11 + 2) * 3);
+    for (let k = 0; k < count; k++) {
+      const q = (age - k * 0.12) / life;
+      if (q < 0 || q > 1) continue;
+      const size = (2.2 + q * 10.5) / 7;
+      const bx = x + q * (10 + zRnd(n + k * 5) * 13) + Math.sin(q * 3 + k) * 1.4;
+      const by = y - q * (22 + zRnd(n * 3 + k) * 26) + k * 3;
+      c.globalAlpha = Math.sin(q * Math.PI) * 0.82;
+      drawPixelText(c, k < 2 ? "z" : "Z", bx, by, size, "#eaf6ff", 0);
+    }
+  }
+  c.globalAlpha = 1;
+  c.restore();
 }
 
 /** Spielmodul in der Größe eines anderen Spieleschachtes. */
@@ -1786,7 +1842,11 @@ function drawHouse(
   c.restore();
 
   // 1. Stock
-  wallBand(c, 270, 490, FD + SLAB, FO, "#b9808f", "#9c6676", 30);
+  if (gr?.schlafzimmer) {
+    drawBurgWand(c, 270, 490, FD + SLAB, FO);
+  } else {
+    wallBand(c, 270, 490, FD + SLAB, FO, "#b9808f", "#9c6676", 30);
+  }
   bathTiles(c, 490, OG_X1, FD + SLAB, FO);
   // Treppenhaus rechts (über EG und 1. Stock)
   wallBand(c, OG_X1, HR, FD + SLAB, FE, "#cdb78f", "#b79f74", 30);
@@ -1843,7 +1903,9 @@ function drawHouse(
   windowRect(c, sky, 330, 358, 64, 38, { curtain: "#c9453a" });
   windowRect(c, sky, 624, 364, 50, 36);
   windowRect(c, sky, 740, 236, 44, 78, { mull: 2 });
-  windowRect(c, sky, 334, 244, 62, 46, { curtain: "#7a3f55" });
+  if (!gr?.schlafzimmer) {
+    windowRect(c, sky, 334, 244, 62, 46, { curtain: "#7a3f55" });
+  }
   if (gr?.raumstation) drawSpaceWindow(c, RS.fenster.x, RS.fenster.y, RS.fenster.r);
   else windowRect(c, sky, 330, 98, 56, 44, { mull: 2 });
   roundWindow(c, sky, 590, 104, 20);
@@ -1883,14 +1945,18 @@ function drawHouse(
     line(c, 244, FO - 18, 244 + Math.cos(a) * 18, FO - 18 + Math.sin(a) * 26, "#3f8f5f", 3);
     disc(c, 244 + Math.cos(a) * 18, FO - 18 + Math.sin(a) * 26, 4, i % 2 ? "#54b071" : "#3f8f5f");
   }
-  c.beginPath();
-  c.ellipse(340, FO + 3, 90, 5, 0, 0, Math.PI * 2);
-  c.fillStyle = "#8a4f63";
-  c.fill();
-  bed(c, 282, FO);
-  nightstand(c, 396, FO);
-  wardrobe(c, 434, FO);
-  ceilingLamp(c, 340, FD + SLAB, 14, "#f2d9a0");
+  if (gr?.schlafzimmer) {
+    drawVampirSchlafzimmer(c, FO);
+  } else {
+    c.beginPath();
+    c.ellipse(340, FO + 3, 90, 5, 0, 0, Math.PI * 2);
+    c.fillStyle = "#8a4f63";
+    c.fill();
+    bed(c, 282, FO);
+    nightstand(c, 396, FO);
+    wardrobe(c, 434, FO);
+    ceilingLamp(c, 340, FD + SLAB, 14, "#f2d9a0");
+  }
   showerStatic(c, FO);
   wcTuer(c, WC_DOOR_X, FO);
   waschbeckenMitSpiegel(c, SINK_X, FO);
@@ -1959,10 +2025,29 @@ const GLASS_SEQ = ["gToSink", "gPick"] as const;
 const CAB_OPEN_SEQ = ["cToCab", "cOpen"] as const;
 const CAB_CLOSE_SEQ = ["kToCab", "kClose"] as const;
 const BRUSH_SEQ = ["bToCab", "bTake", "bStep", "bBend", "bBrush", "bUp", "bReturn", "bPut"] as const;
-const BED_SEQ = ["bToWardrobe", "bedOpen", "bedTop", "bedBottom", "bedPants", "bedPajama", "bedClose", "bedSit", "bedToss"] as const;
+const BED_SEQ = ["bToWardrobe", "bedOpen", "bedTop", "bedBottom", "bedPants", "bedPajama", "bedCape", "bedClose", "bedSit", "bedToss"] as const;
 const ALL_SEQS: readonly (readonly string[])[] = [
   SH_SEQ, DRESS_SEQ, GLASS_SEQ, CAB_OPEN_SEQ, CAB_CLOSE_SEQ, BRUSH_SEQ, BED_SEQ,
 ];
+/** Gruselhaus, Raum 03: Ablauf am und im Sarg. */
+type SargPhase =
+  | "zumSarg" | "deckelAuf" | "aufHocker" | "einsteigen" | "hinsetzen" | "brilleAb" | "werfen" | "deckelZu"
+  | "aufwachen" | "aufstehen" | "aussteigen" | "abHocker" | "deckelSchliessen" | "zurBrille" | "brilleAuf" | "brilleWeg";
+const SARG_DUR: Record<SargPhase, number> = {
+  zumSarg: 0, deckelAuf: 1.8, aufHocker: 1.0, einsteigen: 1.2, hinsetzen: 1.4, brilleAb: 1.3, werfen: 1.3,
+  deckelZu: 2.8, aufwachen: 2.0, aufstehen: 1.2, aussteigen: 1.2, abHocker: 0.9, deckelSchliessen: 1.8,
+  zurBrille: 0, brilleAuf: 2.3, brilleWeg: 1.4,
+};
+/** Nach dem Aufwachen: Befehle werden gemerkt und danach ausgeführt. */
+const SARG_WACH: SargPhase[] = ["aufwachen", "aufstehen", "aussteigen", "abHocker", "deckelSchliessen", "zurBrille", "brilleAuf", "brilleWeg"];
+const sanft = (v: number) => {
+  const k = v < 0 ? 0 : v > 1 ? 1 : v;
+  return k * k * (3 - 2 * k);
+};
+interface SargPose {
+  x: number; y: number; state: LuniState; expr: LuniExpr; face: 1 | -1; back: boolean; phase: number;
+  walk?: number; hand?: Pt | null; hand2?: Pt | null; backReach?: boolean; lean?: number; umhang?: number; shake?: number;
+}
 type ShPhase =
   | (typeof SH_SEQ)[number]
   | (typeof DRESS_SEQ)[number]
@@ -1983,7 +2068,7 @@ const SH_DUR: Partial<Record<ShPhase, number>> = {
   dOpen: 0.7, dDress: 1.8, dClose: 0.6,
   gPick: 2.3, cOpen: 1.2, kClose: 1.2,
   bTake: 1.1, bBend: 1.4, bBrush: 7, bUp: 1.3, bPut: 1.1,
-  bedOpen: 0.7, bedTop: 1.1, bedBottom: 1.3, bedPants: 1.2, bedPajama: 2.2, bedClose: 0.6, bedToss: 1.3,
+  bedOpen: 0.7, bedTop: 1.1, bedBottom: 1.3, bedPants: 1.2, bedPajama: 2.2, bedCape: 1.9, bedClose: 0.6, bedToss: 1.3,
 };
 /** Hinter dem Vorhang: nicht unterbrechbar */
 const SH_LOCKED: ShPhase[] = [
@@ -1992,7 +2077,7 @@ const SH_LOCKED: ShPhase[] = [
   "dOpen", "dDress", "dClose",
   "gPick", "cOpen", "kClose",
   "bTake", "bStep", "bBend", "bBrush", "bUp", "bReturn", "bPut",
-  "bedOpen", "bedTop", "bedBottom", "bedPants", "bedPajama", "bedClose", "bedSit", "bedToss",
+  "bedOpen", "bedTop", "bedBottom", "bedPants", "bedPajama", "bedCape", "bedClose", "bedSit", "bedToss",
 ];
 /** In diesen Schritten steht Luni in der Wanne, also hinter dem Vorhang. */
 const SH_INSIDE: ShPhase[] = [
@@ -2255,7 +2340,6 @@ export class House {
   private tossLanded = false;
   private asleep = false;
   private sleepT = 0;
-  private dreamCool = 0;
   private revealT = 0;
   private bedTimePending = false;
   private sleepRest = 0;
@@ -2263,9 +2347,29 @@ export class House {
   /** Schlafablauf: greifen -> ziehen -> drehen -> Haare legen -> schlafen */
   private sleepPhase: "grab" | "pull" | "turn" | "settle" | null = null;
   private sleepPhaseT = 0;
-  private dream: Dream | null = null;
   /** kurze Aufwachpose nach „Aufwachen“ */
   private wakeT = 0;
+  /* Gruselhaus, Raum 03: Sarg, Outfits, Brille, Kronleuchter */
+  /** Sargdeckel: 0 = zu, 1 = senkrecht offen. */
+  private sargDeckel = 0;
+  private sargPhase: SargPhase | null = null;
+  private sargT = 0;
+  private sargTon = false;
+  /** Luni ist im Sarg: Vorderwand und (fast geschlossener) Deckel liegen vor ihr. */
+  private imSarg = false;
+  /** Befehl, der sie geweckt hat; läuft nach dem Aussteigen. */
+  private nachAufwachen: string | null = null;
+  /** Vampir-Outfit: getragen, zuletzt gewählt, für heute Nacht gewählt. */
+  private vampirStil: number | null = null;
+  private vampirLetzt = -1;
+  private vampirNeu: number | null = null;
+  /** Wo die Brille gelandet ist (bis sie wieder aufgesetzt wird). */
+  private brillenZielName: BrillenZiel | null = null;
+  private brilleAmLeuchter = false;
+  /** Kronleuchter pendelt gedämpft nach (Winkel, Winkelgeschwindigkeit). */
+  private leuchterW = 0;
+  private leuchterV = 0;
+  private fledermausBlink = 0;
   /** Hinlegen nach dem Brillenwurf */
   private lieDown = false;
   private lieT = 0;
@@ -2356,9 +2460,12 @@ export class House {
     this.addc = this.ctx2(this.add);
     this.fixedClock = opts.clock ?? null;
     this.welt = opts.welt ?? "normal";
-    if (this.welt === "gruesel" && GRUSELRAEUME.musikzimmer) {
-      this.stations = musikzimmerStationen(STATIONS);
-      this.musikzimmer = new MusikzimmerAblauf();
+    if (this.welt === "gruesel") {
+      let st = STATIONS;
+      if (GRUSELRAEUME.musikzimmer) st = musikzimmerStationen(st);
+      if (GRUSELRAEUME.schlafzimmer) st = schlafzimmerStationen(st);
+      this.stations = st;
+      if (GRUSELRAEUME.musikzimmer) this.musikzimmer = new MusikzimmerAblauf();
     }
     const alt = opts.onTraumhaus;
     this.onWelt = opts.onWelt ?? (alt ? (z) => { if (z === "traum") alt(); } : null);
@@ -2407,8 +2514,6 @@ export class House {
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
     this.ro?.disconnect();
-    this.dream?.destroy();
-    this.dream = null;
     this.stopSax();
     this.saxMusic?.dispose();
     this.saxMusic = null;
@@ -2491,6 +2596,8 @@ export class House {
       golOnShelf: this.golOnShelf,
       golInserted: this.golInserted,
       smoke: this.smoke,
+      vampir: this.vampirStil,
+      vampirLetzt: this.vampirLetzt,
     };
   }
 
@@ -2523,6 +2630,9 @@ export class House {
     this.golInserted = s.golInserted;
     this.golOnShelf = s.golOnShelf || !s.golInserted;
     this.smoke = clamp(s.smoke, 0, 1);
+    const vi = s.vampir;
+    this.vampirStil = typeof vi === "number" && vi >= 0 && vi < VAMPIR_OUTFITS.length ? vi : null;
+    this.vampirLetzt = typeof s.vampirLetzt === "number" ? s.vampirLetzt : -1;
     this.dirty = true;
   }
 
@@ -2564,11 +2674,6 @@ export class House {
   private onDown = (e: PointerEvent) => {
     sfx.ensure();
     const [x, y] = this.toWorld(e);
-    if (this.dream) {
-      this.dream.unlock();
-      this.dream.onDown(x, y);
-      return;
-    }
     if (this.golFullscreen) {
       this.onGolFullscreenClick(x, y);
       return;
@@ -2596,11 +2701,6 @@ export class House {
   private onMove = (e: PointerEvent) => {
     if (e.pointerType === "touch") return;
     const [x, y] = this.toWorld(e);
-    if (this.dream) {
-      this.hover = null;
-      this.canvas.style.cursor = this.dream.hover(x, y) ? "pointer" : "default";
-      return;
-    }
     if (this.golFullscreen) {
       this.hover = null;
       const b = GOL_BTN;
@@ -2663,16 +2763,34 @@ export class House {
       this.startSh(this.outfit === "towel" ? "toSink" : "toWardrobe");
       return;
     }
-    if (id === "bett" && this.asleep && !this.dream) {
-      this.replayDream();
-      return;
+    // Gruselhaus, Raum 03: der Ablauf am Sarg ist nicht unterbrechbar. Nur auf
+    // dem Weg zum Sarg bricht ein anderer Wunsch ab; nach dem Aufwachen wird
+    // der zuletzt gewünschte Befehl gemerkt und danach ausgeführt.
+    if (this.sargPhase) {
+      if (this.sargPhase === "zumSarg" && id !== "bett") this.sargAbbrechen();
+      else {
+        if (this.sargWacht() && id !== "bett") this.nachAufwachen = id;
+        return;
+      }
     }
-    if (this.asleep && id !== "bett") {
-      // Jede andere Aktion weckt sie und gibt das Spiel frei.
-      this.finishDream(true);
+    // Schläft sie, ändert ein Klick aufs Bett bzw. den Sarg nichts.
+    if (id === "bett" && this.asleep) return;
+    if (this.asleep) {
+      // Jede andere Aktion weckt sie.
+      if (this.gruselSarg) {
+        this.sargAufwachen(id);
+        return;
+      }
+      this.aufwachen();
     }
     if (this.lieDown && id !== "bett") {
       this.lieDown = false;
+    }
+    if (id === "bett" && this.gruselSarg) {
+      // Gruselhaus: ein Klick auf den Sarg startet die Schlafroutine immer.
+      this.chain = [];
+      this.startBedRoutine();
+      return;
     }
     if (id === "bett") {
       const hour = this.clock.hour + this.clock.min / 60;
@@ -3176,11 +3294,11 @@ export class House {
   private updateMusikzimmer(dt: number, roomDt: number, live: boolean): boolean {
     const music = this.musikzimmer;
     if (!music) return false;
-    music.setPaused(document.visibilityState === "hidden" || !!this.dream);
+    music.setPaused(document.visibilityState === "hidden");
     this.pianoRefusal = Math.max(0, this.pianoRefusal - dt);
     const musical = (s: Station | null) => !!s && ["saxophon", "platten", "gitarre"].includes(s.id);
     const approachingPiano = this.pending?.id === "klavier" || (this.target?.id === "klavier" && this.activity?.id !== "klavier");
-    const busy = musical(this.activity) || musical(this.target) || musical(this.pending) || !!this.saxPhase || !!this.dream || this.asleep || approachingPiano;
+    const busy = musical(this.activity) || musical(this.target) || musical(this.pending) || !!this.saxPhase || this.asleep || approachingPiano;
     const appearing = music.update(roomDt, busy, live);
     if (appearing && this.activity?.id === "klavier") this.leaveMusicPiano(true);
     if (this.pianoRise > 0) {
@@ -3745,7 +3863,8 @@ export class House {
     this.updateShower(dt);
     this.updateBedToss(dt);
     this.updateBedState(dt);
-    this.updateDream(dt);
+    this.updateWake(dt);
+    this.updateSarg(dt);
     this.updateSax(dt);
     if (this.welt === "gruesel") this.raumFx.update(dt);
     // Alle paar Sekunden sichern, damit ein Absturz nichts kostet.
@@ -4137,18 +4256,27 @@ export class House {
       drawMusikzimmerEffects(ctx, this.musikzimmer, this.vorhang);
       drawMusiktuer(ctx, this.musikDoor);
     }
+    if (this.welt === "gruesel" && GRUSELRAEUME.schlafzimmer) {
+      drawSchlafzimmerEffects(ctx, this.elapsed, FLOOR_Y[2], { swing: this.leuchterW, blink: this.fledermausBlink });
+    }
     this.drawSax(ctx);
     this.drawCigPile(ctx);
     this.drawAshtrayTray(ctx);
     // Zigarette im Aschenbecher liegt AUF der Platte: Luni geht davor vorbei
     // und verdeckt sie wie jedes andere Objekt auf dem Tisch.
     this.drawAshtrayButt(ctx);
-    drawWardrobeOpen(ctx, 434, FLOOR_Y[2], this.wardrobeOpen, this.outfit !== "dressed" || this.towelOnRod);
+    if (this.welt === "gruesel" && GRUSELRAEUME.schlafzimmer) {
+      drawGothicWardrobeOpen(ctx, 434, FLOOR_Y[2], this.wardrobeOpen, this.outfit !== "dressed" || this.towelOnRod);
+    } else {
+      drawWardrobeOpen(ctx, 434, FLOOR_Y[2], this.wardrobeOpen, this.outfit !== "dressed" || this.towelOnRod);
+    }
     if (this.glassesInSink) glassesObj(ctx, SINK_DROP[0], SINK_DROP[1], 0.12, 0.45);
     this.drawBedToss(ctx);
     this.drawGlassesRest(ctx);
     drawCabinetOpen(ctx, this.cabinetOpen, this.brushInCab);
+    this.drawSargPass(ctx, false);
     this.drawLuniLayered(ctx);
+    this.drawSargPass(ctx, true);
     this.drawGlassesMoving(ctx);
     this.drawGolInHand(ctx);
     // Rauch liegt über allem – Luni sieht erst wieder etwas, wenn die Tür auf ist
@@ -4169,7 +4297,6 @@ export class House {
 
     this.drawHoverLabel(ctx);
     if (this.golFullscreen) this.drawGolFullscreen(ctx);
-    if (this.dream) this.dream.draw(ctx, this.elapsed);
   }
 
   private drawKellerDoor(c: C) {
@@ -5059,12 +5186,6 @@ export class House {
 
   private onKey = (e: KeyboardEvent) => {
     if (e.code === "KeyM") this.musikzimmer?.unlock();
-    if (this.dream) {
-      if (this.dream.onKey(e.code)) {
-        e.preventDefault();
-        return;
-      }
-    }
     if (e.code === "Escape" && this.golFullscreen) this.golFullscreen = false;
   };
 
@@ -5073,12 +5194,11 @@ export class House {
 
   private onVisibility = () => {
     if (this.musikzimmer) {
-      this.musikzimmer.setPaused(document.visibilityState === "hidden" || !!this.dream);
+      this.musikzimmer.setPaused(document.visibilityState === "hidden");
       this.last = performance.now();
     }
     if (document.visibilityState === "hidden") {
       this.speichern();
-      if (this.dream && !this.dream.paused) this.dream.pause();
       if (this.saxPhase === "play" && this.saxStarted && this.saxMusic) {
         this.saxPausedAt = this.saxMusic.pause();
         this.saxStarted = false;
@@ -5150,6 +5270,10 @@ export class House {
     if (!this.glassesOn && !this.glassesInHand && (phase === "toSink" || phase === "glassesOff" || phase === "tossGlasses")) {
       phase = "toShower";
     }
+    // Den Umhang gibt es nur bei Gruselhaus-Outfits mit Umhang.
+    if (phase === "bedCape" && !(this.gruselSarg && this.vampirNeu !== null && VAMPIR_OUTFITS[this.vampirNeu].umhang)) {
+      phase = "bedClose";
+    }
     this.shPhase = phase;
     this.shT = 0;
     if (SH_STAND[phase]) this.goTo(this.shStation(phase));
@@ -5180,7 +5304,6 @@ export class House {
     if (this.bedTimePending && this.sick < 0.35 && this.night < 0.45) this.bedTimePending = false;
     if (this.asleep) {
       this.sleepT += dt;
-      if (this.dreamCool > 0) this.dreamCool = Math.max(0, this.dreamCool - dt);
     }
     if (this.revealT > 0) this.revealT = Math.max(0, this.revealT - dt);
     this.updateBedRoutine(dt);
@@ -5196,6 +5319,9 @@ export class House {
     if (!this.shPhase && this.wet > 0) this.wet = Math.max(0, this.wet - dt / 90);
     const ph = this.shPhase;
     if (!ph) return;
+    // Gruselhaus: Bett-Phasen schaltet allein updateBedRoutine weiter. Sonst
+    // liefen sie doppelt so schnell und der Abzweig zum Sarg würde übersprungen.
+    if (this.gruselSarg && (BED_SEQ as readonly string[]).includes(ph)) return;
     const dur = SH_DUR[ph];
     if (dur === undefined) {
       // Laufschritt: endet, sobald sie am Ziel steht
@@ -5322,7 +5448,17 @@ export class House {
         if (p >= 0.4) this.outfit = "towel";
         break;
       case "bedPajama":
-        if (p >= 0.75) this.outfit = "dressed";
+        if (p >= 0.75 && this.outfit !== "dressed") {
+          this.outfit = "dressed";
+          if (this.gruselSarg && this.vampirNeu !== null) {
+            const v = VAMPIR_OUTFITS[this.vampirNeu];
+            this.vampirStil = this.vampirNeu;
+            this.vampirLetzt = this.vampirNeu;
+            this.pyjama = { top: v.top, bottom: v.bottom };
+          }
+        }
+        break;
+      case "bedCape":
         break;
       case "bedToss":
         // Der Wurf beginnt genau einmal; danach gehört die Zeitachse dem Flug.
@@ -5334,6 +5470,14 @@ export class House {
         return;
     }
     if (p >= 1) {
+      if (ph === "bedClose" && this.gruselSarg) {
+        // Gruselhaus: statt aufs Bett zum Sarg.
+        this.shPhase = null;
+        this.shT = 0;
+        this.wardrobeOpen = 0;
+        this.sargStart("zumSarg");
+        return;
+      }
       if (ph === "bedSit") {
         this.shPhase = null;
         this.shT = 0;
@@ -5376,7 +5520,9 @@ export class House {
         return { state: "glassesOn", face: 1, phase: p, back: false };
       case "bedOpen":
       case "bedClose":
-        return { state: "act", face: 1, phase: p, back: false };
+        return { state: "act", face: 1, phase: p, back: this.gruselSarg };
+      case "bedCape":
+        return { state: "act", face: 1, phase: 0, back: true };
       case "bedTop":
       case "bedPants":
         return { state: "undress", face: 1, phase: p, back: true };
@@ -5487,6 +5633,312 @@ export class House {
     if (this.towelOnRod) drawTowelOnRod(c, F);
   }
 
+  /* ------------------- Gruselhaus, Raum 03: Ablauf am Sarg ------------------- */
+
+  private get gruselSarg() {
+    return this.welt === "gruesel" && GRUSELRAEUME.schlafzimmer;
+  }
+
+  private sargWacht() {
+    return this.sargPhase !== null && SARG_WACH.includes(this.sargPhase);
+  }
+
+  private sargStart(ph: SargPhase) {
+    this.sargPhase = ph;
+    this.sargT = 0;
+    this.sargTon = false;
+    const stand = (x: number, id: string): Station => ({ id, label: "", floor: 2, x, face: 1, state: "idle", expr: "neutral", hits: [] });
+    if (ph === "zumSarg") this.goTo(stand(SCHLAFZIMMER.sarg.mitte, "v_sarg"));
+    if (ph === "zurBrille") this.goTo(stand(this.brillenZielName === "kelch" ? 404 : 388, "v_brille"));
+  }
+
+  private sargAbbrechen() {
+    this.sargPhase = null;
+    this.sargT = 0;
+    this.imSarg = false;
+  }
+
+  /** Ein Befehl weckt sie: Deckel aufdrücken, aufsetzen, aussteigen, Deckel schließen. */
+  private sargAufwachen(id: string) {
+    this.asleep = false;
+    this.sleepT = 0;
+    this.nachAufwachen = id === "bett" ? null : id;
+    this.activity = null;
+    this.target = null;
+    this.cur = null;
+    this.path = [];
+    this.pending = null;
+    this.chain = [];
+    this.lf = 2;
+    this.lx = SCHLAFZIMMER.sitzX;
+    this.imSarg = true;
+    this.sargStart("aufwachen");
+  }
+
+  /** Ablauf zu Ende: der Befehl, der sie geweckt hat, läuft jetzt. */
+  private sargFrei() {
+    this.sargPhase = null;
+    this.sargT = 0;
+    this.imSarg = false;
+    this.lface = 1;
+    const id = this.nachAufwachen;
+    this.nachAufwachen = null;
+    if (id) this.command(id);
+  }
+
+  /** Hüfte beim Sitzen im Sarg: Drehpunkt fürs Zurücklehnen. */
+  private sargHuefte(): Pt {
+    return [SCHLAFZIMMER.sitzX, FLOOR_Y[2] - 3 + (-19 + 9) * LUNI_SCALE];
+  }
+
+  private updateSarg(dt: number) {
+    if (this.leuchterW !== 0 || this.leuchterV !== 0) {
+      this.leuchterV += (-15.4 * this.leuchterW - 1.6 * this.leuchterV) * dt;
+      this.leuchterW += this.leuchterV * dt;
+      if (Math.abs(this.leuchterW) < 0.0004 && Math.abs(this.leuchterV) < 0.002) {
+        this.leuchterW = 0;
+        this.leuchterV = 0;
+      }
+    }
+    if (this.fledermausBlink > 0) this.fledermausBlink = Math.max(0, this.fledermausBlink - dt);
+    const ph = this.sargPhase;
+    if (!ph) return;
+    if (ph === "zumSarg" || ph === "zurBrille") {
+      const want = ph === "zumSarg" ? "v_sarg" : "v_brille";
+      if (!this.cur && this.path.length === 0 && !this.pending && this.activity?.id === want) {
+        this.activity = null;
+        this.target = null;
+        this.sargStart(ph === "zumSarg" ? "deckelAuf" : "brilleAuf");
+      }
+      return;
+    }
+    this.sargT += dt;
+    const p = clamp(this.sargT / SARG_DUR[ph], 0, 1);
+    const e = sanft(p);
+    switch (ph) {
+      case "deckelAuf":
+      case "aufwachen":
+        this.sargDeckel = e;
+        if (!this.sargTon && p > 0.06) {
+          sfx.knarzen();
+          this.sargTon = true;
+        }
+        break;
+      case "deckelZu":
+      case "deckelSchliessen":
+        this.sargDeckel = 1 - e;
+        if (!this.sargTon && p >= 0.97) {
+          sfx.holzDumpf();
+          this.sargTon = true;
+        }
+        break;
+      case "einsteigen":
+        this.imSarg = p >= 0.45;
+        break;
+      case "aussteigen":
+        this.imSarg = p < 0.55;
+        break;
+      case "brilleAb":
+        if (p >= 0.6 && this.glassesOn) {
+          this.glassesOn = false;
+          this.glassesInHand = true;
+        }
+        break;
+      case "werfen":
+        if (p >= 0.55 && this.glassesInHand && this.bedPhase !== "toss") this.beginBedToss();
+        break;
+      case "brilleAuf":
+        if (p >= 0.32 && this.glassesRest) {
+          this.glassesRest = null;
+          this.brilleAmLeuchter = false;
+          this.glassesInHand = true;
+        }
+        if (p >= 0.84 && this.glassesInHand) {
+          this.glassesInHand = false;
+          this.glassesOn = true;
+          this.brillenZielName = null;
+        }
+        break;
+      default:
+        break;
+    }
+    if (p < 1) return;
+    switch (ph) {
+      case "deckelAuf":
+        this.sargStart("aufHocker");
+        break;
+      case "aufHocker":
+        this.sargStart("einsteigen");
+        break;
+      case "einsteigen":
+        this.sargStart("hinsetzen");
+        break;
+      case "hinsetzen":
+        this.sargStart(this.glassesOn ? "brilleAb" : "deckelZu");
+        break;
+      case "brilleAb":
+        this.sargStart("werfen");
+        break;
+      case "werfen":
+        break; // wartet auf die Landung der Brille (updateBedToss)
+      case "deckelZu":
+        this.sargPhase = null;
+        this.asleep = true;
+        this.sleepT = 0;
+        break;
+      case "aufwachen":
+        this.sargStart("aufstehen");
+        break;
+      case "aufstehen":
+        this.sargStart("aussteigen");
+        break;
+      case "aussteigen":
+        this.sargStart("abHocker");
+        break;
+      case "abHocker":
+        this.lx = SCHLAFZIMMER.sarg.mitte;
+        this.sargStart("deckelSchliessen");
+        break;
+      case "deckelSchliessen": {
+        const z = this.brillenZielName;
+        if (!this.glassesOn && this.glassesRest && z && brilleErreichbar(z)) this.sargStart("zurBrille");
+        else if (!this.glassesOn && this.glassesRest) this.sargStart("brilleWeg");
+        else this.sargFrei();
+        break;
+      }
+      default:
+        this.sargFrei();
+        break;
+    }
+  }
+
+  /** Pose für den aktuellen Sarg-Schritt (oder das Umlegen des Umhangs). */
+  private sargPose(): SargPose | null {
+    if (!this.gruselSarg || this.lf !== 2) return null;
+    const F = FLOOR_Y[2];
+    const S = SCHLAFZIMMER;
+    const mix = (a: Pt, b: Pt, k: number): Pt => [lerp(a[0], b[0], k), lerp(a[1], b[1], k)];
+    if (this.shPhase === "bedCape") {
+      const p = clamp(this.shT / (SH_DUR.bedCape as number), 0, 1);
+      const x = 458;
+      if (p < 0.25) return { x, y: F, state: "act", expr: "focus", face: 1, back: true, phase: 0, umhang: 0 };
+      const q = clamp((p - 0.25) / 0.5, 0, 1);
+      const zu = sanft((p - 0.75) / 0.25);
+      const sy = F - 36.5;
+      const weit = Math.sin(Math.PI * Math.min(1, q * 1.15)) * 5;
+      const l: Pt = [lerp(x - 9 - weit, x - 2.5, zu), lerp(sy - 2 - weit * 0.4, sy - 7, zu)];
+      const r: Pt = [lerp(x + 9 + weit, x + 2.5, zu), lerp(sy - 2 - weit * 0.4, sy - 7, zu)];
+      return { x, y: F, state: "idle", expr: "focus", face: 1, back: true, phase: 0, hand: l, hand2: r, backReach: true, umhang: sanft(q) };
+    }
+    const ph = this.sargPhase;
+    if (!ph || ph === "zumSarg" || ph === "zurBrille") return null;
+    const p = clamp(this.sargT / SARG_DUR[ph], 0, 1);
+    const e = sanft(p);
+    const mitte = S.sarg.mitte;
+    const hx = S.hocker.x;
+    const hy = F - S.hocker.hoehe;
+    const innen = F - 10;
+    const sitzY = F - 3;
+    const sx = S.sitzX;
+    const tief = 9 * LUNI_SCALE;
+    const schlaufe = (lean: number): Pt => {
+      const [lx, ly] = deckelSchlaufe(F, this.sargDeckel);
+      const [px, py] = this.sargHuefte();
+      const cs = Math.cos(lean);
+      const sn = Math.sin(lean);
+      return [px + (lx - px) * cs - (ly - py) * sn, py + (lx - px) * sn + (ly - py) * cs];
+    };
+    switch (ph) {
+      case "deckelAuf":
+      case "deckelSchliessen":
+        return {
+          x: mitte, y: F, state: "idle", expr: "focus", face: 1, back: true, phase: 0, backReach: true,
+          hand: deckelGriff(F, this.sargDeckel, mitte - 7), hand2: deckelGriff(F, this.sargDeckel, mitte + 7),
+        };
+      case "aufHocker":
+        return {
+          x: lerp(mitte, hx, sanft(p / 0.55)), y: lerp(F, hy, sanft((p - 0.55) / 0.45)),
+          state: p < 0.97 ? "walk" : "idle", expr: "neutral", face: 1, back: true, phase: 0, walk: p * 9,
+        };
+      case "einsteigen":
+        return { x: hx, y: lerp(hy, innen, e) - Math.sin(Math.PI * p) * 6, state: "walk", expr: "focus", face: 1, back: true, phase: 0, walk: p * 7 };
+      case "hinsetzen": {
+        if (p < 0.35) {
+          const q = p / 0.35;
+          return { x: hx, y: innen, state: "turn", expr: "neutral", face: 1, back: q < 0.5, phase: q < 0.5 ? q : 1 - q };
+        }
+        const s = sanft((p - 0.35) / 0.65);
+        return { x: lerp(hx, sx, s), y: lerp(innen, sitzY, s), state: "standup", expr: "happy", face: 1, back: false, phase: 1 - s };
+      }
+      case "brilleAb":
+        return { x: sx, y: sitzY + tief, state: "glasses", expr: "neutral", face: 1, back: false, phase: p };
+      case "werfen":
+        return { x: sx, y: sitzY + tief, state: "toss", expr: "happy", face: 1, back: false, phase: p };
+      case "deckelZu": {
+        const lean = e * 1.25;
+        return {
+          x: sx, y: sitzY, state: "sit", expr: p > 0.55 ? "sleep" : "happy", face: 1, back: false, phase: 0,
+          lean, hand2: this.sargDeckel >= 0.25 ? schlaufe(lean) : null,
+        };
+      }
+      case "aufwachen": {
+        const lean = (1 - e) * 1.25;
+        return {
+          x: sx, y: sitzY, state: "sit", expr: p < 0.45 ? "tired" : "neutral", face: 1, back: false, phase: 0,
+          lean, hand2: this.sargDeckel >= 0.25 ? schlaufe(lean) : null,
+        };
+      }
+      case "aufstehen": {
+        if (p < 0.65) {
+          const s = sanft(p / 0.65);
+          return { x: sx, y: lerp(sitzY, innen, s), state: "standup", expr: "neutral", face: 1, back: false, phase: s };
+        }
+        const q = (p - 0.65) / 0.35;
+        return { x: sx, y: innen, state: "turn", expr: "neutral", face: 1, back: q >= 0.5, phase: q < 0.5 ? q : 1 - q };
+      }
+      case "aussteigen":
+        return { x: hx, y: lerp(innen, hy, e) - Math.sin(Math.PI * p) * 6, state: "walk", expr: "focus", face: 1, back: true, phase: 0, walk: p * 7 };
+      case "abHocker":
+        return {
+          x: lerp(hx, mitte, sanft((p - 0.45) / 0.55)), y: lerp(hy, F, sanft(p / 0.45)),
+          state: p < 0.97 ? "walk" : "idle", expr: "neutral", face: 1, back: true, phase: 0, walk: p * 9,
+        };
+      case "brilleAuf": {
+        const z = BRILLEN_ZIELE[this.brillenZielName ?? "nachttisch"];
+        const x = this.lx;
+        const ruhe: Pt = [x - 8.2, F - 23.2];
+        const auge: Pt = [x + 7.1, F - 49.9];
+        const g: Pt = [z.x, z.y];
+        const h = p < 0.3 ? mix(ruhe, g, sanft(p / 0.3)) : p < 0.4 ? g : p < 0.8 ? mix(g, auge, sanft((p - 0.4) / 0.4)) : p < 0.9 ? auge : mix(auge, ruhe, sanft((p - 0.9) / 0.1));
+        return { x, y: F, state: "idle", expr: p > 0.85 ? "happy" : "focus", face: 1, back: false, phase: 0, hand: h };
+      }
+      case "brilleWeg":
+        return { x: this.lx, y: F, state: "think", expr: "annoyed", face: 1, back: false, phase: 0, shake: Math.sin(p * 21) * Math.sin(Math.PI * p) };
+      default:
+        return null;
+    }
+  }
+
+  /** Sarg in zwei Durchgängen: was hinter Luni liegt, und was vor ihr liegt. */
+  private drawSargPass(c: C, nachLuni: boolean) {
+    if (!this.gruselSarg) return;
+    const F = FLOOR_Y[2];
+    const o = this.sargDeckel;
+    const deckelVorn = this.imSarg && o < 0.25;
+    if (!nachLuni) {
+      if (o > 0.02) drawSargInnen(c, F);
+      if (!deckelVorn) drawSargDeckel(c, F, o);
+      if (!this.imSarg) {
+        drawSargFront(c, F);
+        drawTrittschemel(c, F);
+      }
+    } else if (this.imSarg) {
+      drawSargFront(c, F);
+      drawTrittschemel(c, F);
+      if (deckelVorn) drawSargDeckel(c, F, o);
+    }
+  }
+
   /* ------------------------------ Bett-Routine --------------------------- */
 
   /** Jeder Pyjama sieht anders aus: Oberteil und Hose unabhängig. */
@@ -5499,19 +5951,24 @@ export class House {
   }
 
   private startBedRoutine() {
-    // Nutzeraktion Bettklick: Audio für den später automatischen Traum freigeben.
+    // Nutzeraktion Bettklick: Audio freigeben.
     sfx.ensure();
-    this.glassesRest = null;
+    // Im Gruselhaus bleibt eine unerreichbar gelandete Brille liegen (kein Teleport).
+    if (!this.gruselSarg) this.glassesRest = null;
     this.chain = [];
     this.smokeRequested = false;
     this.bedTimePending = false;
-    if (!this.pyjama) this.makePajama();
+    if (this.gruselSarg) {
+      // Jede Nacht ein anderes edles Vampir-Outfit, nie zweimal hintereinander.
+      this.vampirNeu = naechstesOutfit(this.vampirLetzt);
+    } else if (!this.pyjama) this.makePajama();
     this.startSh("bToWardrobe");
   }
 
   private beginBedToss() {
     // Brille vom Bett aus hochwerfen. 20 %: bleibt an Gardinenstange, Lampe
     // oder Schrank hängen; 40 %: Nachttisch; sonst: Bett oder Boden.
+    if (this.gruselSarg) this.brillenZielName = brillenZiel();
     const r = Math.random();
     this.tossLand = r < 0.4 ? 0 : r < 0.6 ? 1 + Math.floor(Math.random() * 3) : Math.random() < 0.5 ? 4 : 5;
     this.tossUp = 0;
@@ -5524,6 +5981,10 @@ export class House {
 
   /** Landeplätze: 0 Nachttisch, 1 Gardinenstange, 2 Lampe, 3 Schrank, 4 Bett, 5 Boden */
   private tossTarget(): Pt {
+    if (this.gruselSarg && this.brillenZielName) {
+      const z = BRILLEN_ZIELE[this.brillenZielName];
+      return [z.x, z.y];
+    }
     switch (this.tossLand) {
       case 1:
         return [352, 226];
@@ -5554,7 +6015,13 @@ export class House {
         this.glassesInHand = false;
         const rot = this.tossLand === 0 ? 0.1 : this.tossLand === 4 || this.tossLand === 5 ? 0.6 : 1.35;
         const sc = this.tossLand === 0 ? 0.45 : this.tossLand === 4 || this.tossLand === 5 ? 0.8 : 0.35;
-        this.glassesRest = { x: tx, y: ty, rot, scale: sc };
+        if (this.gruselSarg && this.brillenZielName) {
+          const z = BRILLEN_ZIELE[this.brillenZielName];
+          this.glassesRest = { x: z.x, y: z.y, rot: z.rot, scale: z.scale };
+          this.brilleAmLeuchter = this.brillenZielName === "leuchter";
+          if (this.brilleAmLeuchter) this.leuchterV += 0.5;
+          if (this.brillenZielName === "fledermaus") this.fledermausBlink = 0.7;
+        } else this.glassesRest = { x: tx, y: ty, rot, scale: sc };
         sfx.ui();
       }
       void tx;
@@ -5564,6 +6031,11 @@ export class House {
     if (this.tossLanded && this.bedPhase === "toss") {
       // Nach dem Landen: hinsetzen, zudecken, Hand unter das Ohr.
       this.bedPhase = null;
+      if (this.gruselSarg) {
+        // Gruselhaus: Deckel zuziehen und dabei zurücklehnen.
+        this.sargStart("deckelZu");
+        return;
+      }
       this.pending = null;
       this.activity = null;
       this.target = null;
@@ -5581,6 +6053,11 @@ export class House {
   private drawGlassesRest(c: C) {
     const g = this.glassesRest;
     if (!g) return;
+    if (this.brilleAmLeuchter) {
+      const [px, py] = leuchterPunkt(g.x, g.y, this.leuchterW);
+      glassesObj(c, px, py, g.rot + this.leuchterW, g.scale);
+      return;
+    }
     glassesObj(c, g.x, g.y, g.rot, g.scale);
   }
 
@@ -5589,9 +6066,12 @@ export class House {
     const T = 1.25;
     const u = this.tossLanded ? 1 : clamp(this.tossUp / T, 0, 1);
     const [x1, y1] = this.tossTarget();
-    const x0 = 340;
-    const y0 = 306;
-    const hgt = 70;
+    const imGrusel = this.gruselSarg;
+    const x0 = imGrusel ? SCHLAFZIMMER.sitzX + 9 : 340;
+    const y0 = imGrusel ? FLOOR_Y[2] - 52 : 306;
+    // Hoher Bogen, aber nie durch die Zimmerdecke (Decke bei y 212).
+    const hgt = imGrusel ? clamp((y0 + y1) / 2 - 216, 12, 70) : 70;
+    if (u >= 1 && imGrusel) return;
     const x = lerp(x0, x1, u);
     const y = lerp(y0, y1, u) - 4 * hgt * u * (1 - u);
     if (u < 1) glassesObj(c, x, y, u * Math.PI * 5, lerp(1, 0.4, u * u));
@@ -5600,43 +6080,22 @@ export class House {
     else glassesObj(c, x1, y1, 1.35, 0.35);
   }
 
-  private startDream() {
-    if (this.dream) return;
-    this.dream = new Dream({
-      audioOk: () => sfx.ensure(),
-      // Einmal an die tatsächlich gezeichnete Schlafpose gebunden.
-      sleepAnchor: () => [336, FLOOR_Y[2] - 57],
-      onEnd: () => this.finishDream(false),
-      onWake: () => this.finishDream(true),
-    });
-    sfx.ensure();
-  }
-
-  /** Traum vorbei: Luni bleibt schlafen oder wacht auf. */
-  private finishDream(wake: boolean) {
-    this.dream?.destroy();
-    this.dream = null;
-    if (wake) {
-      this.glassesOn = true;
-      this.glassesRest = null;
-      this.asleep = false;
-      this.sleepT = 0;
-      this.bedSitHair = 0;
-      this.activity = null;
-      this.target = null;
-      this.cur = null;
-      this.path = [];
-      this.pending = null;
-      this.lf = 2;
-      this.lx = 360;
-      this.dirty = true;
-      this.wakeT = 1.2;
-    } else {
-      this.asleep = true;
-      this.sleepT = 0;
-      // Kein Endlos-Loop: erst eine bewusste Aktion startet den Traum erneut.
-      this.sleepRest = 1e9;
-    }
+  /** Aufwachen im normalen Haus: wie bisher aufstehen, Brille wieder auf. */
+  private aufwachen() {
+    this.glassesOn = true;
+    this.glassesRest = null;
+    this.asleep = false;
+    this.sleepT = 0;
+    this.bedSitHair = 0;
+    this.activity = null;
+    this.target = null;
+    this.cur = null;
+    this.path = [];
+    this.pending = null;
+    this.lf = 2;
+    this.lx = 360;
+    this.dirty = true;
+    this.wakeT = 1.2;
   }
 
   /** Fortschritt des Zudeckens für die Zeichnung. */
@@ -5661,29 +6120,8 @@ export class House {
     }
   }
 
-  private updateDream(dt: number) {
+  private updateWake(dt: number) {
     if (this.wakeT > 0) this.wakeT = Math.max(0, this.wakeT - dt);
-    if (!this.dream) return;
-    this.dream.update(dt);
-  }
-
-  /** Optionaler Neustart: Klick auf das Bett, während sie schläft. */
-  replayDream() {
-    if (this.dream) return;
-    this.sleepRest = 0;
-    this.sleepT = 99;
-    this.startDream();
-  }
-
-  /** Traum von außen starten (Tests, später ggf. Menü). */
-  startDreamNow() {
-    this.asleep = true;
-    this.startDream();
-  }
-
-  /** Ist gerade ein Traum zu sehen? */
-  get dreaming() {
-    return this.dream !== null;
   }
 
   private updateBedState(dt: number) {
@@ -5712,7 +6150,7 @@ export class House {
     }
 
     // Zudecken und Zurechtlegen. Erst wenn die Decke am Kinn sitzt und sie auf
-    // der Seite liegt, gilt sie als eingeschlafen (und der Traum darf starten).
+    // der Seite liegt, gilt sie als eingeschlafen.
     if (this.sleepPhase) {
       this.sleepPhaseT += dt;
       const d = { grab: 0.75, pull: 1.9, turn: 1.3, settle: 1.4 } as const;
@@ -5736,10 +6174,6 @@ export class House {
     if (!this.asleep) return;
     // Beim Einschlafen zuerst die Haare neben das Ohr legen, dann still liegen.
     if (this.bedSitHair < 1) this.bedSitHair = Math.min(1, this.bedSitHair + dt * 0.8);
-    // Nach 5 Sekunden Schlaf beginnt der Traum – einmal pro Schlafphase.
-    if (this.sleepT > 5 && this.sleepRest <= 0 && !this.dream && this.shPhase === null) {
-      this.startDream();
-    }
   }
 
   /** Brille in der Hand (über dem Gesicht) oder im hohen Bogen ins Becken. */
@@ -6016,6 +6450,11 @@ export class House {
 
   private drawLuniNow(c: C) {
     if (this.alpha <= 0.01) return;
+    if (this.gruselSarg && this.asleep) {
+      // Sie liegt im geschlossenen Sarg: nur die Zzz steigen aus der Deckelfuge.
+      drawSleepZ(c, SCHLAFZIMMER.sitzX - 8, FLOOR_Y[2] - 36, this.sleepT);
+      return;
+    }
     const a = this.cur;
     let x = this.lx;
     let y: number = FLOOR_Y[this.lf];
@@ -6159,12 +6598,13 @@ export class House {
       this.hand[0] = wh[0];
       this.hand[1] = wh[1];
       c.restore();
-      drawBlanket(c, this.elapsed, e);
+      const inSarg = this.welt === "gruesel" && GRUSELRAEUME.schlafzimmer;
+      drawBlanket(c, this.elapsed, e, inSarg);
       return;
     }
     if (this.sleepPhase || this.asleep) {
       // Schlafszene: Kissen -> Hand -> Haare -> Kopf, Decke bis zum Kinn.
-      st = STATIONS.find((sn) => sn.id === "bett") ?? null;
+      st = this.stations.find((sn) => sn.id === "bett") ?? null;
       x = 330;
       y = FLOOR_Y[2];
       yOff = -20;
@@ -6174,8 +6614,9 @@ export class House {
       const pr = this.sleepProgress();
       hairAside = pr.hair;
       this.lastPose = "sleep";
-      drawBedScene(c, x, y + yOff, this.elapsed, this.pyjama, pr);
-      if (this.asleep && !this.dream && this.sleepRest > 0) drawSleepZ(c, x + 6, y - 44, this.sleepT);
+      const inSarg = this.welt === "gruesel" && GRUSELRAEUME.schlafzimmer;
+      drawBedScene(c, x, y + yOff, this.elapsed, this.pyjama, pr, inSarg);
+      if (this.asleep) drawSleepZ(c, x + 6, y - 44, this.sleepT);
       return;
     }
     const shp = this.showerPose();
@@ -6276,11 +6717,51 @@ export class House {
       saxHand = this.doorHand;
     }
 
+    // Gruselhaus, Raum 03: Posen am und im Sarg, Umhang beim Umziehen.
+    let sargLean = 0;
+    let sargBack = false;
+    let sargShake = 0;
+    let umhang = 1;
+    const sp = this.sargPose();
+    if (sp) {
+      x = sp.x;
+      y = sp.y;
+      yOff = 0;
+      state = sp.state;
+      expr = sp.expr;
+      face = sp.face;
+      back = sp.back;
+      posePhase = sp.phase;
+      if (sp.walk !== undefined) walkPhase = sp.walk;
+      saxHand = sp.hand ?? null;
+      saxHand2 = sp.hand2 ?? null;
+      sargLean = sp.lean ?? 0;
+      sargBack = !!sp.backReach;
+      sargShake = sp.shake ?? 0;
+      if (sp.umhang !== undefined) umhang = sp.umhang;
+      st = null;
+      onStair = false;
+    }
+    if (this.shPhase === "bedPajama") umhang = 0;
+
     c.save();
     if (clip) {
       c.beginPath();
       c.rect(CEL_X0, FE + SLAB, HR - CEL_X0, FK - FE - SLAB);
       c.clip();
+    }
+    if (this.imSarg) {
+      // Im Sarg: alles unterhalb der Vorderkante liegt hinter der Wand.
+      c.beginPath();
+      c.rect(0, 0, W, FLOOR_Y[2] - SARG.rand);
+      c.clip();
+    }
+    if (sargLean) {
+      // Zurücklehnen um die Hüfte – Längen und Proportionen bleiben gleich.
+      const [hx, hy] = this.sargHuefte();
+      c.translate(hx, hy);
+      c.rotate(-sargLean);
+      c.translate(-hx, -hy);
     }
     const hiddenInWc =
       this.wcInside && st?.id === "wctuer" && this.wcOpen < 0.55;
@@ -6306,9 +6787,12 @@ export class House {
       wet: this.wet,
       glasses: this.glassesOn,
       pajama: this.outfit === "dressed" ? this.pyjama : null,
+      vampir: this.outfit === "dressed" && this.vampirStil !== null ? VAMPIR_OUTFITS[this.vampirStil] : null,
+      umhang,
+      backReach: sargBack,
       hairAside,
       pianoSeat: pianoPose,
-      headShake: this.pianoRefusal > 0 ? Math.sin((.9 - this.pianoRefusal) * 21) * Math.sin(Math.PI * this.pianoRefusal / .9) : 0,
+      headShake: sargShake ? sargShake : this.pianoRefusal > 0 ? Math.sin((.9 - this.pianoRefusal) * 21) * Math.sin(Math.PI * this.pianoRefusal / .9) : 0,
       gaze: this.pianoEscape ? 1 : 0,
       footTap: saxFootTap,
       sway: saxSway,
@@ -6457,9 +6941,10 @@ export class House {
     }
     if (st?.prop) drawProp(c, st.prop, hand[0], hand[1], face);
     if (st?.blanket) {
+      const inSarg = this.welt === "gruesel" && GRUSELRAEUME.schlafzimmer;
       const bx = st.x - 8;
-      rrect(c, bx, FO - 36, 392 - bx, 22, 7, "#3f7f8c");
-      rect(c, bx + 3, FO - 30, 392 - bx - 8, 2, "rgba(255,255,255,.35)");
+      rrect(c, bx, FO - 36, 392 - bx, 22, 7, inSarg ? "#580f1a" : "#3f7f8c");
+      rect(c, bx + 3, FO - 30, 392 - bx - 8, 2, inSarg ? "#c9a46a" : "rgba(255,255,255,.35)");
     }
     if (st?.zzz) drawZzz(c, x - 22, y - 58, this.elapsed, 1);
     c.restore();
