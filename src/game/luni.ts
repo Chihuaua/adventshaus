@@ -144,6 +144,12 @@ export interface LuniOpts {
   pajama?: { top: string; bottom: string } | null;
   /** 0..1: in der Seitenlage die Haare neben das Ohr legen */
   hairAside?: number;
+  /** Nur Musikzimmer: frontaler Hocker, 0 = stehen, 1 = sitzen. */
+  pianoSeat?: number;
+  /** Verneinende Kopfbewegung, ohne die laufende Koerperpose zu ersetzen. */
+  headShake?: number;
+  /** Blick im Figurenraum; die Spiegelung folgt weiterhin face. */
+  gaze?: number;
 }
 
 /**
@@ -1056,7 +1062,7 @@ function drawHairFront(ctx: C, flow: number, up: boolean, lenK: number) {
 
 /* ------------------------------ Gesicht -------------------------------- */
 
-function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = true) {
+function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = true, gaze = 0) {
   const closed =
     blink > 0.5 || expr === "happy" || expr === "grin" || expr === "sleep" || expr === "love";
   const farX = -2.6;
@@ -1136,7 +1142,7 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
       ctx.fill();
       ctx.fillStyle = LUNI_COLORS.eye;
       ctx.beginPath();
-      ctx.arc(x + 0.2, eyeY + 0.2, r * 0.52, 0, Math.PI * 2);
+      ctx.arc(x + 0.2 + Math.max(-1, Math.min(1, gaze)) * .6, eyeY + 0.2, r * 0.52, 0, Math.PI * 2);
       ctx.fill();
     }
   } else if (expr === "tired") {
@@ -1594,6 +1600,9 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     glasses = true,
     pajama = null,
     hairAside = 0,
+    pianoSeat,
+    headShake = 0,
+    gaze = 0,
   } = opts;
 
   // Kränkliche Haut: je höher `sick`, desto grüner das Gesicht
@@ -1632,6 +1641,15 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
         sockR: [K0.skin, K0.skinShade],
       };
   const r = buildRig(state, t, walk, phase, armReach);
+  if (pianoSeat !== undefined) {
+    const p = ease(pianoSeat);
+    r.rootY = 9 * p;
+    r.legFar = leg([lerp(-3.6, -8, p), lerp(-10, -19, p)], [lerp(-4.2, -10, p), -9.5 * p]);
+    r.legNear = leg([lerp(3.6, 9.5, p), lerp(-10, -19, p)], [lerp(4.2, 12, p), -9.5 * p]);
+    r.headTilt *= 1 - p;
+    r.footFarDir = -1;
+    r.footNearDir = 1;
+  }
 
   // Husten: Oberkörper zuckt nach vorn, Kopf senkt sich, Hand zum Mund
   if (cough > 0.01) {
@@ -1655,17 +1673,17 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     // Ziel in den lokalen Raum umrechnen (Spiegelung beachten) und mit der
     // vorhandenen Zweigelenk-IK anvisieren. armIK kürzt zu weite Ziele auf die
     // feste Armlänge – der Arm kann sich dadurch nicht verlängern.
-    const tx = (handTarget[0] - x) / (scale * face);
-    const ty = (handTarget[1] - y) / scale;
-    const sh: V = [-3.4, r.shoulderY + 2];
+    const tx = (handTarget[0] - x) / (scale * face) - (pianoSeat !== undefined ? r.rootX : 0);
+    const ty = (handTarget[1] - y) / scale - (pianoSeat !== undefined ? r.rootY : 0);
+    const sh: V = pianoSeat !== undefined ? [-6.2, r.shoulderY + 2.2] : [-3.4, r.shoulderY + 2];
     const limb = armIK(sh, [tx, ty], -1);
     r.armFar = { elbow: limb.elbow, hand: [limb.hand[0], limb.hand[1]] };
   }
   if (handTarget2) {
     // Zweite Hand: ebenfalls echte Zweigelenk-IK mit fester Armlänge.
-    const tx = (handTarget2[0] - x) / (scale * face);
-    const ty = (handTarget2[1] - y) / scale;
-    const sh: V = [3.4, r.shoulderY + 2];
+    const tx = (handTarget2[0] - x) / (scale * face) - (pianoSeat !== undefined ? r.rootX : 0);
+    const ty = (handTarget2[1] - y) / scale - (pianoSeat !== undefined ? r.rootY : 0);
+    const sh: V = pianoSeat !== undefined ? [6.2, r.shoulderY + 2.2] : [3.4, r.shoulderY + 2];
     const limb = armIK(sh, [tx, ty], 1);
     r.armNear = { elbow: limb.elbow, hand: limb.hand };
   }
@@ -1809,7 +1827,9 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
 
   if (back) {
     /* --- Rückansicht: Arme seitlich, Oberkörper von hinten --- */
-    const arms = backArms(state, r, phase);
+    const arms = pianoSeat !== undefined
+      ? { near: r.armNear, far: r.armFar, behind: false }
+      : backArms(state, r, phase);
     const drawArms = () => {
       for (const [side, arm] of [[-1, arms.far], [1, arms.near]] as const) {
         stroke3(ctx, [side * 6.2, r.shoulderY + 2.2], arm.elbow, arm.hand, side < 0 ? K.cardiganDark : K.cardigan, 4.5);
@@ -1862,8 +1882,9 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   /* --- Kopf --- */
   upperLean(() => {
   ctx.save();
+  if (headShake) ctx.translate(headShake * 1.8, 0);
   ctx.translate(0, r.headY);
-  ctx.rotate(r.headTilt);
+  ctx.rotate(r.headTilt + headShake * .12);
   ctx.translate(0, -r.headY);
 
   // Ohr hinten
@@ -1881,7 +1902,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   if (r.bend >= 0.7) {
     // Vorgebeugt: Gesicht zeigt zum Boden. Haare bedecken den Hinterkopf und
     // hängen senkrecht herunter, bis knapp über den Boden.
-    drawFace(ctx, expr, blink, t, glasses);
+    drawFace(ctx, expr, blink, t, glasses, gaze);
     ctx.fillStyle = LUNI_COLORS.hair;
     ctx.beginPath();
     ctx.arc(-1.4, HEAD_Y - 1.6, HEAD_R + 0.6, 0, Math.PI * 2);
@@ -1923,7 +1944,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   } else {
     if (hairAside > 0.01) drawHairAside(ctx, hairAside);
     else drawHairFront(ctx, r.hairFlow, r.hairUp, r.hairLen);
-    drawFace(ctx, expr, blink, t, glasses);
+    drawFace(ctx, expr, blink, t, glasses, gaze);
   }
   if (wet > 0.02 && r.bend < 0.7) {
     // nasser Glanz und Tropfen an den Haarspitzen

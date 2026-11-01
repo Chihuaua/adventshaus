@@ -142,7 +142,7 @@ Drei unabhängige Welten, jede mit eigenem Speicherplatz (`welten.ts`):
 | Welt | Aufruf | Stein dorthin |
 |---|---|---|
 | Normales Haus | leerer Hash | **Wachstein** (Sonne) |
-| Horrorhaus (Traumhaus) | `#traumhaus` | **Traumstein** (Mondsichel) |
+| Traumhaus | `#traumhaus` | **Traumstein** (Mondsichel) |
 | Gruselhaus (Halloween) | `#gruselhaus` | **Horrorstein** (Totenkopf) |
 
 Die Steine liegen halb eingegraben links neben dem Keller; in jeder Welt stehen
@@ -151,19 +151,67 @@ Welt speichert vorher unter ihrem eigenen Schlüssel (`lcp1.welt.<name>.v1`).
 
 Das **Gruselhaus** beginnt als unveränderte Kopie des normalen Hauses und wird
 Raum für Raum umgestaltet (`src/game/gruselhaus/`). Jeder Raum ist ein eigenes
-Modul; das normale Haus und das Horrorhaus bleiben dabei unberührt.
+Modul; das normale Haus und das Traumhaus bleiben dabei unberührt.
 
 | Raum | Gruselhaus-Thema | Stand |
 |---|---|---|
 | Dachgeschoss links (Zockerzimmer) | Horror-Raumstation | fertig (`raumstation.ts`) |
-| Dachgeschoss rechts (Musikzimmer) | Orchester der vergessenen Geister | fertig (`orchester.ts`) |
+| Dachgeschoss rechts (Musikzimmer) | Musikzimmer | fertig (`musikzimmer.ts`) |
 | alle übrigen | – | noch das normale Haus |
 
-Raum 02 zeichnet das Musikzimmer als eigene Szene: Holzvertäfelung, Vorhänge
-ohne Fenster, Fischglaslampen, dekorative blaue und grüne Tür, Knochensaxophon,
-Sarg-Gitarre, Geistergrammophon und geschnitzte Lautsprecher. Stationen,
-Laufwege, Anker und Größen bleiben unverändert. Ein Klavier gibt es in beiden
-Häusern nicht mehr.
+Raum 02 heißt **Musikzimmer**. Seine Klavierecke besteht aus einem alten,
+aufrechten Holzklavier, Hocker, blauer Tür links und grüner Tür rechts.
+Holzvertäfelung, Dielen und beständiges warmes Licht greifen die Referenz zu
+„Der Tod spielt Klavier“ auf. Saxophon, Gitarre, Abspielgerät und Aufbewahrung
+bleiben bedienbar. Verschobene Stationen und Instrumentanker gelten nur hier.
+
+Luni darf das Klavier jederzeit benutzen, solange die Pianistin unsichtbar
+ist. Ein erneuter Auftrag während des Sitzens startet nichts neu. Bei
+sichtbarem Geist schüttelt Luni den Kopf. Spielt sie beim Beginn einer
+Erscheinung, springt sie zwei Sekunden vor dem Einblenden auf und geht zur
+Seite. Mit zunehmender Sichtbarkeit weicht sie langsam rückwärts zurück.
+Die Pianistin sitzt unabhängig von Luni dauerhaft am selben Hockerplatz.
+
+Der Raum ist symmetrisch angeordnet: Verbindungstür – Vorhang – Lampe –
+Klavier – Lampe – Vorhang – Tür. Die blaue Verbindungstür zur Gaming-Ecke
+ist im Aufbau Zeile für Zeile die Schleusentür aus `house.ts` – Rahmen,
+Blattbreiten, Knauf, Schwelle und Schwingen – einzig der Anstrich ist blau.
+Die grüne Tür steht an der Hinterwand, unten bündig auf der Bodenlinie der Rückwand. Zwei schwere dunkelrote Samtvorhänge
+flankieren das Klavier symmetrisch; ihre Stangen liegen auf der gemeinsamen
+Oberkante von Türrahmen und Wandlampen. Sie sind Stationen: Luni geht hin,
+greift zu und zieht sie zwischen „offen“ (seitlich gerafft) und
+„geschlossen“ (breite Fläche) um. Im Ausgangszustand sind sie geschlossen; nach dem Öffnen bleiben sie seitlich gerafft. Dahinter liegt nur Holzvertäfelung.
+Saxophon, Gitarre und Plattenspieler sind im Gruselhaus entfernt – nur dort,
+das normale Haus bleibt unverändert. Der Code der Instrumente bleibt für
+eine spätere Umplatzierung erhalten.
+
+Erscheinungen sind selten: unregelmäßige Ruhephasen von **8 bis 20 Minuten**
+nach dem Ende der vorherigen Erscheinung; die erste kommt 8–20 Minuten nach
+dem Öffnen der Welt.
+Die eigene synthetische Klavierphrase beginnt eine Sekunde vor dem vier
+Sekunden langen Einblenden und endet erst bei vollständiger Unsichtbarkeit
+nach dem Ausblenden. Andere Musik erhält Vorrang, ohne abrupten Alpha-Wechsel.
+Die Browser-Audiofreigabe erfolgt durch eine bestehende Nutzergeste; Ton-Aus,
+Tabpause und Weltwechsel gelten auch für das Klavier. Es gibt keinen
+versteckten Auslöser und keine neue Bedienoberfläche.
+
+Zeitsteuerung und Noten: `src/game/gruselhaus/musikzimmer-ablauf.ts`.
+Automatische Ablaufprüfungen: `node tools/test-musikzimmer.mjs`.
+Das normale Klavier, das Traumhaus, Welt-IDs und Speicherplätze bleiben erhalten.
+
+### Türen und Wege (alle Hauswelten)
+
+- Nichts passiert aus der Ferne: Jeder Klick schickt Luni zuerst dorthin;
+  erst bei ihrer Ankunft schaltet die Station.
+- Keine Tür öffnet sich von allein. Luni greift immer mit der Hand zum
+  Knauf (Zweigelenk-IK mit festen Armlängen), erst dann schwingt das Blatt.
+- Türen direkt angeklickt: Luni geht hin, greift zum Knauf und öffnet bzw.
+  schließt sie sichtbar.
+- Ziel hinter einer geschlossenen Tür angeklickt: Luni geht bis vor die Tür,
+  greift zum Knauf, öffnet sie und geht erst dann hindurch. Ist die Tür
+  offen, läuft sie einfach hindurch.
+- **Ausnahme:** Die Wechselsteine sind ein GUI für den Spieler. Ihr Klick
+  wechselt die Hauswelt sofort, in allen Häusern, ohne dass Luni hinläuft.
 
 ### Wie `house.ts` tickt
 

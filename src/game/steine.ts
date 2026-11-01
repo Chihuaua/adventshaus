@@ -3,7 +3,7 @@
 
    Drei Steine, drei Hauswelten – jeder Stein sieht anders aus:
      Wachstein   (Sonne, warmes Grün)       -> normales Haus
-     Traumstein  (Mondsichel, kühles Blau)  -> Horrorhaus (Traumhaus)
+     Traumstein  (Mondsichel, kühles Blau)  -> Traumhaus
      Horrorstein (Totenkopf, Schwarz/Glut)  -> Gruselhaus
 
    In jeder Welt stehen die zwei Steine der jeweils anderen Welten. Sie sind
@@ -57,7 +57,7 @@ export interface SteinSlot {
 /**
  * Die Steine einer Welt: alle Welten außer der eigenen, in fester Reihenfolge
  * (normal, traum, gruesel). Der erste belegt den alten Platz A, der zweite B.
- * So bleibt der Traumstein im normalen Haus und der Wachstein im Horrorhaus
+ * So bleibt der Traumstein im normalen Haus und der Wachstein im Traumhaus
  * genau dort, wo sie schon immer standen.
  */
 export function steinSlots(welt: WeltId): SteinSlot[] {

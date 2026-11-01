@@ -43,6 +43,11 @@ export class Sfx {
   /** Gemeinsamer Audio-Master für längere Spielsequenzen. */
   getSharedAudio() {
     this.ensure();
+    return this.peekSharedAudio();
+  }
+
+  /** Vorhandene Freigabe nutzen, ohne Audio ausserhalb einer Nutzergeste zu starten. */
+  peekSharedAudio() {
     if (!this.ctx || !this.master) return null;
     return { ctx: this.ctx, master: this.master };
   }
