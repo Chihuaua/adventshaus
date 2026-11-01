@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Traumhaus } from "@/game/traumhaus";
+import { markiereBesuch, wechsleWelt } from "@/game/welten";
 
 /** Entwicklungsansicht fuer die leere Hausarchitektur des Traums. */
 export default function TraumhausView() {
@@ -8,7 +9,8 @@ export default function TraumhausView() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const haus = new Traumhaus(canvas, { onLunisHaus: () => { window.location.hash = ""; } });
+    markiereBesuch("traum");
+    const haus = new Traumhaus(canvas, { onWelt: wechsleWelt });
     haus.mount();
     return () => haus.destroy();
   }, []);

@@ -16,6 +16,10 @@ type V = [number, number];
 
 export const LUNI_H = 56;
 
+/** Größte natürliche Reichweite der Figur (Welt-Einheiten bei Maßstab 1).
+ *  Ergibt sich aus den festen Ober-/Unterarmlängen der Zeichnung. */
+export const ARM_REACH_MAX = 8.2 + 8.4;
+
 export const LUNI_COLORS = {
   skin: "#f4c9a0",
   skinShade: "#e3b288",
@@ -113,6 +117,21 @@ export interface LuniOpts {
   cough?: number;
   /** 0..1: kränkliche Grünfärbung der Haut */
   sick?: number;
+  /** 0..1: rechter Fuß wippt im Takt (Saxophon) */
+  footTap?: number;
+  /** -1..1: Oberkörper wiegt sich mit der Musik (Saxophon) */
+  sway?: number;
+  /** Weltkoordinate: dorthin streckt sich die vordere Hand (Greifen). */
+  handTarget?: [number, number] | null;
+  /** Weltkoordinate für die zweite Hand (zweiter Griff am Instrument). */
+  handTarget2?: [number, number] | null;
+  /** Wird nach dem Zeichnen mit beiden Handpositionen in Weltkoordinaten gefüllt. */
+  handOut?: { front: [number, number]; rear: [number, number] } | null;
+  /** Wird zwischen Rumpf und Armen aufgerufen – dort hängt das Saxophon.
+   *  So liegen Instrument und Oberkörper in derselben Tiefenebene. */
+  betweenBodyAndArms?: (() => void) | null;
+  /** Beide Arme werden NACH dem Rumpf (und nach betweenBodyAndArms) gezeichnet. */
+  armsInFront?: boolean;
   /** Kleidung: angezogen, Handtuch oder (nur hinter dem Vorhang) ohne */
   outfit?: "dressed" | "towel" | "none";
   /** Rücken zum Betrachter: Haare statt Gesicht */
@@ -269,6 +288,21 @@ function armIK(s: V, h: V, out: 1 | -1): Limb {
   let dy = hy - s[1];
   let d = Math.hypot(dx, dy);
   const max = UPPER_ARM + FORE_ARM - 0.05;
+  // Auch nach innen begrenzen: näher als |Oberarm - Unterarm| lässt sich das
+  // Gelenk nicht falten, sonst stimmt die Unterarmlänge nicht mehr.
+  const min = Math.abs(UPPER_ARM - FORE_ARM) + 0.001;
+  if (d < min) {
+    if (d < 0.0001) {
+      hx = s[0] + min;
+      hy = s[1];
+    } else {
+      hx = s[0] + (dx / d) * min;
+      hy = s[1] + (dy / d) * min;
+    }
+    dx = hx - s[0];
+    dy = hy - s[1];
+    d = min;
+  }
   if (d > max) {
     hx = s[0] + (dx / d) * max;
     hy = s[1] + (dy / d) * max;
@@ -276,7 +310,6 @@ function armIK(s: V, h: V, out: 1 | -1): Limb {
     dy = hy - s[1];
     d = max;
   }
-  if (d < 0.01) return { elbow: [s[0], s[1] + UPPER_ARM], hand: [hx, hy] };
   const a = (UPPER_ARM * UPPER_ARM - FORE_ARM * FORE_ARM + d * d) / (2 * d);
   const k = Math.sqrt(Math.max(0, UPPER_ARM * UPPER_ARM - a * a));
   const ux = dx / d;
@@ -1548,6 +1581,13 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     armReach = 1,
     cough = 0,
     sick = 0,
+    footTap = 0,
+    sway = 0,
+    handTarget = null,
+    handTarget2 = null,
+    handOut = null,
+    betweenBodyAndArms = null,
+    armsInFront = false,
     outfit = "dressed",
     back = false,
     wet = 0,
@@ -1605,6 +1645,54 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
         hand: [lerp(r.armNear.hand[0], -1.5, burst), lerp(r.armNear.hand[1], -41, burst)],
       };
       r.hairFlow += burst * 0.6;
+    }
+  }
+
+  // Greifen: die vordere Hand (armFar wird vorn gezeichnet) fährt exakt zum Ziel.
+  // Das ist die Verbindung zwischen Hand und Instrument – kein Springen, weil
+  // das Ziel selbst stetig wandert.
+  if (handTarget) {
+    // Ziel in den lokalen Raum umrechnen (Spiegelung beachten) und mit der
+    // vorhandenen Zweigelenk-IK anvisieren. armIK kürzt zu weite Ziele auf die
+    // feste Armlänge – der Arm kann sich dadurch nicht verlängern.
+    const tx = (handTarget[0] - x) / (scale * face);
+    const ty = (handTarget[1] - y) / scale;
+    const sh: V = [-3.4, r.shoulderY + 2];
+    const limb = armIK(sh, [tx, ty], -1);
+    r.armFar = { elbow: limb.elbow, hand: [limb.hand[0], limb.hand[1]] };
+  }
+  if (handTarget2) {
+    // Zweite Hand: ebenfalls echte Zweigelenk-IK mit fester Armlänge.
+    const tx = (handTarget2[0] - x) / (scale * face);
+    const ty = (handTarget2[1] - y) / scale;
+    const sh: V = [3.4, r.shoulderY + 2];
+    const limb = armIK(sh, [tx, ty], 1);
+    r.armNear = { elbow: limb.elbow, hand: limb.hand };
+  }
+
+  // Saxophon: rechter Fuß (legNear, sockR) wippt im Takt, der Oberkörper
+  // wiegt sich leicht nach vorn und hinten. Beides kommt von außen (Musikzeit).
+  if (state === "sax") {
+    // Feste Ersatzhaltung, nur wenn keine Griffposition vorgegeben ist –
+    // sonst bestimmt handTarget2 die zweite Hand.
+    if (!handTarget2) {
+      const sh: V = [3.4, r.shoulderY + 2];
+      const limb = armIK(sh, [2.2, -25.5], 1);
+      r.armNear = { elbow: limb.elbow, hand: limb.hand };
+    }
+    if (footTap > 0.001) {
+      const lift = 3.2 * footTap;
+      r.legNear = {
+        elbow: r.legNear.elbow,
+        hand: [r.legNear.hand[0] - lift * 0.35, r.legNear.hand[1] - lift],
+      };
+      r.footNearAng = -0.5 * footTap;
+    }
+    if (Math.abs(sway) > 0.001) {
+      r.rootX += sway * 0.6;
+      r.rootRot += sway * 0.04;
+      r.headTilt += sway * 0.07;
+      r.hairFlow += sway * 0.35;
     }
   }
 
@@ -1677,7 +1765,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   const armFront = r.armFar;
 
   /* --- hinterer Arm (früher der vordere) --- */
-  if (!back) {
+  const drawBackArm = () =>
     upperLean(() => {
       stroke3(ctx, [3.4, r.shoulderY + 2], armBehind.elbow, armBehind.hand, K.cardiganDark, 4.4);
       ctx.fillStyle = K.skinShade;
@@ -1685,7 +1773,8 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
       ctx.arc(armBehind.hand[0], armBehind.hand[1], 1.9, 0, Math.PI * 2);
       ctx.fill();
     });
-  }
+  // Beim Tragen eines Instruments liegt der Arm vor dem Korpus, nicht dahinter.
+  if (!back && !armsInFront) drawBackArm();
 
   /* --- vorderes Bein (unverdreht) --- */
   stroke3(
@@ -1751,6 +1840,12 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
       }
       ctx.restore();
     });
+
+    /* --- Instrument vor dem Rumpf, Arme davor --- */
+    // Ohne diese Reihenfolge verdeckt der Saxophon-Korpus beide Arme, und das
+    // Instrument hängt scheinbar frei in der Luft.
+    betweenBodyAndArms?.();
+    if (armsInFront) drawBackArm();
 
     /* --- vorderer Arm (früher der hintere) --- */
     // Beim Vorbeugen erst nach dem Kopf, damit die Bürstenhand vor den Haaren liegt.
@@ -1860,6 +1955,20 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   if (bent && !back) drawFrontArm();
 
   ctx.restore();
+
+  // Beide Handpositionen in Weltkoordinaten zurückgeben: damit hängen
+  // Griff, Instrument und Arme zusammen (das Saxophon wird danach gezeichnet
+  // und würde die Hände sonst verdecken).
+  if (handOut) {
+    handOut.front = [
+      x + (r.rootX + r.armFar.hand[0]) * scale * face,
+      y + (r.rootY + r.armFar.hand[1]) * scale,
+    ];
+    handOut.rear = [
+      x + (r.rootX + r.armNear.hand[0]) * scale * face,
+      y + (r.rootY + r.armNear.hand[1]) * scale,
+    ];
+  }
 
   // Gegenstände hängen an der räumlich vorderen Hand – also der Hand, die
   // beim Greifen, Klavierspielen oder Sitzen tatsächlich vor dem Körper ist.

@@ -100,7 +100,7 @@ reproduzierbar.
 | Haus | Querschnitt mit 4 Ebenen: Keller (Krempelraum, Raucherraum, Garten), Erdgeschoss (Flur, Wohnzimmer, Küche), 1. Stock (Schlafzimmer, Bad mit WC), Dachgeschoss (Gaming-Ecke, Musikzimmer) |
 | Grafik | Komplett in Canvas 2D gezeichnet, keine Bilddateien. Tag/Nacht-Himmel, Lampenlicht als Multiply/Additiv-Ebene, Rauch |
 | Luni | ~30 Posen und Gesichtsausdrücke (`luni.ts`), Laufen, Treppen, Sitzen, Dösen, Tanzen |
-| Interaktion | 32 anklickbare Stationen (plus 3 Treppen) (`STATIONS` in `house.ts`): Kaffee, Tee, Herd, Bett, Dusche, WC, Klavier, Saxophon, Plattenspieler, Gitarre, Gaming … |
+| Interaktion | 33 anklickbare Stationen (plus 3 Treppen) (`STATIONS` in `house.ts`): Kaffee, Tee, Herd, Bett, Dusche, WC, Klavier, Saxophon, Plattenspieler, Gitarre, Gaming … |
 | Detail-Systeme | Zigaretten stopfen → Schachtel → Raucherraum → Aschenbecher, Rauch der durch die Gartentür abzieht; WC-Tür mit Innen/Außen-Logik; Handy am Beistelltisch; Rick-Fernseher |
 | Ton | WebAudio-Synth (`audio.ts`), stummschaltbar (Taste **M** oder Button), Einstellung wird gespeichert |
 | Werkzeug | `#studio` in der URL öffnet das **Luni-Studio**: alle Posen/Ausdrücke nebeneinander, Vergleich mit der Ursprungsfigur |
@@ -134,6 +134,36 @@ src/
 docs/                   Spielkonzept (Markdown) – Zielbild, nicht Ist-Stand
 build_mappe.py          erzeugt aus docs/ eine druckbare Projektmappe (optional)
 ```
+
+### Hauswelten
+
+Drei unabhängige Welten, jede mit eigenem Speicherplatz (`welten.ts`):
+
+| Welt | Aufruf | Stein dorthin |
+|---|---|---|
+| Normales Haus | leerer Hash | **Wachstein** (Sonne) |
+| Horrorhaus (Traumhaus) | `#traumhaus` | **Traumstein** (Mondsichel) |
+| Gruselhaus (Halloween) | `#gruselhaus` | **Horrorstein** (Totenkopf) |
+
+Die Steine liegen halb eingegraben links neben dem Keller; in jeder Welt stehen
+die zwei Steine der anderen Welten (`steine.ts`). Ein Klick wechselt, die alte
+Welt speichert vorher unter ihrem eigenen Schlüssel (`lcp1.welt.<name>.v1`).
+
+Das **Gruselhaus** beginnt als unveränderte Kopie des normalen Hauses und wird
+Raum für Raum umgestaltet (`src/game/gruselhaus/`). Jeder Raum ist ein eigenes
+Modul; das normale Haus und das Horrorhaus bleiben dabei unberührt.
+
+| Raum | Gruselhaus-Thema | Stand |
+|---|---|---|
+| Dachgeschoss links (Zockerzimmer) | Horror-Raumstation | fertig (`raumstation.ts`) |
+| Dachgeschoss rechts (Musikzimmer) | Orchester der vergessenen Geister | fertig (`orchester.ts`) |
+| alle übrigen | – | noch das normale Haus |
+
+Raum 02 zeichnet das Musikzimmer als eigene Szene: Holzvertäfelung, Vorhänge
+ohne Fenster, Fischglaslampen, dekorative blaue und grüne Tür, Knochensaxophon,
+Sarg-Gitarre, Geistergrammophon und geschnitzte Lautsprecher. Stationen,
+Laufwege, Anker und Größen bleiben unverändert. Ein Klavier gibt es in beiden
+Häusern nicht mehr.
 
 ### Wie `house.ts` tickt
 
@@ -190,6 +220,37 @@ Fehlt die Leiste, ist das kein Fehler, sondern der Produktionsbuild.
 |---|---|---|
 | **Besitzer** | entscheidet, schaut an, testet lokal, committet, pusht, taggt | Code schreiben |
 | **KI-Assistent** | klont das Repository in seine Umgebung, baut dort das Feature, zeigt es lauffähig, liefert einen Patch | direkt ins Repository schreiben, Dateien zum Abtippen diktieren |
+
+### Namensvergabe und Adressierung paralleler KI-Sitzungen
+
+Wenn zwei KI-Sitzungen parallel arbeiten, haben sie die festen Kennungen
+**KI-A** und **KI-B**. Eine Sitzung behält ihre Kennung im gesamten Chat bei.
+Sie leitet jede eigene Antwort mit ihrer Kennung ein (`KI-A:` oder `KI-B:`),
+damit der Besitzer erkennt, wer antwortet.
+
+Der Besitzer adressiert Nachrichten so:
+
+| Nachrichtenanfang | Gilt für |
+|---|---|
+| `KI-A:` | nur KI-A; KI-B bearbeitet die Nachricht nicht, führt sie nicht aus und antwortet nicht auf ihren Inhalt |
+| `KI-B:` | nur KI-B; KI-A bearbeitet die Nachricht nicht, führt sie nicht aus und antwortet nicht auf ihren Inhalt |
+| keine Kennung | beide KI-Sitzungen |
+
+Die Kennung einer Sitzung darf **nicht** aus einer Zahl, einem Zufallswort,
+einer Teilzeichenfolge oder einer Vermutung abgeleitet oder eigenständig
+geändert werden. Eine Umbenennung ist nur gültig, wenn der Besitzer eine
+Nachricht ausdrücklich mit `Namensänderung KI-A:` beziehungsweise
+`Namensänderung KI-B:` beginnt und dahinter einen neuen Namen vergibt. Die
+Kennung KI-A/KI-B zur Nachrichtenadressierung bleibt dabei bestehen; der neue
+Name ist der vom Besitzer vergebene Anzeigename.
+
+Jede andere Nachricht, die eine Umbenennung nahelegt oder der bisherigen
+Zuordnung widerspricht, ist **mehrdeutig**. Vor einer Änderung der Zuordnung
+oder vor davon abhängigen Datei- oder Werkzeugaktionen muss die angesprochene
+KI beim Besitzer nachfragen. Sie bestätigt keine unklare Namensänderung.
+
+Auch bei getrennter Adressierung gilt: Nur die vom Besitzer bestimmte Sitzung
+darf den gemeinsamen Postfach-Gist beschreiben. Nie beide gleichzeitig.
 
 ### Der Ablauf in fünf Schritten
 

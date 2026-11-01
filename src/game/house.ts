@@ -1,7 +1,7 @@
 /* =======================================================================
    LUNIS HAUS — Querschnitt in vier Ebenen (Little-Computer-People-Stil)
 
-   Dachgeschoss : Gaming-Zimmer | Musikzimmer (Klavier, Plattenspieler)
+   Dachgeschoss : Gaming-Zimmer | Musikzimmer (Klavier, Plattenspieler, Gitarre)
    1. Stock     : Schlafzimmer | Badezimmer
    Erdgeschoss  : Flur (Haustür) | Wohnzimmer | Küche
    Keller       : Krempelraum (1/3 der Breite) -> Raucherraum -> Garten
@@ -37,8 +37,21 @@ import {
 } from "./gol";
 
 import { sfx } from "./audio";
+import { SaxophonMusic } from "./audio/saxophonVoice";
+import { SAX_DURATION_SECONDS } from "./audio/saxophonNotes";
 import { Dream, drawSleepZ } from "./dream";
-import { drawStein, STEIN } from "./steine";
+import { drawStein, steinAn, steinSlots, type SteinSlot } from "./steine";
+import { ladeSnapshot, speichereSnapshot, type HausSnapshot, type WeltId } from "./welten";
+import { GRUSELRAEUME, RaumstationFx, type GruselRaeume } from "./gruselhaus";
+import {
+  RS,
+  drawMetalFloor,
+  drawMetalWall,
+  drawRaumstationMoebel,
+  drawSpaceWindow,
+  drawSteelBeam,
+} from "./gruselhaus/raumstation";
+import { drawBoneSaxophone, drawOrchesterEffects, drawOrchesterRoom } from "./gruselhaus/orchester";
 import {
   SHOWER_X,
   curtainRect,
@@ -85,6 +98,27 @@ const DG_X0 = 262; // Dachgeschoss-Boden beginnt hier, links davon Treppenhaus
 const OG_X1 = 694; // 1.-Stock-Boden endet hier, rechts davon Treppenhaus
 const LUNI_SCALE = 1.08;
 const SPEED = 80;
+
+/** „Paulchen“: das bisher einzige Saxophonstück. Weitere Lieder später ergänzen. */
+const SAX_SONG_PAULCHEN = { id: "paulchen", duration: SAX_DURATION_SECONDS } as const;
+/** Referenzgröße: exakt die Größe, in der Luni das Saxophon spielt. */
+const SAX_SCALE = 0.52 * LUNI_SCALE;
+/** Mundstück-Anker, wenn das Instrument auf dem Stativ steht. */
+const SAX_STAND_X = 652;
+const SAX_STAND_Y = FLOOR_Y[3] - 36;
+/** Mundstück sitzt so viele Einheiten vor der Körpermitte am Mund. */
+const SAX_MOUTH_DX = 1.2;
+/** Griffpunkte in LOKALEN Saxophon-Koordinaten (Ursprung = Mundstück-Anker).
+ *  Sie liegen auf der Klappenspalte, die saxophone() zeichnet – die Hände
+ *  sitzen damit immer exakt am gezeichneten Instrument. */
+const SAX_GRIP_UP: Pt = [11.4, 16];
+const SAX_GRIP_LOW: Pt = [10.7, 31];
+/** Hinstrecken, Anheben, Abstellen – jeweils in Sekunden. */
+const SAX_REACH = 0.9;
+const SAX_LIFT = 1.0;
+const SAX_LOWER = 1.0;
+/** Planungsvorlauf auf der Audio-Zeitachse – keine Stille in der Melodie */
+const SAX_LEAD = 0.06;
 
 /** begehbarer Bereich je Ebene (x von, x bis) */
 const RANGE: [number, number][] = [
@@ -358,8 +392,13 @@ export const STATIONS: Station[] = [
     hits: [[294, 170, 60, 30], [404, 134, 66, 66]],
   },
   {
-    id: "saxophon", label: "Saxophon", floor: 3, x: 653, face: 1, state: "sax", expr: "happy",
+    id: "saxophon", label: "Saxophon", floor: 3, x: 653, face: -1, state: "sax", expr: "happy",
     hits: [[644, 134, 36, 66]],
+  },
+  {
+    id: "klavier", label: "Klavier", floor: 3, x: 617, face: -1, state: "piano", expr: "happy", yOff: -10,
+    // Korpus 545–589, Klaviatur 585–627, Hocker 604–630
+    hits: [[545, 142, 46, 58], [583, 164, 48, 24], [602, 176, 32, 26]],
   },
   { id: "spielregal", label: "Spieleregal", floor: 3, x: 504, face: 1, state: "act", expr: "think", hits: [[486, 126, 38, 74]] },
   {
@@ -367,7 +406,6 @@ export const STATIONS: Station[] = [
     // Oberste Regalebene, innerhalb des Schranks – nicht im Laufweg davor.
     hits: [[486, 126, 38, 24]],
   },
-  { id: "klavier", label: "Klavier", floor: 3, x: 633, face: -1, state: "piano", expr: "happy", yOff: -10, hits: [[545, 142, 76, 58], [620, 176, 28, 24]] },
   {
     id: "platten", label: "Plattenspieler", floor: 3, x: 724, face: 1, state: "danceSway", expr: "happy",
     hits: [[698, 166, 52, 34], [678, 164, 16, 36], [754, 164, 16, 36], [776, 154, 30, 46]],
@@ -379,7 +417,6 @@ export const STATIONS: Station[] = [
     expr: "neutral", hits: [[582, 486, 22, 88]],
   },
   { id: "krempel", label: "Krempel-Regale", floor: 0, x: 384, face: -1, state: "think", expr: "think", hits: [[354, 466, 56, 106], [528, 480, 60, 92]] },
-  { id: "traumstein", label: "Traumstein", floor: 0, x: STEIN.x, face: 1, state: "idle", expr: "neutral", hits: [STEIN.hit] },
   { id: "xmaskiste", label: "Weihnachtskiste", floor: 0, x: 548, face: 1, state: "act", expr: "happy", hits: [[526, 540, 44, 32]] },
   { id: "leinen", label: "Jacken & Hundeleinen", floor: 0, x: 640, face: 1, state: "act", expr: "neutral", hits: [[604, 486, 76, 86]] },
   {
@@ -628,76 +665,173 @@ function bookshelf(
 }
 
 /** Schlafende Luni im Bett: Seitenlage, Decke bis zum Hals, Hand unter dem Ohr. */
-function drawSleepingLuni(c: C, x: number, y: number, t: number, pj: { top: string; bottom: string } | null, hairAside: number) {
+/**
+ * Schlafszene im Bett. Schichtung von unten nach oben:
+ * Kissen -> Hand -> Haare -> Kopf/Ohr. Die Decke liegt über dem Körper,
+ * wird aber von beiden Händen gehalten, bis sie am Kinn sitzt.
+ */
+function drawBedScene(
+  c: C,
+  x: number,
+  y: number,
+  t: number,
+  pj: { top: string; bottom: string } | null,
+  o: { pull: number; grab: number; turn: number; hair: number },
+) {
   const breathe = Math.sin(t * 1.1) * 0.35;
+  const topColor = pj ? pj.top : "#7fc6c2";
+  const bottomColor = pj ? pj.bottom : "#3f6f8c";
+  const turn = clamp(o.turn, 0, 1);
+  const hair = clamp(o.hair, 0, 1);
+  // Kinn = Unterkante des Kopfes. Die Decke endet genau dort.
+  const chinY = -1;
+  const edgeY = lerp(12, chinY, clamp(o.pull, 0, 1));
+
   c.save();
   c.translate(x, y);
-  c.fillStyle = "#f4c9a0";
-  // Kopf
+  c.translate(0, 2);
+  c.rotate(-0.06 * turn);
+  c.translate(0, -2);
+
+  /* 1. Kissen (unten) */
+  rrect(c, -24, 6, 46, 15, 7, "#ffffff");
+  rrect(c, -22, 7, 42, 5, 3, "#eef2f4");
+
+  /* 2. Körper */
+  rrect(c, -6, 0.5, 30, 13 + breathe, 6, topColor);
+  rrect(c, 20, 3, 22, 11 + breathe, 5, bottomColor);
+
+  /* 3. Decke bis zum Kinn – liegt über dem Körper */
+  const by = edgeY;
+  rrect(c, -1, by, 72, 30, 7, "#3f7f8c");
+  rrect(c, 1, by + 1.2, 68, 4, 2, "#5da0a8");
+  rect(c, 4, by + 8, 62, 1.6, "rgba(255,255,255,.30)");
+  rect(c, 4, by + 16, 62, 1.2, "rgba(255,255,255,.18)");
+  c.strokeStyle = "rgba(20,50,58,.30)";
+  c.lineWidth = 1;
+  c.beginPath();
+  c.moveTo(-1, by + 5.5);
+  c.quadraticCurveTo(10, by + 3, 22, by + 6.5);
+  c.stroke();
+
+  /* 4. Hand auf dem Kissen: von der Deckenkante bis zum Kissen wandern */
+  const hx = lerp(-6, -3, turn);
+  const hy = lerp(by + 1.4, 4.2, turn);
   c.fillStyle = "#f4c9a0";
   c.beginPath();
-  c.arc(0, -8, 9.2, 0, Math.PI * 2);
+  c.ellipse(hx, hy, 5.4, 2.3, -0.12, 0, Math.PI * 2);
   c.fill();
-  // Kopfkissen
-  rrect(c, -16, -18, 30, 14, 6, "#ffffff");
-  // Haare, ordentlich hinter das Ohr gelegt
+  c.strokeStyle = "#e3b288";
+  c.lineWidth = 0.7;
+  for (let i = 0; i < 3; i++) {
+    c.beginPath();
+    c.moveTo(hx - 2.6 + i * 2.1, hy - 0.9);
+    c.lineTo(hx - 2.0 + i * 2.1, hy + 0.9);
+    c.stroke();
+  }
+
+  /* 4b. Zweite Hand: hält die Kante, ruht später auf der Decke */
+  if (o.grab > 0.02) {
+    const rx = lerp(9, 26, turn);
+    const ry = lerp(by + 1.4, by + 8, turn);
+    c.fillStyle = "#f4c9a0";
+    c.beginPath();
+    c.ellipse(rx, ry, 4.4, 2.2, 0.2, 0, Math.PI * 2);
+    c.fill();
+    c.strokeStyle = "#e3b288";
+    c.lineWidth = 0.7;
+    for (let i = 0; i < 3; i++) {
+      c.beginPath();
+      c.moveTo(rx - 2.0 + i * 1.9, ry - 0.8);
+      c.lineTo(rx - 1.5 + i * 1.9, ry + 0.9);
+      c.stroke();
+    }
+  }
+
+  /* 5. Haare: liegen sichtbar auf der Hand */
   c.fillStyle = "#191920";
   c.beginPath();
-  c.arc(0, -8.6, 9.8, Math.PI * 0.9, Math.PI * 2.15);
-  c.fill();
-  c.beginPath();
-  c.moveTo(-9.4, -9);
-  c.quadraticCurveTo(-15, 2, -12, 12);
-  c.quadraticCurveTo(-6, 16, 2, 14);
-  c.quadraticCurveTo(-4, 4, -6.4, -6);
-  c.closePath();
-  c.fill();
-  if (hairAside > 0.5) {
-    c.fillStyle = "#3b3b48";
-    c.beginPath();
-    c.ellipse(8.2, -7, 2.2, 1.4, 0.4, 0, Math.PI * 2);
-    c.fill();
+  if (hair < 0.55) {
+    const k = hair / 0.55;
+    c.ellipse(lerp(-7.5, -3, k), lerp(-4.5, 0.8, k), lerp(8.2, 8.0, k), lerp(6.0, 2.4, k), 0.1, 0, Math.PI * 2);
+  } else {
+    const k = (hair - 0.55) / 0.45;
+    c.ellipse(-3, lerp(0.8, 0.4, k), lerp(8.0, 8.6, k), lerp(2.4, 2.6, k), 0.1, 0, Math.PI * 2);
   }
-  // geschlossene Augen und ruhiger Mund
-  c.strokeStyle = "#20343c";
-  c.lineWidth = 0.9;
+  c.fill();
+  // Strähne, die über die Hand fällt
+  c.strokeStyle = "#191920";
+  c.lineWidth = 1.4;
   c.lineCap = "round";
   c.beginPath();
-  c.moveTo(3.4, -9);
-  c.quadraticCurveTo(4.6, -8.2, 5.8, -9);
+  c.moveTo(-6.5, 0.6);
+  c.quadraticCurveTo(-9.5, 2.6, -9.8, 5.2);
   c.stroke();
-  c.strokeStyle = "#a35f4a";
-  c.beginPath();
-  c.moveTo(4.4, -3.4);
-  c.lineTo(6.4, -3.4);
-  c.stroke();
-  // Pyjama-Schulter
-  rrect(c, -4, 1, 30, 13 + breathe, 6, pj ? pj.top : "#7fc6c2");
-  rrect(c, 22, 4, 20, 11 + breathe, 5, pj ? pj.bottom : "#3f6f8c");
-  // Hand unter dem Ohr
+
+  /* 6. Kopf mit Ohr: ruht auf den Haaren */
+  const headX = lerp(1.0, 0.5, turn);
+  const headY = -10.2;
   c.fillStyle = "#f4c9a0";
   c.beginPath();
-  c.arc(9, 2.4, 3.1, 0, Math.PI * 2);
+  c.arc(headX, headY, 9.2, 0, Math.PI * 2);
+  c.fill();
+  // Ohr
+  c.fillStyle = "#f4c9a0";
+  c.beginPath();
+  c.arc(headX - 5.2, headY + 2.0, 2.5, 0, Math.PI * 2);
   c.fill();
   c.strokeStyle = "#e3b288";
   c.lineWidth = 0.8;
   c.beginPath();
-  c.moveTo(8, 3.4);
-  c.lineTo(10.4, 1.6);
+  c.arc(headX - 5.3, headY + 2.0, 1.3, -1.1, 1.0);
   c.stroke();
+  // Deckhaar: schmaler Franz am oberen Kopfrand, das Gesicht bleibt frei.
+  c.strokeStyle = "#191920";
+  c.lineWidth = 3.4;
+  c.lineCap = "round";
+  c.beginPath();
+  c.arc(headX, headY, 7.9, Math.PI * 1.06, Math.PI * 1.94);
+  c.stroke();
+  // Seitensträhne hinter dem Ohr (links), bedeckt kein Gesicht.
+  c.strokeStyle = "#191920";
+  c.lineWidth = 2.6;
+  c.beginPath();
+  c.moveTo(headX - 8.2, headY - 3.4);
+  c.quadraticCurveTo(headX - 10.4, headY + 1.2, headX - 8.6, headY + 5.0);
+  c.stroke();
+
+  /* 7. Gesicht */
+  c.strokeStyle = "#20343c";
+  c.lineWidth = 0.9;
+  c.beginPath();
+  c.moveTo(headX + 3.2, headY - 1.0);
+  c.quadraticCurveTo(headX + 4.6, headY - 0.2, headX + 6.0, headY - 1.0);
+  c.stroke();
+  c.strokeStyle = "#a35f4a";
+  c.beginPath();
+  c.moveTo(headX + 3.8, headY + 4.2);
+  c.lineTo(headX + 5.8, headY + 4.0);
+  c.stroke();
+  c.fillStyle = "rgba(255,122,122,.28)";
+  c.beginPath();
+  c.ellipse(headX + 6.4, headY + 2.0, 1.9, 1.2, 0, 0, Math.PI * 2);
+  c.fill();
+
   c.restore();
 }
 
 /** Decke bis zum Hals: der Kopf bleibt frei, der Körper ist zugedeckt. */
-function drawBlanket(c: C, t: number, lift = 1) {
-  const y = FLOOR_Y[2] - 20;
-  const breathe = Math.sin(t * 1.1) * 0.35;
-  const bx = 332;
-  const top = y + 2 - lift * 4;
-  rrect(c, bx, top, 72, 18 + breathe, 6, "#3f7f8c");
-  rect(c, bx + 3, top + 3, 66, 2, "rgba(255,255,255,.35)");
-  // umgeschlagener Rand am Hals
-  rrect(c, bx + 2, top - 2, 26, 6, 3, "#6bb4bb");
+/** Decke während des Hinlegens: exakt dieselbe Geometrie wie in der Schlafszene,
+ *  damit beim Übergang keine Kante springt. */
+function drawBlanket(c: C, t: number, _lift = 1) {
+  const ox = 330;
+  const oy = FLOOR_Y[2] - 20;
+  const breathe = Math.sin(t * 1.1) * 0.3;
+  const by = 12;
+  rrect(c, ox - 13, oy + by, 84, 30 + breathe, 7, "#3f7f8c");
+  rrect(c, ox - 11, oy + by + 1.2, 80, 4, 2, "#5da0a8");
+  rect(c, ox - 8, oy + by + 8, 74, 1.6, "rgba(255,255,255,.30)");
+  rect(c, ox - 8, oy + by + 16, 74, 1.2, "rgba(255,255,255,.18)");
 }
 
 /** Spielmodul in der Größe eines anderen Spieleschachtes. */
@@ -1039,6 +1173,86 @@ function beanbag(c: C, x: number, F: number) {
   c.globalAlpha = 1;
 }
 
+/**
+ * Altes aufrechtes Klavier im Musikzimmer des NORMALEN Hauses.
+ *
+ * Aufbau (Bühnenkoordinaten, F = Bodenlinie 200):
+ *   Korpus      545–589 (unverändert)
+ *   Klaviatur   585–627, angesetzt am Korpus, Tasten 587–621 auf y=168
+ *   Hocker      604–630, Sitzfläche 178–184
+ *   Sitzplatz   x=617, Blick nach links; Hände landen bei x≈603–605,
+ *               also in der Mitte der Tasten statt am rechten Ende.
+ *
+ * Gegenüber dem alten Stand ist die Tastatur 20 Einheiten nach links gerückt
+ * und Hocker/Sitzplatz um 16 Einheiten mitgewandert. Korpus, Notenpult und
+ * Bodenlinie bleiben unverändert.
+ */
+function piano(c: C, x: number, F: number) {
+  // Korpus und Deckel
+  rrect(c, x, F - 56, 44, 56, 3, "#2a1f1b");
+  rect(c, x - 2, F - 58, 48, 4, "#3a2a24");
+  rect(c, x - 2, F - 58, 48, 1.3, "rgba(255,255,255,.12)");
+
+  // Notenpult mit aufgelegtem Notenblatt
+  rrect(c, x + 5, F - 47, 26, 15, 2, "#241a16");
+  c.fillStyle = "#efe6cf";
+  c.fillRect(x + 7, F - 45, 22, 11);
+  c.strokeStyle = "rgba(80,58,34,.45)";
+  c.lineWidth = 0.35;
+  for (let i = 0; i < 4; i++) line(c, x + 8, F - 43 + i * 2.2, x + 28, F - 43 + i * 2.2, "rgba(80,58,34,.45)", 0.35);
+
+  /* ---- Klaviatur: sitzt jetzt am Korpus, nicht mehr rechts daneben ---- */
+  const kx = 585;
+  const ky = 168;
+  const kw = 42;
+  const kh = 7;
+  // Klaviaturkasten, an den Korpus angesetzt
+  rect(c, kx, ky - 2, kw + 2, kh + 5, "#221812");
+  rect(c, kx, ky - 2, kw + 2, 1, "rgba(255,255,255,.14)");
+  // weiße Tasten 587–621
+  const tx = 587;
+  const tw = 34;
+  rect(c, tx, ky, tw, kh, "#f5f2ea");
+  const wn = 14;
+  const ww = tw / wn;
+  for (let i = 1; i < wn; i++) rect(c, tx + i * ww, ky, 0.5, kh, "rgba(70,48,30,.55)");
+  // schwarze Tasten im Oktavmuster
+  for (let i = 0; i < wn - 1; i++) {
+    const p7 = i % 7;
+    if (p7 === 2 || p7 === 6) continue;
+    rect(c, tx + (i + 1) * ww - 0.7, ky, 1.4, kh * 0.6, "#141110");
+  }
+  // vordere Leiste und Wangen links/rechts
+  rect(c, tx - 2, ky + kh, tw + 4, 2.6, "#3a2a24");
+  rect(c, tx - 2, ky + kh, tw + 4, 0.8, "rgba(255,255,255,.1)");
+  rect(c, kx, ky - 2, 2.4, kh + 5, "#2f221b");
+  rect(c, tx + tw, ky - 2, 2.2, kh + 5, "#2f221b");
+  c.fillStyle = "#d9a83c";
+  c.fillRect(tx - 3.6, ky + kh + 0.7, 1.3, 1.1);
+  c.fillRect(tx + tw + 2.4, ky + kh + 0.7, 1.3, 1.1);
+
+  // Pedale unter dem Korpus
+  line(c, x + 16, F - 6, x + 16, F - 1, "#b8963f", 1.1);
+  line(c, x + 22, F - 6, x + 22, F - 1, "#b8963f", 1.1);
+
+  // Beine
+  rect(c, x + 4, F - 4, 3, 4, "#1a1410");
+  rect(c, x + 37, F - 4, 3, 4, "#1a1410");
+}
+
+/**
+ * Klavierhocker: Sitzfläche mittig unter Lunis Sitzplatz (x=617),
+ * vier schmale, leicht nach außen gestellte Beine.
+ */
+function pianoStool(c: C, x: number, F: number) {
+  rrect(c, x, F - 22, 26, 6, 3, "#6b3f2a");
+  rect(c, x + 2, F - 17, 22, 1.1, "rgba(217,168,60,.55)");
+  line(c, x + 4, F - 16, x + 2, F, "#4a2a1c", 1.6);
+  line(c, x + 21, F - 16, x + 23, F, "#4a2a1c", 1.6);
+  line(c, x + 6, F - 16, x + 5, F, "#4a2a1c", 1.2);
+  line(c, x + 19, F - 16, x + 20, F, "#4a2a1c", 1.2);
+}
+
 function lowboardTV(c: C, x: number, F: number) {
   rrect(c, x, F - 22, 66, 22, 3, "#2a2a38");
   rect(c, x + 4, F - 16, 26, 1.4, "rgba(255,255,255,.12)");
@@ -1048,23 +1262,7 @@ function lowboardTV(c: C, x: number, F: number) {
   disc(c, x + 56, F - 18, 1, "#35d6c0");
 }
 
-function piano(c: C, x: number, F: number) {
-  rrect(c, x, F - 56, 44, 56, 3, "#2a1f1b");
-  rect(c, x - 2, F - 58, 48, 4, "#3a2a24");
-  rect(c, x + 6, F - 46, 24, 14, "#e8e2d2");
-  for (let i = 0; i < 4; i++) rect(c, x + 9 + i * 5, F - 43, 3, 1, "rgba(0,0,0,.55)");
-  rect(c, x + 44, F - 28, 30, 4, "#f5f2ea");
-  for (let i = 0; i < 6; i++) rect(c, x + 48 + i * 5, F - 28, 2, 2.4, "#16130f");
-  rect(c, x + 44, F - 24, 30, 2, "#2a1f1b");
-  rect(c, x + 4, F - 4, 3, 4, "#1a1410");
-  rect(c, x + 37, F - 4, 3, 4, "#1a1410");
-}
 
-function pianoStool(c: C, x: number, F: number) {
-  rrect(c, x, F - 22, 26, 6, 3, "#6b3f2a");
-  rect(c, x + 3, F - 16, 3, 16, "#4a2a1c");
-  rect(c, x + 20, F - 16, 3, 16, "#4a2a1c");
-}
 
 function recordPlayer(c: C, x: number, F: number) {
   rrect(c, x, F - 24, 52, 24, 3, "#8a5a34");
@@ -1296,10 +1494,12 @@ function mailbox(c: C, x: number, y: number) {
  * Saxophon. Der Anker ist die Spitze des Mundstücks, damit das Instrument
  * sowohl auf dem Stativ als auch am Mund positioniert werden kann.
  */
-function saxophone(c: C, ax: number, ay: number, s = 1) {
+function saxophone(c: C, ax: number, ay: number, s = 1, dir: 1 | -1 = 1) {
   c.save();
   c.translate(ax, ay);
-  c.scale(s, s);
+  // dir spiegelt das Instrument um den Mundstück-Anker. Das Mundstück bleibt
+  // exakt am Ankerpunkt; der Korpus zeigt in Blickrichtung der Figur.
+  c.scale(s * dir, s);
 
   // Korpus: Hals -> Rohr -> U-Bogen -> Becherrohr (eine durchgehende Linie)
   c.strokeStyle = "#d9a83c";
@@ -1551,6 +1751,8 @@ function drawHouse(
   sky: HTMLCanvasElement,
   door: { open: number },
   golOnShelf: boolean,
+  /** Gruselhaus: welche Räume umgestaltet sind (null = normales Haus) */
+  gr: GruselRaeume | null = null,
 ) {
   drawExterior(c);
   drawRoof(c);
@@ -1577,7 +1779,8 @@ function drawHouse(
   c.lineTo(HR, FD);
   c.closePath();
   c.clip();
-  wallBand(c, DG_X0, 530, 30, FD, "#4a4f92", "#383d7c", 30);
+  if (gr?.raumstation) drawMetalWall(c, DG_X0, 530, 30, FD, atticCeil);
+  else wallBand(c, DG_X0, 530, 30, FD, "#4a4f92", "#383d7c", 30);
   wallBand(c, 530, HR, 30, FD, "#9a5750", "#7e433e", 30);
   c.restore();
 
@@ -1599,7 +1802,8 @@ function drawHouse(
   slab(c, CEL_X0, HR, FK, [[CEL_X0, 590, "#8a8d88", "none"], [590, HR, "#777a74", "none"]], "#2a2522");
   slab(c, 98, HR, FE, [[98, 560, WOOD, "wood"], [560, HR, "#e8e2d2", "tile"]]);
   slab(c, 98, OG_X1 + 2, FO, [[98, 490, "#a87a52", "wood"], [490, OG_X1 + 2, "#4d9a66", "tile"]]);
-  slab(c, DG_X0, HR, FD, [[DG_X0, 530, "#3e3b52", "none"], [530, HR, WOOD, "wood"]]);
+  slab(c, DG_X0, HR, FD, [[DG_X0, 530, gr?.raumstation ? "#5a5a6a" : "#3e3b52", "none"], [530, HR, WOOD, "wood"]]);
+  if (gr?.raumstation) drawMetalFloor(c, DG_X0, 530, FD);
 
   /* ---- Außenwände ---- */
   rect(c, 98, 118, 12, FE + SLAB - 118, "#4a3a33");
@@ -1624,15 +1828,23 @@ function drawHouse(
   railing(c, OG_X1 - 12, FO, 12);
 
   /* ---- Dachbalken ---- */
-  rect(c, 278, 88, 384, 6, "#5a3d28");
-  rect(c, 278, 88, 384, 1.6, "rgba(255,255,255,.18)");
+  if (gr?.raumstation) {
+    // Raumstation: Stahlträger bis zur Trennwand, danach der alte Holzbalken
+    drawSteelBeam(c, 278, 530, 88, 6);
+    rect(c, 530, 88, 132, 6, "#5a3d28");
+    rect(c, 530, 88, 132, 1.6, "rgba(255,255,255,.18)");
+  } else {
+    rect(c, 278, 88, 384, 6, "#5a3d28");
+    rect(c, 278, 88, 384, 1.6, "rgba(255,255,255,.18)");
+  }
 
   /* ---- Fenster ---- */
   windowRect(c, sky, 330, 358, 64, 38, { curtain: "#c9453a" });
   windowRect(c, sky, 624, 364, 50, 36);
   windowRect(c, sky, 740, 236, 44, 78, { mull: 2 });
   windowRect(c, sky, 334, 244, 62, 46, { curtain: "#7a3f55" });
-  windowRect(c, sky, 330, 98, 56, 44, { mull: 2 });
+  if (gr?.raumstation) drawSpaceWindow(c, RS.fenster.x, RS.fenster.y, RS.fenster.r);
+  else windowRect(c, sky, 330, 98, 56, 44, { mull: 2 });
   roundWindow(c, sky, 590, 104, 20);
   windowRect(c, sky, 704, 472, 36, 20, { mull: 2 });
 
@@ -1684,24 +1896,34 @@ function drawHouse(
   bathCeilingLamp(c, 590, FD + SLAB, FO, 490, OG_X1);
 
   /* ---- Dachgeschoss ---- */
-  beanbag(c, 296, FD);
-  lowboardTV(c, 404, FD);
-  bookshelf(c, 486, FD, 38, 74, 4, 5, true, {
-    row: 0,
-    index: 1,
-    item: golOnShelf ? (cc, bx, by, bw, bh) => golCartridge(cc, bx, by, bw, bh) : undefined,
-  });
-  picture(c, 412, 96, 44, 26, "#ff6f61");
-  picture(c, 276, 108, 22, 30, "#35d6c0");
-  piano(c, 545, FD);
-  pianoStool(c, 620, FD);
-  saxStand(c, 652, FD);
+  if (gr?.raumstation) {
+    // Horror-Raumstation: Sessel, Terminal, Lagerregal und alle Details
+    drawRaumstationMoebel(c, atticCeil, golOnShelf ? (cc, bx, by, bw, bh) => golCartridge(cc, bx, by, bw, bh) : undefined);
+  } else {
+    beanbag(c, 296, FD);
+    lowboardTV(c, 404, FD);
+    bookshelf(c, 486, FD, 38, 74, 4, 5, true, {
+      row: 0,
+      index: 1,
+      item: golOnShelf ? (cc, bx, by, bw, bh) => golCartridge(cc, bx, by, bw, bh) : undefined,
+    });
+    picture(c, 412, 96, 44, 26, "#ff6f61");
+    picture(c, 276, 108, 22, 30, "#35d6c0");
+  }
+  // Klavier nur im normalen Haus zeichnen. Im Gruselhaus ist es (Auftrag KI-A)
+  // entfernt; das Horrorhaus (Traumhaus) ist eine eigene, leere Ansicht.
+  if (!gr) {
+    // Nur im normalen Haus (gr === null). Gruselhaus und Horrorhaus ohne Klavier.
+    piano(c, 545, FD);
+    pianoStool(c, 604, FD);
+  }
+  saxStand(c, 646, FD);
   speaker(c, 678, FD);
   recordPlayer(c, 698, FD);
   speaker(c, 754, FD);
   recordShelf(c, 776, FD);
   guitar(c, 818, FD);
-  ceilingLamp(c, 430, atticCeil(430) + 2, 36, "#f2d9a0");
+  if (!gr?.raumstation) ceilingLamp(c, 430, atticCeil(430) + 2, 36, "#f2d9a0");
   ceilingLamp(c, 700, atticCeil(700) + 2, 30, "#f2d9a0");
 
   /* ---- Keller ---- */
@@ -1804,8 +2026,12 @@ interface Active {
 export interface HouseOptions {
   /** feste Uhrzeit (nur für Tests) */
   clock?: Clock;
-  /** sichtbarer Traumstein wechselt in die leere Traumhausansicht */
+  /** sichtbarer Traumstein wechselt in die leere Traumhausansicht (alt) */
   onTraumhaus?: () => void;
+  /** Welche Hauswelt dieses Haus zeigt: das normale oder das Gruselhaus */
+  welt?: "normal" | "gruesel";
+  /** Ein Klick auf einen Wechselstein: Ziel-Hauswelt */
+  onWelt?: (ziel: WeltId) => void;
 }
 
 function drawProp(c: C, kind: Prop, x: number, y: number, face: 1 | -1) {
@@ -1881,7 +2107,6 @@ export class House {
   private night = 0;
 
   private fixedClock: Clock | null;
-  private onTraumhaus: (() => void) | null = null;
   private clock: Clock;
   private clockT = 0;
   private bucket = -1;
@@ -1903,6 +2128,15 @@ export class House {
   private doorOpen = 0;
   private doorWant = false;
   private hover: Station | null = null;
+
+  /* ------------------------------ Hauswelt ------------------------------- */
+  private welt: "normal" | "gruesel" = "normal";
+  private onWelt: ((ziel: WeltId) => void) | null = null;
+  private steine: SteinSlot[] = [];
+  private steinStationen: Station[] = [];
+  private saveT = 0;
+  /** Gruselhaus, Raum 01: seltene Effekte (Notfallschalter, Funken) */
+  private raumFx = new RaumstationFx();
 
   // Raucherecke
   private gardenDoor = 0; // 0 = zu, 1 = offen
@@ -2018,6 +2252,9 @@ export class House {
   private bedTimePending = false;
   private sleepRest = 0;
   private bedSitHair = 0;
+  /** Schlafablauf: greifen -> ziehen -> drehen -> Haare legen -> schlafen */
+  private sleepPhase: "grab" | "pull" | "turn" | "settle" | null = null;
+  private sleepPhaseT = 0;
   private dream: Dream | null = null;
   /** kurze Aufwachpose nach „Aufwachen“ */
   private wakeT = 0;
@@ -2027,6 +2264,15 @@ export class House {
 
   // Duschen: Kleidung, Ablauf, Vorhang, Wasser, Dampf
   private outfit: "dressed" | "towel" | "none" = "dressed";
+
+  // „Paulchen“: Saxophon nehmen, spielen, zurückstellen
+  private saxPhase: "reach" | "lift" | "play" | "lower" | null = null;
+  private saxT = 0;
+  private saxMusic: SaxophonMusic | null = null;
+  private saxReady = false;
+  private saxPreparing = false;
+  private saxStarted = false;
+  private saxPausedAt: number | null = null;
   private wet = 0;
   private shPhase: ShPhase | null = null;
   private shT = 0;
@@ -2038,6 +2284,8 @@ export class House {
   /** Brille: auf der Nase, in der Hand, im Flug oder im Waschbecken */
   private glassesOn = true;
   private glassesInHand = false;
+  /** Abgelegte Brille: fester Weltpunkt, unabhängig von Luni und Schlafpose. */
+  private glassesRest: { x: number; y: number; rot: number; scale: number } | null = null;
   private glassesFly: { t: number; x0: number; y0: number } | null = null;
   private glassesInSink = false;
   /** Spiegelschrank 0 = zu, 1 = offen; Bürste im Schrank oder in der Hand */
@@ -2084,7 +2332,22 @@ export class House {
     this.mulc = this.ctx2(this.mul);
     this.addc = this.ctx2(this.add);
     this.fixedClock = opts.clock ?? null;
-    this.onTraumhaus = opts.onTraumhaus ?? null;
+    this.welt = opts.welt ?? "normal";
+    const alt = opts.onTraumhaus;
+    this.onWelt = opts.onWelt ?? (alt ? (z) => { if (z === "traum") alt(); } : null);
+    this.steine = steinSlots(this.welt);
+    this.steinStationen = this.steine.map((sl) => ({
+      id: `stein_${sl.art}`,
+      label: sl.label,
+      floor: 0,
+      x: sl.x,
+      face: 1,
+      state: "idle",
+      expr: "neutral",
+      hits: [sl.hit],
+    }));
+    // Jede Hauswelt stellt ausschließlich ihren eigenen Zustand wieder her.
+    this.wiederherstellen(ladeSnapshot(this.welt));
     this.clock = this.fixedClock ?? berlinNow();
     this.resize();
   }
@@ -2103,6 +2366,7 @@ export class House {
     window.addEventListener("resize", this.resize);
     window.addEventListener("keydown", this.onKey);
     document.addEventListener("visibilitychange", this.onVisibility);
+    window.addEventListener("pagehide", this.onPageHide);
     this.canvas.addEventListener("pointerdown", this.onDown);
     this.canvas.addEventListener("pointermove", this.onMove);
     this.canvas.addEventListener("pointerleave", this.onLeave);
@@ -2111,11 +2375,17 @@ export class House {
   }
 
   destroy() {
+    this.speichern();
+    window.removeEventListener("pagehide", this.onPageHide);
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
     this.ro?.disconnect();
     this.dream?.destroy();
     this.dream = null;
+    this.stopSax();
+    this.saxMusic?.dispose();
+    this.saxMusic = null;
+    this.saxReady = false;
     window.removeEventListener("resize", this.resize);
     window.removeEventListener("keydown", this.onKey);
     document.removeEventListener("visibilitychange", this.onVisibility);
@@ -2170,12 +2440,86 @@ export class House {
     return [((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H];
   }
 
+  /* ----------------------- Speichern je Hauswelt ------------------------ */
+
+  private schnappschuss(): HausSnapshot {
+    return {
+      v: 1,
+      gespeichert: Date.now(),
+      lx: this.lx,
+      lf: this.lf,
+      lface: this.lface,
+      sick: this.sick,
+      pack: this.pack,
+      cigs: this.cigs,
+      cigButt: this.cigButt,
+      pyjama: this.pyjama,
+      // Ohne Brille im Waschbecken trägt Luni sie (sonst ginge sie verloren).
+      glassesOn: this.glassesOn || !this.glassesInSink,
+      glassesInSink: this.glassesInSink && !this.glassesOn,
+      brushInCab: this.brushInCab,
+      gardenDoor: this.gardenDoor >= 0.5 ? 1 : 0,
+      cellarDoorV: this.cellarDoorV >= 0.5 ? 1 : 0,
+      golOnShelf: this.golOnShelf,
+      golInserted: this.golInserted,
+      smoke: this.smoke,
+    };
+  }
+
+  /** Speichert unter dem Schlüssel DIESER Hauswelt – nie unter einem fremden. */
+  speichern() {
+    speichereSnapshot(this.welt, this.schnappschuss());
+  }
+
+  private wiederherstellen(s: HausSnapshot | null) {
+    if (!s) return;
+    const lf = clamp(Math.round(s.lf), 0, 3);
+    const [a, b] = RANGE[lf];
+    this.lf = lf;
+    this.lx = clamp(s.lx, a, b);
+    this.lface = s.lface === -1 ? -1 : 1;
+    this.sick = clamp(s.sick, 0, 1);
+    this.pack = clamp(Math.round(s.pack), 0, PACK_MAX);
+    this.cigs = clamp(Math.round(s.cigs), 0, PILE_MAX);
+    this.cigButt = !!s.cigButt;
+    this.pyjama = s.pyjama ?? null;
+    this.glassesOn = s.glassesOn;
+    this.glassesInSink = s.glassesInSink;
+    this.brushInCab = s.brushInCab;
+    this.gardenDoor = s.gardenDoor;
+    this.gardenWant = s.gardenDoor;
+    this.cellarDoorV = s.cellarDoorV;
+    this.cellarDoorWant = s.cellarDoorV;
+    // Das Spielmodul darf nie verloren gehen: weder im Regal noch in der Konsole
+    // heißt, sie trug es gerade – dann liegt es wieder im Regal.
+    this.golInserted = s.golInserted;
+    this.golOnShelf = s.golOnShelf || !s.golInserted;
+    this.smoke = clamp(s.smoke, 0, 1);
+    this.dirty = true;
+  }
+
+  /** Wechselstein unter dem Zeiger (nur die Steine der eigenen Welt). */
+  private steinUnter(x: number, y: number): Station | null {
+    const sl = steinAn(this.steine, x, y);
+    return sl ? this.steinStationen[this.steine.indexOf(sl)] : null;
+  }
+
+  private steinWechsel(st: Station) {
+    const sl = this.steine[this.steinStationen.indexOf(st)];
+    if (!sl) return;
+    sfx.ui();
+    this.speichern();
+    this.onWelt?.(sl.ziel);
+  }
+
   private pick(x: number, y: number): Station | null {
     let best: Station | null = null;
     let bestArea = Infinity;
     for (const st of STATIONS) {
       // Leeres Fach: das Modul ist schon heruntergenommen.
       if (st.id === "gol_game" && !this.golOnShelf) continue;
+      // Klavier existiert nur im normalen Haus (Auftrag KI-A: im Horrorhaus entfernt).
+      if (st.id === "klavier" && this.welt !== "normal") continue;
       // Brille und Bürste sind nur Ziele, wenn sie wirklich da liegen.
       if (st.id === "brille" && !this.glassesInSink) continue;
       if (st.id === "buerste" && !(this.cabinetOpen > 0.9 && this.brushInCab)) continue;
@@ -2206,6 +2550,12 @@ export class House {
       this.startTvZoom();
       return;
     }
+    // Wechselsteine: ein Klick genügt.
+    const stein = this.steinUnter(x, y);
+    if (stein) {
+      this.steinWechsel(stein);
+      return;
+    }
     const st = this.pick(x, y);
     if (st) {
       // Über command() laufen, damit Tür-, Rauch- und WC-Logik greifen
@@ -2232,7 +2582,7 @@ export class House {
       this.canvas.style.cursor = onBtn || onCtrl || onGrid ? "pointer" : "default";
       return;
     }
-    this.hover = this.pick(x, y);
+    this.hover = this.steinUnter(x, y) ?? this.pick(x, y);
     const onTv = this.golInserted && this.hitAtticTv(x, y);
     this.canvas.style.cursor = this.hover || onTv ? "pointer" : "default";
   };
@@ -2249,6 +2599,14 @@ export class House {
    */
   command(id: string) {
     const find = (k: string) => STATIONS.find((s) => s.id === k) ?? null;
+
+    // Läuft „Paulchen“, beendet jede andere Anweisung die Musik sofort.
+    if (this.saxPhase) {
+      if (id === "saxophon") return;
+      this.stopSax();
+    }
+    // Schon beim Klick die Tonpuffer berechnen: dann ist die Musik am Mund bereit.
+    if (id === "saxophon") this.prepareSax();
 
     // Duschen: hinter dem Vorhang wird nichts unterbrochen. Auf dem Weg
     // dorthin bricht ein anderer Wunsch den Ablauf ab.
@@ -2481,11 +2839,6 @@ export class House {
 
 
     // Spiel des Lebens: aus dem Regal holen, zur Konsole tragen, einstecken.
-    if (id === "traumstein") {
-      this.onTraumhaus?.();
-      return;
-    }
-
     if (id === "gol_game") {
       if (this.golPhase || !this.golOnShelf) return;
       this.smokeRequested = false;
@@ -3228,6 +3581,14 @@ export class House {
     this.updateBedToss(dt);
     this.updateBedState(dt);
     this.updateDream(dt);
+    this.updateSax(dt);
+    if (this.welt === "gruesel") this.raumFx.update(dt);
+    // Alle paar Sekunden sichern, damit ein Absturz nichts kostet.
+    this.saveT += dt;
+    if (this.saveT >= 4) {
+      this.saveT = 0;
+      this.speichern();
+    }
     if (this.golInserted && this.golState?.running) this.updateGOL(dt);
   }
 
@@ -3318,6 +3679,20 @@ export class House {
       if (this.target && !this.activity) {
         this.activity = this.target;
         this.lface = this.target.face;
+        // Am Saxophon angekommen: erst prüfen, ob der Greifpunkt überhaupt in
+        // Reichweite liegt. Sonst geht sie näher heran, statt den Arm zu strecken.
+        if (this.target.id === "saxophon" && !this.saxPhase) {
+          const need = this.saxApproachX();
+          if (need !== null && Math.abs(this.lx - need) > 0.8) {
+            this.activity = null;
+            // Den Saxophon-Auftrag behalten. Nach dem Nachrücken fällt
+            // updateLuni erneut in diesen Ankunftsfall und startet das Greifen.
+            this.buildPath(3, need);
+          } else {
+            this.lx = need ?? this.lx;
+            this.startSax();
+          }
+        }
       }
       return;
     }
@@ -3423,8 +3798,15 @@ export class House {
       this.sky,
       { open: this.gardenDoor },
       this.golOnShelf,
+      this.welt === "gruesel" ? GRUSELRAEUME : null,
     );
-    drawStein(this.bgc, "traum");
+    // Raum 02 wird als eigene Canvas-Szene über die frühere Musikzimmerfläche
+    // gemalt. Der Bereich beginnt hinter der Trennwand; kein Nachbarraum ändert sich.
+    if (this.welt === "gruesel" && GRUSELRAEUME.orchester) {
+      drawOrchesterRoom(this.bgc, atticCeil);
+    }
+    // Wechselsteine: jede Welt zeigt die Steine der anderen Welten.
+    for (const sl of this.steine) drawStein(this.bgc, sl.art, 0, sl.x, sl.y);
 
     // Licht: Multiplikationsebene (Dunkelheit) + additive Wärme
     const night = this.night;
@@ -3481,6 +3863,7 @@ export class House {
     // Eingestecktes Modul sitzt in der Konsole, Luni geht davor vorbei.
     if (this.golInserted && this.golPhase !== "insert") golCartridge(ctx, 446, 167, 6, 11);
     this.drawClock(ctx);
+    if (this.welt === "gruesel") this.raumFx.draw(ctx, atticCeil);
     this.drawSax(ctx);
     this.drawCigPile(ctx);
     this.drawAshtrayTray(ctx);
@@ -3490,10 +3873,14 @@ export class House {
     drawWardrobeOpen(ctx, 434, FLOOR_Y[2], this.wardrobeOpen, this.outfit !== "dressed" || this.towelOnRod);
     if (this.glassesInSink) glassesObj(ctx, SINK_DROP[0], SINK_DROP[1], 0.12, 0.45);
     this.drawBedToss(ctx);
+    this.drawGlassesRest(ctx);
     drawCabinetOpen(ctx, this.cabinetOpen, this.brushInCab);
     this.drawLuniLayered(ctx);
     this.drawGlassesMoving(ctx);
     this.drawGolInHand(ctx);
+    if (this.welt === "gruesel" && GRUSELRAEUME.orchester) {
+      drawOrchesterEffects(ctx, this.elapsed, this.saxPhase === "play" && this.saxStarted, this.saxMusic?.currentTime ?? 0);
+    }
 
     // Rauch liegt über allem – Luni sieht erst wieder etwas, wenn die Tür auf ist
     this.drawSmoke(ctx);
@@ -3527,11 +3914,261 @@ export class House {
     rect(c, x + dw - 2, FE - 44, 2, 5, "#e6c36a");
   }
 
-  /** Saxophon: liegt in Lunis Händen oder steht auf dem Stativ */
+  /* ------------------------------ Saxophon ------------------------------- */
+
+  /** 0 = auf dem Stativ, 1 = am Mund. */
+  /** Weltpunkt, an dem die vordere Hand das Instrument hält. */
+  /** Nächste Standposition, aus der BEIDE Griffpunkte am Stativ mit natürlicher
+   *  Armlänge erreichbar sind. null = sie steht schon richtig. */
+  private saxApproachX(): number | null {
+    const st = STATIONS.find((s) => s.id === "saxophon");
+    if (!st) return null;
+    const reach = 8.2 + 8.4 - 0.6;
+    const shy = FLOOR_Y[3] + -34 * LUNI_SCALE;
+    for (const local of [SAX_GRIP_UP, SAX_GRIP_LOW] as const) {
+      const gx = SAX_STAND_X + local[0] * SAX_SCALE * st.face;
+      const gy = SAX_STAND_Y + local[1] * SAX_SCALE;
+      // Die Schulter, die näher am Instrument liegt, bekommt das kleinere dx.
+      const shx = this.lx + (local === SAX_GRIP_UP ? -3.4 : 3.4) * LUNI_SCALE * st.face;
+      const dy = gy - shy;
+      const dxMax = Math.sqrt(Math.max(0, reach * reach - dy * dy));
+      if (Math.abs(gx - shx) <= dxMax) continue;
+      const need = gx - Math.sign(gx - shx) * dxMax - (local === SAX_GRIP_UP ? -3.4 : 3.4) * LUNI_SCALE * st.face;
+      return st.face === 1 ? Math.min(need, gx) : Math.max(need, gx);
+    }
+    return null;
+  }
+
+  /** 0 = am Stativ, 1 = in Spielposition. */
+  private saxLift(): number {
+    if (this.saxPhase === "lift") return clamp(this.saxT / SAX_LIFT, 0, 1);
+    if (this.saxPhase === "play") return 1;
+    if (this.saxPhase === "lower") return 1 - clamp(this.saxT / SAX_LOWER, 0, 1);
+    return 0;
+  }
+
+  /**
+   * Aktuelle Lage des Instruments: Mundstück-Anker und Richtung.
+   * Die Richtung bleibt über ALLE Phasen dieselbe (Blickrichtung der Figur),
+   * damit sich das Saxophon beim Anheben nicht sichtbar umdreht. Position und
+   * Richtung stammen aus einer einzigen Stelle – Zeichnung und Griffpunkte
+   * können dadurch nie auseinanderlaufen.
+   */
+  private saxPose(): { ax: number; ay: number; dir: 1 | -1; rot: number } {
+    const st = STATIONS.find((s) => s.id === "saxophon")!;
+    const dir = st.face;
+    const raw = this.saxLift();
+    const e = raw * raw * (3 - 2 * raw);
+    const mouthX = st.x + SAX_MOUTH_DX * LUNI_SCALE * dir;
+    const mouthY = FLOOR_Y[st.floor] - 40.5 * LUNI_SCALE;
+    // Leichter Bogen beim Anheben – kein gerader Flug durch den Raum.
+    const arc = Math.sin(Math.PI * raw) * 3;
+    const ax0 = lerp(SAX_STAND_X, mouthX, e);
+    const ay0 = lerp(SAX_STAND_Y, mouthY, e) - arc;
+
+    // Sobald sie es hält, folgt das Instrument ihrem Körper: Wiegen mit der
+    // Musik und das Atmen des Oberkörpers. Sonst schwebt es starr daneben.
+    let rot = 0;
+    // Am Stativ und während des Hinstreckens liegt es ruhig – die Körper-
+    // bewegung gehört erst zu Luni, sobald sie das Instrument hält.
+    if (!this.saxPhase || this.saxPhase === "reach") return { ax: ax0, ay: ay0, dir, rot };
+    const sway = this.saxSway();
+    const breathe = Math.sin(this.elapsed * 2) * 0.45 * 0.35; // buildRig("sax")
+    return {
+      ax: ax0 + sway * 0.6 * LUNI_SCALE * dir,
+      ay: ay0 + breathe * LUNI_SCALE,
+      dir,
+      rot: sway * 0.04 * dir,
+    };
+  }
+
+  /** Oberkörper-Wiegen der Spielhaltung, aus derselben Musikzeit wie die Figur. */
+  private saxSway(): number {
+    if (this.saxPhase !== "play" || !this.saxStarted) return 0;
+    return Math.sin(((this.saxMusic?.currentTime ?? 0) * Math.PI * 2) / 2); // ein Takt = 2 s
+  }
+
+  /** Fußwippen im Takt (120 BPM). */
+  private saxBeat(): number {
+    if (this.saxPhase !== "play" || !this.saxStarted) return 0;
+    const beat = ((this.saxMusic?.currentTime ?? 0) * 2) % 1;
+    return beat < 0.3 ? Math.sin((beat / 0.3) * Math.PI) : 0;
+  }
+
+  /** Griffpunkt in Weltkoordinaten – folgt dem Instrument Schritt für Schritt. */
+  private saxGripAt(local: Pt): [number, number] {
+    const p = this.saxPose();
+    // Griffpunkt zuerst in Instrumentenrahmen, dann mit der Körperbewegung
+    // drehen und verschieben – Hände und Korpus bleiben dadurch verbunden.
+    const lx = local[0] * SAX_SCALE * p.dir;
+    const ly = local[1] * SAX_SCALE;
+    const c = Math.cos(p.rot);
+    const sn = Math.sin(p.rot);
+    return [p.ax + lx * c - ly * sn, p.ay + lx * sn + ly * c];
+  }
+
+  /** Instrument steht auf dem Stativ, solange es niemand hält. */
   private drawSax(c: C) {
-    const playing = this.activity?.id === "saxophon" && !this.cur;
-    if (playing) return;
-    saxophone(c, 650, FLOOR_Y[3] - 44, 0.92);
+    // Während einer Phase übernimmt drawSaxCarried den Zwischenschritt.
+    if (this.saxPhase) return;
+    const p = this.saxPose();
+    if (this.welt === "gruesel" && GRUSELRAEUME.orchester) {
+      drawBoneSaxophone(c, p.ax, p.ay, SAX_SCALE, p.dir);
+    } else {
+      saxophone(c, p.ax, p.ay, SAX_SCALE, p.dir);
+    }
+  }
+
+  /**
+   * Instrument in Lunis Hand. Läuft als Zwischenschritt zwischen Rumpf und
+   * Armen (siehe betweenBodyAndArms) – dadurch liegt es vor dem Körper und
+   * hinter beiden Händen, statt sie zu verdecken. Die Neigung folgt dem
+   * Wiegen des Oberkörpers.
+   */
+  private drawSaxCarried(c: C) {
+    if (!this.saxPhase) return;
+    // Der Aufruf kommt aus drawLuni, wo die FIGUREN-Transformation liegt
+    // (versetzt, gespiegelt, skaliert). Zeichnet man hier mit Weltkoordinaten,
+    // landet das Instrument außerhalb des Bildes – zurück auf Welt zurück.
+    const s = this.scale * this.dpr;
+    c.save();
+    c.setTransform(s, 0, 0, s, 0, 0);
+    const p = this.saxPose();
+    if (p.rot) {
+      c.translate(p.ax, p.ay);
+      c.rotate(p.rot);
+      c.translate(-p.ax, -p.ay);
+    }
+    if (this.welt === "gruesel" && GRUSELRAEUME.orchester) {
+      drawBoneSaxophone(c, p.ax, p.ay, SAX_SCALE, p.dir);
+    } else {
+      saxophone(c, p.ax, p.ay, SAX_SCALE, p.dir);
+    }
+    c.restore();
+  }
+
+  /** Beide Hände auf dem Klappenschacht – über dem Instrument und den Ärmeln. */
+  private drawSaxHands(c: C, hands: { front: [number, number]; rear: [number, number] }) {
+    if (!this.saxPhase) return;
+    const rot = this.saxPose().rot;
+    for (const h of [hands.front, hands.rear]) this.drawSaxHand(c, h, rot);
+  }
+
+  /** Hand am Griffpunkt: flache Hand auf dem Korpus, Finger über die Klappen. */
+  private drawSaxHand(c: C, h: [number, number], rot = 0) {
+    c.save();
+    c.translate(h[0], h[1]);
+    c.rotate(rot + 0.35);
+    rrect(c, -4.4, -3.1, 8.8, 6.2, 3, LUNI_COLORS.skin);
+    c.strokeStyle = LUNI_COLORS.skinShade;
+    c.lineWidth = 0.8;
+    for (let i = 0; i < 3; i++) {
+      c.beginPath();
+      c.moveTo(-1.8 + i * 1.8, -3);
+      c.lineTo(-1.3 + i * 1.8, 3);
+      c.stroke();
+    }
+    c.restore();
+  }
+
+  /** Audio freigeben und Tonpuffer vorab berechnen (mehrfach aufrufbar). */
+  private prepareSax() {
+    sfx.ensure();
+    const shared = sfx.getSharedAudio();
+    if (!shared) return;
+    if (!this.saxMusic) this.saxMusic = new SaxophonMusic(shared.ctx, shared.master);
+    const music = this.saxMusic;
+    if (!this.saxReady && !this.saxPreparing) {
+      this.saxPreparing = true;
+      void music
+        .prepare()
+        .then(() => {
+          this.saxReady = true;
+        })
+        .catch(() => {
+          this.saxReady = false;
+          music.dispose();
+          if (this.saxMusic === music) this.saxMusic = null;
+        })
+        .finally(() => {
+          this.saxPreparing = false;
+        });
+    }
+  }
+
+  /** Klick auf das Saxophon: erst hinstrecken, dann greifen. */
+  private startSax() {
+    if (this.saxPhase) return;
+    this.saxPhase = "reach";
+    this.saxT = 0;
+    this.saxStarted = false;
+    this.saxPausedAt = null;
+    this.prepareSax();
+  }
+
+  /** Mundstück am Mund: Musik startet, sobald die Tonpuffer bereit sind. */
+  private tryStartSaxPlayback() {
+    if (this.saxStarted || !this.saxMusic || !this.saxReady || this.saxPausedAt !== null) return;
+    const shared = sfx.getSharedAudio();
+    if (!shared) return;
+    try {
+      this.saxMusic.playAt(shared.ctx.currentTime + SAX_LEAD, 0);
+      this.saxStarted = true;
+    } catch {
+      // Audio noch gesperrt – im nächsten Bild erneut versuchen.
+    }
+  }
+
+  private updateSax(dt: number) {
+    if (!this.saxPhase) return;
+    this.saxT += dt;
+    // 1) Hinstrecken: das Instrument bleibt unverändert am Stativ.
+    if (this.saxPhase === "reach") {
+      if (this.saxT >= SAX_REACH) {
+        this.saxPhase = "lift";
+        this.saxT = 0;
+      }
+      return;
+    }
+    // 2) Anheben: Greifpunkt und Instrument wandern gemeinsam zum Mund.
+    if (this.saxPhase === "lift") {
+      if (this.saxT >= SAX_LIFT) {
+        this.saxPhase = "play";
+        this.saxT = 0;
+        this.tryStartSaxPlayback();
+      }
+      return;
+    }
+    if (this.saxPhase === "play") {
+      if (!this.saxStarted) {
+        this.tryStartSaxPlayback();
+        return;
+      }
+      if ((this.saxMusic?.currentTime ?? 0) >= SAX_SONG_PAULCHEN.duration) {
+        this.saxMusic?.stop();
+        this.saxPhase = "lower";
+        this.saxT = 0;
+        this.saxStarted = false;
+      }
+      return;
+    }
+    // 3) Abstellen: zurück zum Stativ, erst am Ziel löst sich die Hand.
+    if (this.saxPhase === "lower" && this.saxT >= SAX_LOWER) {
+      this.saxPhase = null;
+      this.saxT = 0;
+      this.saxStarted = false;
+      this.activity = null;
+      this.target = null;
+    }
+  }
+
+  /** Musik sofort beenden (Abbruch, Aufwachen, neue Anweisung). */
+  private stopSax() {
+    this.saxMusic?.stop();
+    this.saxPhase = null;
+    this.saxT = 0;
+    this.saxStarted = false;
+    this.saxPausedAt = null;
   }
 
   /** Gedrehte Zigaretten und Schachtel auf dem Küchentisch */
@@ -4164,9 +4801,29 @@ export class House {
     if (e.code === "Escape" && this.golFullscreen) this.golFullscreen = false;
   };
 
-  /** Versteckter Tab hält den Traum an. */
+  /** Versteckter Tab hält Traum und Saxophon an. */
+  private onPageHide = () => this.speichern();
+
   private onVisibility = () => {
-    if (document.visibilityState === "hidden" && this.dream && !this.dream.paused) this.dream.pause();
+    if (document.visibilityState === "hidden") {
+      this.speichern();
+      if (this.dream && !this.dream.paused) this.dream.pause();
+      if (this.saxPhase === "play" && this.saxStarted && this.saxMusic) {
+        this.saxPausedAt = this.saxMusic.pause();
+        this.saxStarted = false;
+      }
+    } else if (this.saxPausedAt !== null && this.saxPhase === "play" && this.saxMusic) {
+      const shared = sfx.getSharedAudio();
+      if (shared) {
+        try {
+          this.saxMusic.playAt(shared.ctx.currentTime + SAX_LEAD, this.saxPausedAt);
+          this.saxStarted = true;
+          this.saxPausedAt = null;
+        } catch {
+          // Audio noch gesperrt – bleibt pausiert, kein Neustart von vorn.
+        }
+      }
+    }
   };
 
   /** Bildfläche des Fernsehers im Zockerzimmer. */
@@ -4573,6 +5230,7 @@ export class House {
   private startBedRoutine() {
     // Nutzeraktion Bettklick: Audio für den später automatischen Traum freigeben.
     sfx.ensure();
+    this.glassesRest = null;
     this.chain = [];
     this.smokeRequested = false;
     this.bedTimePending = false;
@@ -4620,6 +5278,12 @@ export class House {
       const [tx, ty] = this.tossTarget();
       if (u >= 1) {
         this.tossLanded = true;
+        // Verbindung zur Hand wird genau beim Aufkommen gelöst. Ab jetzt liegt
+        // die Brille als eigenes Objekt an ihrem Platz – nicht mehr am Kopf.
+        this.glassesInHand = false;
+        const rot = this.tossLand === 0 ? 0.1 : this.tossLand === 4 || this.tossLand === 5 ? 0.6 : 1.35;
+        const sc = this.tossLand === 0 ? 0.45 : this.tossLand === 4 || this.tossLand === 5 ? 0.8 : 0.35;
+        this.glassesRest = { x: tx, y: ty, rot, scale: sc };
         sfx.ui();
       }
       void tx;
@@ -4642,6 +5306,13 @@ export class House {
   }
 
   /** Brille im Flug vom Bett: hoher Bogen, drehend. */
+  /** Abgelegte Brille bleibt exakt am Ablageort liegen. */
+  private drawGlassesRest(c: C) {
+    const g = this.glassesRest;
+    if (!g) return;
+    glassesObj(c, g.x, g.y, g.rot, g.scale);
+  }
+
   private drawBedToss(c: C) {
     if (this.bedPhase !== "toss") return;
     const T = 1.25;
@@ -4675,6 +5346,8 @@ export class House {
     this.dream?.destroy();
     this.dream = null;
     if (wake) {
+      this.glassesOn = true;
+      this.glassesRest = null;
       this.asleep = false;
       this.sleepT = 0;
       this.bedSitHair = 0;
@@ -4692,6 +5365,28 @@ export class House {
       this.sleepT = 0;
       // Kein Endlos-Loop: erst eine bewusste Aktion startet den Traum erneut.
       this.sleepRest = 1e9;
+    }
+  }
+
+  /** Fortschritt des Zudeckens für die Zeichnung. */
+  private sleepProgress(): { pull: number; grab: number; turn: number; hair: number } {
+    const ease = (v: number) => {
+      const k = clamp(v, 0, 1);
+      return k * k * (3 - 2 * k);
+    };
+    const ph = this.sleepPhase;
+    if (this.asleep) return { pull: 1, grab: 1, turn: 1, hair: 1 };
+    if (!ph) return { pull: 0, grab: 0, turn: 0, hair: 0 };
+    const p = clamp(this.sleepPhaseT / ({ grab: 0.75, pull: 1.9, turn: 1.3, settle: 1.4 } as const)[ph], 0, 1);
+    switch (ph) {
+      case "grab":
+        return { pull: 0, grab: ease(p), turn: 0, hair: 0 };
+      case "pull":
+        return { pull: ease(p), grab: 1, turn: 0, hair: 0 };
+      case "turn":
+        return { pull: 1, grab: 1, turn: ease(p), hair: 0 };
+      default:
+        return { pull: 1, grab: 1, turn: 1, hair: ease(p) };
     }
   }
 
@@ -4739,9 +5434,31 @@ export class House {
       this.lieT += dt;
       if (this.lieT >= 1.4) {
         this.lieDown = false;
-        this.asleep = true;
-        this.sleepT = 0;
-        this.bedSitHair = 0;
+        this.sleepPhase = "grab";
+        this.sleepPhaseT = 0;
+      }
+      return;
+    }
+
+    // Zudecken und Zurechtlegen. Erst wenn die Decke am Kinn sitzt und sie auf
+    // der Seite liegt, gilt sie als eingeschlafen (und der Traum darf starten).
+    if (this.sleepPhase) {
+      this.sleepPhaseT += dt;
+      const d = { grab: 0.75, pull: 1.9, turn: 1.3, settle: 1.4 } as const;
+      const order = ["grab", "pull", "turn", "settle"] as const;
+      const cur = this.sleepPhase;
+      if (this.sleepPhaseT >= d[cur]) {
+        const i = order.indexOf(cur);
+        if (i === order.length - 1) {
+          this.sleepPhase = null;
+          this.sleepPhaseT = 0;
+          this.asleep = true;
+          this.sleepT = 0;
+          this.bedSitHair = 1;
+        } else {
+          this.sleepPhase = order[i + 1];
+          this.sleepPhaseT = 0;
+        }
       }
       return;
     }
@@ -5157,7 +5874,7 @@ export class House {
       const e = p * p * (3 - 2 * p);
       c.save();
       this.lastPose = "lie";
-      const wh = drawLuni(c, 340, FLOOR_Y[2] - 10 * (1 - e), {
+      const wh = drawLuni(c, 330, FLOOR_Y[2] - 10 * (1 - e), {
         t: this.elapsed,
         face: 1,
         state: "lie",
@@ -5174,9 +5891,8 @@ export class House {
       drawBlanket(c, this.elapsed, e);
       return;
     }
-    if (this.asleep) {
-      // Endgültige Schlafpose: auf der Seite, Decke bis zum Hals,
-      // eine Hand unter dem Ohr, die Haare ordentlich dazwischen.
+    if (this.sleepPhase || this.asleep) {
+      // Schlafszene: Kissen -> Hand -> Haare -> Kopf, Decke bis zum Kinn.
       st = STATIONS.find((sn) => sn.id === "bett") ?? null;
       x = 330;
       y = FLOOR_Y[2];
@@ -5184,11 +5900,11 @@ export class House {
       state = "lie";
       expr = "sleep";
       face = 1;
-      hairAside = this.bedSitHair;
+      const pr = this.sleepProgress();
+      hairAside = pr.hair;
       this.lastPose = "sleep";
-      drawSleepingLuni(c, x, y + yOff, this.elapsed, this.pyjama, this.bedSitHair);
-      drawBlanket(c, this.elapsed);
-      if (!this.dream && this.sleepRest > 0) drawSleepZ(c, x + 6, y - 44, this.sleepT);
+      drawBedScene(c, x, y + yOff, this.elapsed, this.pyjama, pr);
+      if (this.asleep && !this.dream && this.sleepRest > 0) drawSleepZ(c, x + 6, y - 44, this.sleepT);
       return;
     }
     const shp = this.showerPose();
@@ -5216,6 +5932,43 @@ export class House {
       face = 1;
     }
 
+    // Saxophon: Pose je Phase. Beim Spielen wippt der rechte Fuß im Takt und
+    // der Oberkörper wiegt sich mit der Musik – getrieben von der Musikzeit.
+    let saxFootTap = 0;
+    let saxSway = 0;
+    let saxHand: [number, number] | null = null;
+    let saxHand2: [number, number] | null = null;
+    if (this.saxPhase === "reach") {
+      // Beide Arme strecken sich zum Instrument – es bleibt am Stativ.
+      state = "act";
+      expr = "focus";
+      posePhase = 0.35;
+      const r = clamp(this.saxT / SAX_REACH, 0, 1);
+      const k = r * r * (3 - 2 * r);
+      const up = this.saxGripAt(SAX_GRIP_UP);
+      const lo = this.saxGripAt(SAX_GRIP_LOW);
+      // Ausgangsstellung der act-Pose, damit beim Phasenwechsel nichts springt.
+      const pAct = 0.7 + Math.sin(this.elapsed * 7) * 0.12;
+      const restF: [number, number] = [x + -7 * LUNI_SCALE * face, y + -22 * LUNI_SCALE];
+      const restR: [number, number] = [x + (9 + 7 * pAct) * LUNI_SCALE * face, y + (-30 - 2 * pAct) * LUNI_SCALE];
+      saxHand = [lerp(restF[0], up[0], k), lerp(restF[1], up[1], k)];
+      saxHand2 = [lerp(restR[0], lo[0], k), lerp(restR[1], lo[1], k)];
+    } else if (this.saxPhase === "lift" || this.saxPhase === "lower") {
+      state = "sax";
+      expr = "focus";
+      // Beide Ziele entstehen aus der Instrumentenlage – die Hände folgen dem
+      // Saxophon Schritt für Schritt, nie umgekehrt.
+      saxHand = this.saxGripAt(SAX_GRIP_UP);
+      saxHand2 = this.saxGripAt(SAX_GRIP_LOW);
+    } else if (this.saxPhase === "play") {
+      state = "sax";
+      expr = "happy";
+      saxFootTap = this.saxBeat();
+      saxSway = this.saxSway();
+      saxHand = this.saxGripAt(SAX_GRIP_UP);
+      saxHand2 = this.saxGripAt(SAX_GRIP_LOW);
+    }
+
     c.save();
     if (clip) {
       c.beginPath();
@@ -5226,6 +5979,8 @@ export class House {
       this.wcInside && st?.id === "wctuer" && this.wcOpen < 0.55;
     c.globalAlpha = hiddenInWc ? 0 : this.alpha;
     this.lastPose = state;
+    // Wird von drawLuni gefüllt: beide Handpositionen in Weltkoordinaten.
+    const saxHands = { front: [0, 0] as [number, number], rear: [0, 0] as [number, number] };
     const hand = drawLuni(c, x, y + yOff, {
       t: this.elapsed,
       face,
@@ -5245,6 +6000,13 @@ export class House {
       glasses: this.glassesOn,
       pajama: this.outfit === "dressed" ? this.pyjama : null,
       hairAside,
+      footTap: saxFootTap,
+      sway: saxSway,
+      handTarget: saxHand,
+      handTarget2: saxHand2,
+      handOut: saxHands,
+      betweenBodyAndArms: this.saxPhase ? () => this.drawSaxCarried(c) : null,
+      armsInFront: !!this.saxPhase,
     });
     this.hand[0] = hand[0];
     this.hand[1] = hand[1];
@@ -5303,10 +6065,9 @@ export class House {
     } else if (this.holding && st?.id !== "raucherstuhl") {
       cigarette(c, hand[0], hand[1], face, 0.4);
     }
-    if (st?.id === "saxophon") {
-      // Mundstück sitzt am Mund, der Korpus hängt nach unten
-      saxophone(c, x + 1.2 * LUNI_SCALE, y - 40.5 * LUNI_SCALE + yOff, 0.52 * LUNI_SCALE);
-    }
+    // Beide Hände liegen auf dem Klappenschacht – sie werden über das
+    // Instrument gesetzt, sonst verschwinden sie hinter dem Korpus.
+    this.drawSaxHands(c, saxHands);
     if (this.onPhone && !this.standing && !this.ashMove && !a) {
       c.save();
       c.translate(hand[0], hand[1] - 1);
