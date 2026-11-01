@@ -3,7 +3,7 @@ import HouseView from "@/components/HouseView";
 import TraumhausView from "@/components/TraumhausView";
 import StudioApp from "@/StudioApp";
 
-/** Hash-Weiche: "#studio" Figuren-Studio, "#traumhaus" Horrorhaus, "#gruselhaus" Gruselhaus, sonst das normale Haus. */
+/** Hash-Weiche: "#studio" Figuren-Studio, "#traumhaus" Traumhaus, "#gruselhaus" Gruselhaus, sonst das normale Haus. */
 function useHash() {
   const [hash, setHash] = useState(() => (typeof window === "undefined" ? "" : window.location.hash));
   useEffect(() => {

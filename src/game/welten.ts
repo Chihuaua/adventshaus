@@ -3,7 +3,7 @@
 
    Drei unabhängige Welten, jede mit eigenem Speicherplatz:
      normal  – das ursprüngliche Haus (Wachstein führt hierher)
-     traum   – das Horrorhaus, die bestehende Traumhaus-Ansicht
+     traum   – das Traumhaus, die bestehende Traumhaus-Ansicht
                (der Traumstein führt hierher)
      gruesel – das Gruselhaus im Halloween-Stil
                (der Horrorstein führt hierher)
@@ -22,7 +22,7 @@ export const WELTEN: readonly WeltId[] = ["normal", "traum", "gruesel"] as const
 
 export const WELT_NAMEN: Record<WeltId, string> = {
   normal: "Normales Haus",
-  traum: "Horrorhaus",
+  traum: "Traumhaus",
   gruesel: "Gruselhaus",
 };
 
@@ -81,7 +81,7 @@ export function speichereSnapshot(welt: WeltId, snap: HausSnapshot) {
   saveJson(schluessel(welt), snap);
 }
 
-/** Das Horrorhaus hat keinen Spielzustand, merkt sich aber seine Besuche. */
+/** Das Traumhaus hat keinen Spielzustand, merkt sich aber seine Besuche. */
 export interface BesuchsInfo {
   v: 1;
   besuche: number;

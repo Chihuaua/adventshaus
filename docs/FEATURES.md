@@ -66,9 +66,28 @@ gruselhaus-route | src/App.tsx | #gruselhaus
 gruselhaus-raeume | src/game/gruselhaus/index.ts | GRUSELRAEUME
 raumstation-moebel | src/game/gruselhaus/raumstation.ts | drawRaumstationMoebel
 raumstation-effekte | src/game/gruselhaus/raumstation.ts | RaumstationFx
-orchester-datei | src/game/gruselhaus/orchester.ts | export
-orchester-raum | src/game/gruselhaus/orchester.ts | drawOrchesterRoom
-orchester-saxophon | src/game/gruselhaus/orchester.ts | drawBoneSaxophone
+musikzimmer-datei | src/game/gruselhaus/musikzimmer.ts | export
+musikzimmer-raum | src/game/gruselhaus/musikzimmer.ts | drawMusikzimmer
+musikzimmer-verbindungstuer | src/game/gruselhaus/musikzimmer.ts | drawMusiktuer
+
+## Musikzimmer im Gruselhaus
+
+musikzimmer-klavier | src/game/gruselhaus/musikzimmer.ts | drawPiano
+musikzimmer-geist | src/game/gruselhaus/musikzimmer.ts | drawGhost
+musikzimmer-stationen | src/game/gruselhaus/musikzimmer.ts | musikzimmerStationen
+musikzimmer-ablauf | src/game/gruselhaus/musikzimmer-ablauf.ts | class MusikzimmerAblauf
+musikzimmer-alpha | src/game/gruselhaus/musikzimmer-ablauf.ts | get alpha
+musikzimmer-ton | src/game/gruselhaus/musikzimmer-ablauf.ts | class KlavierKlang
+musikzimmer-haende | src/game/gruselhaus/musikzimmer-ablauf.ts | klavierHaende
+luni-klavier-ausweichen | src/game/house.ts | leaveMusicPiano
+luni-klavier-ablehnung | src/game/house.ts | pianoRefusal
+tueren-bei-ankunft | src/game/house.ts | doorActed
+tueren-sperren-weg | src/game/house.ts | barrierAhead
+tueren-per-hand | src/game/house.ts | doorHand
+musikzimmer-vorhaenge | src/game/gruselhaus/musikzimmer.ts | drawVorhaenge
+musikzimmer-vorhang-griff | src/game/gruselhaus/musikzimmer.ts | vorhangGriff
+steine-gui | src/game/house.ts | steinWechsel
+musikzimmer-tests | tools/test-musikzimmer.mjs | Aufspringen
 
 ## Ton und Speicher
 

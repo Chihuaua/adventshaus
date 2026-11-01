@@ -51,7 +51,8 @@ import {
   drawSpaceWindow,
   drawSteelBeam,
 } from "./gruselhaus/raumstation";
-import { drawBoneSaxophone, drawOrchesterEffects, drawOrchesterRoom } from "./gruselhaus/orchester";
+import { clipMusikzimmer, drawMusikzimmerEffects, drawMusikzimmer, drawMusiktuer, musikzimmerStationen, vorhangGriff, MUSIKZIMMER } from "./gruselhaus/musikzimmer";
+import { klavierHaende, MusikzimmerAblauf } from "./gruselhaus/musikzimmer-ablauf";
 import {
   SHOWER_X,
   curtainRect,
@@ -1910,10 +1911,8 @@ function drawHouse(
     picture(c, 412, 96, 44, 26, "#ff6f61");
     picture(c, 276, 108, 22, 30, "#35d6c0");
   }
-  // Klavier nur im normalen Haus zeichnen. Im Gruselhaus ist es (Auftrag KI-A)
-  // entfernt; das Horrorhaus (Traumhaus) ist eine eigene, leere Ansicht.
+  // Das normale Klavier bleibt unveraendert; das Musikzimmer zeichnet sein eigenes.
   if (!gr) {
-    // Nur im normalen Haus (gr === null). Gruselhaus und Horrorhaus ohne Klavier.
     piano(c, 545, FD);
     pianoStool(c, 604, FD);
   }
@@ -2137,6 +2136,15 @@ export class House {
   private saveT = 0;
   /** Gruselhaus, Raum 01: seltene Effekte (Notfallschalter, Funken) */
   private raumFx = new RaumstationFx();
+  private stations: Station[] = STATIONS;
+  private musikzimmer: MusikzimmerAblauf | null = null;
+  private pianoSeat = 0;
+  private pianoRise = 0;
+  private pianoRiseFrom = 0;
+  private pianoAfter: string | null = null;
+  private pianoEscape = false;
+  private pianoEscapeMoving = false;
+  private pianoRefusal = 0;
 
   // Raucherecke
   private gardenDoor = 0; // 0 = zu, 1 = offen
@@ -2318,6 +2326,21 @@ export class House {
   /** wurde die Zigarette beim "Nehmen" aus dem Aschenbecher geholt? */
   private takeLit = false;
   private doorT = 0;
+  /** Einmal pro Tuerszene schalten (Schleusentuer, Verbindungstuer). */
+  private doorActed = false;
+  /** Beim Klick gemerktes Ziel der Tuer (0 = schliessen, 1 = oeffnen). */
+  private doorIntent: { id: string; want: 0 | 1 } | null = null;
+  /** Blaue Verbindungstuer Gaming-Ecke <-> Musikzimmer (nur Gruselhaus). */
+  private musikDoor = 0;
+  private musikDoorWant = 0;
+  /** Samtvorhaenge im Musikzimmer: 0 offen .. 1 geschlossen (links, rechts). */
+  private vorhang: [number, number] = [1, 1];
+  private vorhangWant: [0 | 1, 0 | 1] = [1, 1];
+  /** Hand am Griff: Weltpunkt, zu dem Luni gerade greift (Tuer, Vorhang). */
+  private doorHand: Pt | null = null;
+  /** Greifzeit vor einer Durchgangstuer im Weg; -1 = nicht aktiv */
+  private doorHandT = -1;
+  private doorHandOpen: (() => void) | null = null;
   /** ausstehende Befehle nach der aktuellen Aktion.
    *  force = Rückkehr ohne Prüfung, sonst Spielerbefehl mit Prüfung. */
   private chain: { id: string; force: boolean }[] = [];
@@ -2333,6 +2356,10 @@ export class House {
     this.addc = this.ctx2(this.add);
     this.fixedClock = opts.clock ?? null;
     this.welt = opts.welt ?? "normal";
+    if (this.welt === "gruesel" && GRUSELRAEUME.musikzimmer) {
+      this.stations = musikzimmerStationen(STATIONS);
+      this.musikzimmer = new MusikzimmerAblauf();
+    }
     const alt = opts.onTraumhaus;
     this.onWelt = opts.onWelt ?? (alt ? (z) => { if (z === "traum") alt(); } : null);
     this.steine = steinSlots(this.welt);
@@ -2386,6 +2413,7 @@ export class House {
     this.saxMusic?.dispose();
     this.saxMusic = null;
     this.saxReady = false;
+    this.musikzimmer?.destroy();
     window.removeEventListener("resize", this.resize);
     window.removeEventListener("keydown", this.onKey);
     document.removeEventListener("visibilitychange", this.onVisibility);
@@ -2515,11 +2543,11 @@ export class House {
   private pick(x: number, y: number): Station | null {
     let best: Station | null = null;
     let bestArea = Infinity;
-    for (const st of STATIONS) {
+    for (const st of this.stations) {
       // Leeres Fach: das Modul ist schon heruntergenommen.
       if (st.id === "gol_game" && !this.golOnShelf) continue;
-      // Klavier existiert nur im normalen Haus (Auftrag KI-A: im Horrorhaus entfernt).
-      if (st.id === "klavier" && this.welt !== "normal") continue;
+      // Instrumente sind im Musikzimmer des Gruselhauses entfernt (nur dort).
+      if (this.musikzimmer && (st.id === "saxophon" || st.id === "platten" || st.id === "gitarre")) continue;
       // Brille und Bürste sind nur Ziele, wenn sie wirklich da liegen.
       if (st.id === "brille" && !this.glassesInSink) continue;
       if (st.id === "buerste" && !(this.cabinetOpen > 0.9 && this.brushInCab)) continue;
@@ -2550,7 +2578,8 @@ export class House {
       this.startTvZoom();
       return;
     }
-    // Wechselsteine: ein Klick genügt.
+    // Ausnahme von der Ankunftslogik: Die Wechselsteine sind ein GUI fuer den
+    // Spieler und schalten sofort um – in allen Hauswelten, ohne Lunis Weg.
     const stein = this.steinUnter(x, y);
     if (stein) {
       this.steinWechsel(stein);
@@ -2598,7 +2627,23 @@ export class House {
    * Die Schleusentür bedient sie mit Zigarette in der Hand.
    */
   command(id: string) {
-    const find = (k: string) => STATIONS.find((s) => s.id === k) ?? null;
+    const find = (k: string) => this.stations.find((s) => s.id === k) ?? null;
+    if (this.musikzimmer) {
+      this.musikzimmer.unlock();
+      if (id === "klavier") {
+        if (this.musikzimmer.occupied) { this.pianoRefusal = .9; return; }
+        if (this.activity?.id === "klavier" && this.pianoRise === 0) return;
+        this.musikzimmer.requestPiano();
+      }
+      if (this.pianoRise > 0) { this.pianoAfter = id; return; }
+      if (this.activity?.id === "klavier" && id !== "klavier") {
+        this.leaveMusicPiano(false, id);
+        return;
+      }
+      this.pianoEscape = false;
+      this.pianoEscapeMoving = false;
+      if (["saxophon", "platten", "gitarre"].includes(id)) this.musikzimmer.otherMusicRequested();
+    }
 
     // Läuft „Paulchen“, beendet jede andere Anweisung die Musik sofort.
     if (this.saxPhase) {
@@ -2728,7 +2773,8 @@ export class House {
         this.putCigarette("aussentuer");
         return;
       }
-      this.goTo("aussentuer");
+      const gst = find("aussentuer");
+      if (gst) this.goTo(this.gardenWant > 0.5 ? { ...gst, x: 800 } : gst);
       return;
     }
 
@@ -2736,13 +2782,29 @@ export class House {
     // automatisches Ablegen bei anderen Anweisungen.
 
     if (id === "zimmertuer") {
-      // Wie die Gartentür: jederzeit bedienbar, bricht andere Aktionen ab.
-      // Die Zigarette behält sie dabei in der Hand – auch beim Rauchen wird
-      // nichts in den Aschenbecher gelegt.
-      this.cellarDoorWant = this.cellarDoorWant > 0.5 ? 0 : 1;
+      // Luni geht erst zur Tuer; das Oeffnen/Schliessen folgt bei Ankunft.
       this.chain = [];
       this.smokeRequested = false;
+      this.doorIntent = { id: "zimmertuer", want: this.cellarDoorV > 0.5 ? 0 : 1 };
       this.goTo(this.doorStand());
+      return;
+    }
+
+    if (id === "musiktuer") {
+      const links = this.lf === 3 ? this.lx < 528 : true;
+      this.doorIntent = { id: "musiktuer", want: this.musikDoor > 0.5 ? 0 : 1 };
+      this.chain = [];
+      this.smokeRequested = false;
+      this.goTo({
+        id: "musiktuer",
+        label: "Verbindungstür",
+        floor: 3,
+        x: links ? (this.musikDoor > 0.5 ? 538 : 512) : 548,
+        face: links ? 1 : -1,
+        state: "idle",
+        expr: "neutral",
+        hits: [],
+      });
       return;
     }
 
@@ -2852,7 +2914,10 @@ export class House {
     // nicht überraschend von selbst zu rauchen beginnt.
     this.smokeRequested = false;
     const st = find(id);
-    if (st) this.pending = st;
+    if (st) {
+      if (this.musikzimmer && id === "klavier") this.chain = [];
+      this.pending = st;
+    }
   }
 
   /**
@@ -2861,10 +2926,12 @@ export class House {
    */
   private doorStand(): Station {
     const st = STATIONS.find((s) => s.id === "zimmertuer");
-    const left = this.lf === 0 && this.lx < 590;
+    const left = this.lf === 0 ? this.lx < 590 : true;
+    const schliessen = this.cellarDoorV > 0.5;
+    // Das Blatt schwingt nach rechts: Zum Schliessen von links steht sie im Durchgang.
     return {
       ...(st as Station),
-      x: left ? 574 : 610,
+      x: left ? (schliessen ? 600 : 574) : 610,
       face: left ? 1 : -1,
     };
   }
@@ -2876,13 +2943,13 @@ export class House {
 
   /** Befehl ohne Prüfung (Kette) */
   private assign(id: string) {
-    const st = STATIONS.find((s) => s.id === id);
+    const st = this.stations.find((s) => s.id === id);
     if (st) this.pending = st;
   }
 
   /** Nur Weg setzen, ohne Prüfungen (für Ketten und erzwungene Schritte) */
   private goTo(id: string | Station) {
-    const st = typeof id === "string" ? STATIONS.find((s) => s.id === id) : id;
+    const st = typeof id === "string" ? this.stations.find((s) => s.id === id) : id;
     if (!st) return;
     this.onPhone = false;
     this.phoneQueued = false;
@@ -2890,6 +2957,9 @@ export class House {
     this.activity = null;
     this.cur = null;
     this.path = [];
+    this.doorHand = null;
+    this.doorHandT = -1;
+    this.doorHandOpen = null;
     this.buildPath(st.floor, st.x);
   }
 
@@ -3033,9 +3103,10 @@ export class House {
   private frame = (ts: number) => {
     if (this.destroyed) return;
     this.raf = requestAnimationFrame(this.frame);
-    const dt = Math.min(0.05, (ts - this.last) / 1000);
+    const roomDt = Math.max(0, (ts - this.last) / 1000);
+    const dt = Math.min(0.05, roomDt);
     this.last = ts;
-    this.update(dt);
+    this.update(dt, roomDt, true);
     this.draw();
   };
 
@@ -3044,7 +3115,7 @@ export class House {
     this.update(dt);
   }
 
-  private update(dt: number) {
+  private update(dt: number, roomDt = dt, live = false) {
     this.elapsed += dt;
     this.updateHarvest(dt);
 
@@ -3072,6 +3143,8 @@ export class House {
       this.dirty = true;
     }
     this.doorOpen += ((this.doorWant ? 1 : 0) - this.doorOpen) * (1 - Math.exp(-9 * dt));
+    this.musikDoor += (this.musikDoorWant - this.musikDoor) * (1 - Math.exp(-9 * dt));
+    for (const i of [0, 1] as const) this.vorhang[i] += (this.vorhangWant[i] - this.vorhang[i]) * (1 - Math.exp(-5 * dt));
     const gd = Math.round(this.gardenDoor * 40) / 40;
     if (gd !== this.gardenRendered) {
       this.gardenRendered = gd;
@@ -3081,8 +3154,60 @@ export class House {
     const doorStep = dt / 1.2;
     const doorDiff = this.gardenWant - this.gardenDoor;
     this.gardenDoor += Math.abs(doorDiff) <= doorStep ? doorDiff : Math.sign(doorDiff) * doorStep;
-    this.updateLuni(dt);
+    if (!this.updateMusikzimmer(dt, roomDt, live)) this.updateLuni(dt);
     this.updateActions(dt);
+  }
+
+  private leaveMusicPiano(frightened: boolean, next: string | null = null) {
+    this.musikzimmer?.stopLuni();
+    this.pianoRise = .42;
+    this.pianoRiseFrom = this.pianoSeat;
+    this.pianoAfter = next;
+    this.pianoEscape = frightened;
+    this.pianoEscapeMoving = false;
+    this.activity = null;
+    this.target = null;
+    this.pending = null;
+    this.path = [];
+    this.cur = null;
+  }
+
+  /** Nur das Musikzimmer steuert diese Reaktion; andere Routinen bleiben frei. */
+  private updateMusikzimmer(dt: number, roomDt: number, live: boolean): boolean {
+    const music = this.musikzimmer;
+    if (!music) return false;
+    music.setPaused(document.visibilityState === "hidden" || !!this.dream);
+    this.pianoRefusal = Math.max(0, this.pianoRefusal - dt);
+    const musical = (s: Station | null) => !!s && ["saxophon", "platten", "gitarre"].includes(s.id);
+    const approachingPiano = this.pending?.id === "klavier" || (this.target?.id === "klavier" && this.activity?.id !== "klavier");
+    const busy = musical(this.activity) || musical(this.target) || musical(this.pending) || !!this.saxPhase || !!this.dream || this.asleep || approachingPiano;
+    const appearing = music.update(roomDt, busy, live);
+    if (appearing && this.activity?.id === "klavier") this.leaveMusicPiano(true);
+    if (this.pianoRise > 0) {
+      this.pianoRise = Math.max(0, this.pianoRise - dt);
+      this.pianoSeat = this.pianoRiseFrom * this.pianoRise / .42;
+      if (this.pianoRise === 0 && this.pianoAfter) {
+        const next = this.pianoAfter;
+        this.pianoAfter = null;
+        this.command(next);
+      }
+      return true;
+    }
+    if (this.pianoEscape && this.lf === 3 && !this.pending && !this.target) {
+      if (!music.active) { this.pianoEscape = false; this.pianoEscapeMoving = false; return false; }
+      const distance = 33 + 36 * Math.min(1, music.alpha / .95);
+      const goal = MUSIKZIMMER.klavier.sitz + distance;
+      const speed = music.age < 2 ? 30 : 9;
+      const move = Math.min(Math.max(0, goal - this.lx), speed * dt);
+      this.lx += move;
+      this.lface = -1;
+      this.pianoEscapeMoving = move > .001;
+      if (move) this.advanceWalk(move);
+      return true;
+    }
+    if (this.activity?.id === "klavier") this.pianoSeat = Math.min(1, this.pianoSeat + dt / .45);
+    else if (music.luniPlaying) music.stopLuni();
+    return false;
   }
 
   private updateHarvest(dt: number) {
@@ -3359,15 +3484,55 @@ export class House {
       return;
     }
 
+    if (act?.id === "zimmertuer" || act?.id === "musiktuer") {
+      this.doorT += dt;
+      // Die Hand liegt am Knauf und folgt ihm, waehrend das Blatt schwingt.
+      this.doorHand = this.doorT < 1.3 ? (act.id === "zimmertuer" ? this.cellarKnob() : this.musikKnob()) : null;
+      if (this.doorT >= 0.5 && !this.doorActed) {
+        this.doorActed = true;
+        const ziel = this.doorIntent?.id === act.id ? this.doorIntent.want : null;
+        if (act.id === "zimmertuer") this.cellarDoorWant = ziel ?? (this.cellarDoorWant > 0.5 ? 0 : 1);
+        else this.musikDoorWant = ziel ?? (this.musikDoorWant > 0.5 ? 0 : 1);
+        this.doorIntent = null;
+        sfx.ui();
+      }
+      if (this.doorT >= 1.6) {
+        this.doorHand = null;
+        this.finishActivity();
+      }
+      return;
+    }
+
+    // Vorhaenge im Musikzimmer: hingehen, greifen, ziehen (auf/zu).
+    if (act?.id === "vorhang_links" || act?.id === "vorhang_rechts") {
+      const i: 0 | 1 = act.id === "vorhang_links" ? 0 : 1;
+      this.doorT += dt;
+      this.doorHand = this.doorT < 1.3 ? vorhangGriff(i, this.vorhang[i]) : null;
+      if (this.doorT >= 0.5 && !this.doorActed) {
+        this.doorActed = true;
+        this.vorhangWant[i] = this.vorhangWant[i] ? 0 : 1;
+        sfx.ui();
+      }
+      if (this.doorT >= 1.6) {
+        this.doorHand = null;
+        this.finishActivity();
+      }
+      return;
+    }
+
     if (act?.id === "aussentuer") {
       this.doorT += dt;
-      // kurz hinstellen, dann sichtbar öffnen bzw. schließen
+      // Hand am Knauf; erst der Griff bewegt das Blatt
+      this.doorHand = this.doorT < 1.3 ? this.gardenKnob() : null;
       if (this.doorT >= 0.5 && this.gardenTarget !== null) {
         this.gardenWant = this.gardenTarget;
         this.gardenTarget = null;
         sfx.ui();
       }
-      if (this.doorT >= 1.6) this.finishActivity();
+      if (this.doorT >= 1.6) {
+        this.doorHand = null;
+        this.finishActivity();
+      }
       return;
     }
 
@@ -3650,15 +3815,55 @@ export class House {
     }
   }
 
-  /** Öffnet die Zimmertür, wenn Luni im Keller daran vorbeigeht. */
-  private checkCellarDoor(prevX: number) {
-    if (this.lf !== 0) return;
-    // Bedient sie die Tür gerade selbst, darf die Automatik nicht
-    // dazwischenfunken – sonst reißt sie die eben geschlossene Tür wieder auf.
-    if (this.target?.id === "zimmertuer") return;
-    const crossed = (prevX < 590 && this.lx >= 590) || (prevX > 590 && this.lx <= 590);
-    // Sie öffnet sich beim Durchgehen – bleibt aber offen, bis man sie schließt.
-    if (crossed && this.cellarDoorV < 0.6) this.cellarDoorWant = 1;
+  /** Knauf der Schleusentuer in Weltkoordinaten – folgt dem Blatt beim Oeffnen. */
+  private cellarKnob(): Pt {
+    const hingeX = 590 - 4.5;
+    const w = lerp(9, 34, Math.sin((this.cellarDoorV * Math.PI) / 2));
+    return [hingeX + w - (this.cellarDoorV < 0.02 ? 3 : 5), FK - 80 + 80 * 0.52];
+  }
+  /** Knauf der blauen Verbindungstuer (gleiche Geometrie wie die Schleusentuer). */
+  private musikKnob(): Pt {
+    const t = MUSIKZIMMER.tuer;
+    const hingeX = t.x - 4.5;
+    const w = lerp(9, 34, Math.sin((this.musikDoor * Math.PI) / 2));
+    return [hingeX + w - (this.musikDoor < 0.02 ? 3 : 5), t.y + t.h * 0.52];
+  }
+  /** Knauf der Gartentuer: zu = Kante in der Wand, offen = Blattkante im Raum. */
+  private gardenKnob(): Pt {
+    const ang = this.gardenDoor * (Math.PI / 2) * 0.92;
+    const face = Math.sin(ang) * 44;
+    return [HR - 1 + 2 - face, FK - 88 + 88 * 0.52];
+  }
+
+  /** Geschlossene Durchgangstuer, die dem aktuellen Gehschritt im Weg liegt. */
+  private barrierAhead(tx: number): { x: number; knob: () => Pt; openDoor: () => void } | null {
+    // Schleusentuer im Keller
+    if (this.lf === 0 && (this.lx < 590) !== (tx < 590) && this.cellarDoorV < 0.55) {
+      return {
+        x: 590,
+        knob: () => this.cellarKnob(),
+        openDoor: () => {
+          if (this.cellarDoorWant < 0.5) {
+            this.cellarDoorWant = 1;
+            sfx.ui();
+          }
+        },
+      };
+    }
+    // Blaue Verbindungstuer im Musikzimmer (nur Gruselhaus)
+    if (this.musikzimmer && this.lf === 3 && (this.lx < 528) !== (tx < 528) && this.musikDoor < 0.55) {
+      return {
+        x: 528,
+        knob: () => this.musikKnob(),
+        openDoor: () => {
+          if (this.musikDoorWant < 0.5) {
+            this.musikDoorWant = 1;
+            sfx.ui();
+          }
+        },
+      };
+    }
+    return null;
   }
 
   private updateLuni(dt: number) {
@@ -3679,6 +3884,18 @@ export class House {
       if (this.target && !this.activity) {
         this.activity = this.target;
         this.lface = this.target.face;
+        if (["zimmertuer", "musiktuer", "vorhang_links", "vorhang_rechts"].includes(this.activity.id)) {
+          this.doorT = 0;
+          this.doorActed = false;
+        }
+        if (this.target.id === "klavier" && this.musikzimmer) {
+          if (!this.musikzimmer.startLuni()) {
+            this.pianoRefusal = .9;
+            this.activity = null;
+            this.target = null;
+          } else this.pianoSeat = 0;
+          return;
+        }
         // Am Saxophon angekommen: erst prüfen, ob der Greifpunkt überhaupt in
         // Reichweite liegt. Sonst geht sie näher heran, statt den Arm zu strecken.
         if (this.target.id === "saxophon" && !this.saxPhase) {
@@ -3699,6 +3916,40 @@ export class House {
 
     if (a.step.k === "walk") {
       const dx = a.step.x - this.lx;
+      // Luni greift noch zum Knauf: Hand bleibt am Griff, bis die Bewegung fertig ist.
+      if (this.doorHandT >= 0) {
+        this.doorHandT += dt;
+        if (this.doorHandT >= 0.45) this.doorHandOpen?.();
+        if (this.doorHandT >= 1.0) {
+          this.doorHandT = -1;
+          this.doorHand = null;
+          this.doorHandOpen = null;
+        }
+        return;
+      }
+      // Geschlossene Tuer im Weg: davor stehen bleiben; nichts oeffnet sich von allein.
+      const barrier = this.barrierAhead(a.step.x);
+      if (barrier) {
+        const dir = Math.sign(dx);
+        const haltepunkt = barrier.x - dir * 14;
+        // Nur in Gehrichtung bis zum Haltepunkt laufen. Steht sie bereits
+        // naeher an der Tuer (z. B. nach dem Schliessen aus dem Durchgang),
+        // greift sie von dort – sie darf nie durch das geschlossene Blatt.
+        const rest = (haltepunkt - this.lx) * dir;
+        if (rest > 0.8) {
+          const schritt = Math.min(rest, SPEED * dt);
+          this.lx += dir * schritt;
+          this.lface = dir > 0 ? 1 : -1;
+          this.advanceWalk(schritt);
+          return;
+        }
+        // Angekommen: Hand zum Knauf, der Griff oeffnet die Tuer.
+        this.lface = dir > 0 ? 1 : -1;
+        this.doorHand = barrier.knob();
+        this.doorHandT = 0;
+        this.doorHandOpen = barrier.openDoor;
+        return;
+      }
       const move = SPEED * dt;
       const prevX = this.lx;
       if (Math.abs(dx) <= move) {
@@ -3709,7 +3960,7 @@ export class House {
         this.lface = dx > 0 ? 1 : -1;
         this.advanceWalk(move);
       }
-      this.checkCellarDoor(prevX);
+      void prevX;
       return;
     }
 
@@ -3719,8 +3970,13 @@ export class House {
     const len = Math.hypot(s.topX - s.footX, FLOOR_Y[s.upper] - FLOOR_Y[s.lower]);
 
     if (a.phase === "enter") {
-      // Luni öffnet die Kellertür und geht hinein
+      // Luni greift zum Knauf, öffnet die Kellertür und geht hinein
       a.timer += dt;
+      if (a.timer < 0.35) {
+        this.doorHand = [544 - this.doorOpen * 36, FE - 44];
+        return;
+      }
+      this.doorHand = a.timer < 0.9 ? [544 - this.doorOpen * 36, FE - 44] : null;
       this.doorWant = true;
       this.alpha = 1 - clamp((a.timer - 0.35) / 0.35, 0, 1);
       if (a.timer >= 1.1) {
@@ -3774,9 +4030,14 @@ export class House {
     return {
       floor: this.lf,
       x: this.lx,
-      moving: !!this.cur || this.path.length > 0,
+      moving: !!this.cur || this.path.length > 0 || this.pianoRise > 0 || this.pianoEscapeMoving,
       activity: this.activity?.id ?? null,
       night: this.night,
+      musikzimmer: this.musikzimmer?.getState() ?? null,
+      pianoSeat: this.pianoSeat,
+      pianoRise: this.pianoRise,
+      pianoEscape: this.pianoEscape,
+      pianoRefusal: this.pianoRefusal,
     };
   }
 
@@ -3802,8 +4063,8 @@ export class House {
     );
     // Raum 02 wird als eigene Canvas-Szene über die frühere Musikzimmerfläche
     // gemalt. Der Bereich beginnt hinter der Trennwand; kein Nachbarraum ändert sich.
-    if (this.welt === "gruesel" && GRUSELRAEUME.orchester) {
-      drawOrchesterRoom(this.bgc, atticCeil);
+    if (this.welt === "gruesel" && GRUSELRAEUME.musikzimmer) {
+      drawMusikzimmer(this.bgc, atticCeil);
     }
     // Wechselsteine: jede Welt zeigt die Steine der anderen Welten.
     for (const sl of this.steine) drawStein(this.bgc, sl.art, 0, sl.x, sl.y);
@@ -3845,6 +4106,14 @@ export class House {
     }
     m.globalCompositeOperation = "source-over";
     a.globalCompositeOperation = "source-over";
+    if (this.musikzimmer) {
+      // Nur das Musikzimmer behaelt sein warmes, lesbares Lampenlicht.
+      m.save(); clipMusikzimmer(m, atticCeil);
+      const light = m.createRadialGradient(619, 151, 8, 619, 151, 210);
+      light.addColorStop(0, "#fff1d9"); light.addColorStop(1, "#b5b4aa");
+      m.fillStyle = light; m.fillRect(534, 35, 296, 165); m.restore();
+      a.save(); clipMusikzimmer(a, atticCeil); a.clearRect(534, 35, 296, 165); a.restore();
+    }
     this.dirty = false;
   }
 
@@ -3864,6 +4133,10 @@ export class House {
     if (this.golInserted && this.golPhase !== "insert") golCartridge(ctx, 446, 167, 6, 11);
     this.drawClock(ctx);
     if (this.welt === "gruesel") this.raumFx.draw(ctx, atticCeil);
+    if (this.musikzimmer) {
+      drawMusikzimmerEffects(ctx, this.musikzimmer, this.vorhang);
+      drawMusiktuer(ctx, this.musikDoor);
+    }
     this.drawSax(ctx);
     this.drawCigPile(ctx);
     this.drawAshtrayTray(ctx);
@@ -3878,10 +4151,6 @@ export class House {
     this.drawLuniLayered(ctx);
     this.drawGlassesMoving(ctx);
     this.drawGolInHand(ctx);
-    if (this.welt === "gruesel" && GRUSELRAEUME.orchester) {
-      drawOrchesterEffects(ctx, this.elapsed, this.saxPhase === "play" && this.saxStarted, this.saxMusic?.currentTime ?? 0);
-    }
-
     // Rauch liegt über allem – Luni sieht erst wieder etwas, wenn die Tür auf ist
     this.drawSmoke(ctx);
     // Abzug durch die Gartentür: Schwaden ziehen sichtbar nach draußen
@@ -3916,18 +4185,22 @@ export class House {
 
   /* ------------------------------ Saxophon ------------------------------- */
 
+  private get saxStand() {
+    return { x: SAX_STAND_X, y: SAX_STAND_Y };
+  }
+
   /** 0 = auf dem Stativ, 1 = am Mund. */
   /** Weltpunkt, an dem die vordere Hand das Instrument hält. */
   /** Nächste Standposition, aus der BEIDE Griffpunkte am Stativ mit natürlicher
    *  Armlänge erreichbar sind. null = sie steht schon richtig. */
   private saxApproachX(): number | null {
-    const st = STATIONS.find((s) => s.id === "saxophon");
+    const st = this.stations.find((s) => s.id === "saxophon");
     if (!st) return null;
     const reach = 8.2 + 8.4 - 0.6;
     const shy = FLOOR_Y[3] + -34 * LUNI_SCALE;
     for (const local of [SAX_GRIP_UP, SAX_GRIP_LOW] as const) {
-      const gx = SAX_STAND_X + local[0] * SAX_SCALE * st.face;
-      const gy = SAX_STAND_Y + local[1] * SAX_SCALE;
+      const gx = this.saxStand.x + local[0] * SAX_SCALE * st.face;
+      const gy = this.saxStand.y + local[1] * SAX_SCALE;
       // Die Schulter, die näher am Instrument liegt, bekommt das kleinere dx.
       const shx = this.lx + (local === SAX_GRIP_UP ? -3.4 : 3.4) * LUNI_SCALE * st.face;
       const dy = gy - shy;
@@ -3955,7 +4228,7 @@ export class House {
    * können dadurch nie auseinanderlaufen.
    */
   private saxPose(): { ax: number; ay: number; dir: 1 | -1; rot: number } {
-    const st = STATIONS.find((s) => s.id === "saxophon")!;
+    const st = this.stations.find((s) => s.id === "saxophon")!;
     const dir = st.face;
     const raw = this.saxLift();
     const e = raw * raw * (3 - 2 * raw);
@@ -3963,8 +4236,8 @@ export class House {
     const mouthY = FLOOR_Y[st.floor] - 40.5 * LUNI_SCALE;
     // Leichter Bogen beim Anheben – kein gerader Flug durch den Raum.
     const arc = Math.sin(Math.PI * raw) * 3;
-    const ax0 = lerp(SAX_STAND_X, mouthX, e);
-    const ay0 = lerp(SAX_STAND_Y, mouthY, e) - arc;
+    const ax0 = lerp(this.saxStand.x, mouthX, e);
+    const ay0 = lerp(this.saxStand.y, mouthY, e) - arc;
 
     // Sobald sie es hält, folgt das Instrument ihrem Körper: Wiegen mit der
     // Musik und das Atmen des Oberkörpers. Sonst schwebt es starr daneben.
@@ -4012,11 +4285,7 @@ export class House {
     // Während einer Phase übernimmt drawSaxCarried den Zwischenschritt.
     if (this.saxPhase) return;
     const p = this.saxPose();
-    if (this.welt === "gruesel" && GRUSELRAEUME.orchester) {
-      drawBoneSaxophone(c, p.ax, p.ay, SAX_SCALE, p.dir);
-    } else {
-      saxophone(c, p.ax, p.ay, SAX_SCALE, p.dir);
-    }
+    if (!this.musikzimmer) saxophone(c, p.ax, p.ay, SAX_SCALE, p.dir);
   }
 
   /**
@@ -4039,11 +4308,7 @@ export class House {
       c.rotate(p.rot);
       c.translate(-p.ax, -p.ay);
     }
-    if (this.welt === "gruesel" && GRUSELRAEUME.orchester) {
-      drawBoneSaxophone(c, p.ax, p.ay, SAX_SCALE, p.dir);
-    } else {
-      saxophone(c, p.ax, p.ay, SAX_SCALE, p.dir);
-    }
+    if (!this.musikzimmer) saxophone(c, p.ax, p.ay, SAX_SCALE, p.dir);
     c.restore();
   }
 
@@ -4109,6 +4374,7 @@ export class House {
   /** Mundstück am Mund: Musik startet, sobald die Tonpuffer bereit sind. */
   private tryStartSaxPlayback() {
     if (this.saxStarted || !this.saxMusic || !this.saxReady || this.saxPausedAt !== null) return;
+    if (this.musikzimmer?.active) return;
     const shared = sfx.getSharedAudio();
     if (!shared) return;
     try {
@@ -4792,6 +5058,7 @@ export class House {
   }
 
   private onKey = (e: KeyboardEvent) => {
+    if (e.code === "KeyM") this.musikzimmer?.unlock();
     if (this.dream) {
       if (this.dream.onKey(e.code)) {
         e.preventDefault();
@@ -4805,6 +5072,10 @@ export class House {
   private onPageHide = () => this.speichern();
 
   private onVisibility = () => {
+    if (this.musikzimmer) {
+      this.musikzimmer.setPaused(document.visibilityState === "hidden" || !!this.dream);
+      this.last = performance.now();
+    }
     if (document.visibilityState === "hidden") {
       this.speichern();
       if (this.dream && !this.dream.paused) this.dream.pause();
@@ -5969,6 +6240,42 @@ export class House {
       saxHand2 = this.saxGripAt(SAX_GRIP_LOW);
     }
 
+    let pianoPose: number | undefined;
+    let walkPhase = this.walkP;
+    if (this.musikzimmer && this.lf === 3 && !a && (this.activity?.id === "klavier" || this.pianoRise > 0)) {
+      pianoPose = this.pianoSeat;
+      state = this.pianoRise > 0 ? "standup" : "piano";
+      expr = this.pianoEscape ? "surprised" : "focus";
+      back = true;
+      face = 1;
+      posePhase = 1 - this.pianoSeat;
+      yOff = this.pianoRise > 0 ? -Math.sin(Math.PI * (1 - this.pianoRise / .42)) * 2.2 : 0;
+      const p = this.pianoSeat * this.pianoSeat * (3 - 2 * this.pianoSeat);
+      const hands = klavierHaende(this.musikzimmer.musicTime);
+      const targets = hands.map((h, index): Pt => {
+        const side = index === 0 ? -1 : 1;
+        const restX = x + side * 8.6 * LUNI_SCALE;
+        const restY = y + yOff + (9 * p - 17.6) * LUNI_SCALE;
+        return [lerp(restX, MUSIKZIMMER.klavier.sitz + h.x, p), lerp(restY, MUSIKZIMMER.klavier.tastenY + 1 + h.press * .7, p)];
+      });
+      saxHand = targets[0];
+      saxHand2 = targets[1];
+    } else if (this.pianoEscape && this.lf === 3 && !a) {
+      state = this.pianoEscapeMoving ? "walk" : "idle";
+      expr = "surprised";
+      face = -1;
+      walkPhase = -this.walkP;
+    }
+    if (this.pianoRefusal > 0) expr = "annoyed";
+    // Hand am Griff (Tuer/Vorhang): die vordere Hand faehrt per Zweigelenk-IK
+    // zum Knauf; armIK kuerzt auf die feste Armlaenge – nichts streckt sich.
+    if (this.doorHand && !this.saxPhase && pianoPose === undefined) {
+      state = "act";
+      expr = "focus";
+      posePhase = 0.35;
+      saxHand = this.doorHand;
+    }
+
     c.save();
     if (clip) {
       c.beginPath();
@@ -5986,7 +6293,7 @@ export class House {
       face,
       state,
       expr,
-      walk: this.walkP,
+      walk: walkPhase,
       phase: posePhase,
       blink: this.blink > 0 ? 1 : 0,
       scale: LUNI_SCALE,
@@ -6000,6 +6307,9 @@ export class House {
       glasses: this.glassesOn,
       pajama: this.outfit === "dressed" ? this.pyjama : null,
       hairAside,
+      pianoSeat: pianoPose,
+      headShake: this.pianoRefusal > 0 ? Math.sin((.9 - this.pianoRefusal) * 21) * Math.sin(Math.PI * this.pianoRefusal / .9) : 0,
+      gaze: this.pianoEscape ? 1 : 0,
       footTap: saxFootTap,
       sway: saxSway,
       handTarget: saxHand,
