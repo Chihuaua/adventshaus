@@ -172,6 +172,19 @@ export class Sfx {
     this.noise(1.1, 0.09, 700, 0.4, 0.1);
   }
 
+  /** Sargdeckel geht auf: tiefes, kurzes Holzknarzen. */
+  knarzen() {
+    this.tone({ f: 92, f2: 61, dur: 0.55, type: "sawtooth", gain: 0.05, attack: 0.04 });
+    this.tone({ f: 141, f2: 98, dur: 0.42, type: "triangle", gain: 0.04, delay: 0.12, attack: 0.05 });
+    this.noise(0.5, 0.05, 420, 2.2, 0.03);
+  }
+
+  /** Sargdeckel fällt zu: dumpfes Holz. */
+  holzDumpf() {
+    this.tone({ f: 74, f2: 41, dur: 0.32, type: "sine", gain: 0.22 });
+    this.noise(0.16, 0.12, 260, 0.9);
+  }
+
   ui() {
     this.tone({ f: 660, dur: 0.05, type: "square", gain: 0.1 });
   }

@@ -150,6 +150,27 @@ export interface LuniOpts {
   headShake?: number;
   /** Blick im Figurenraum; die Spiegelung folgt weiterhin face. */
   gaze?: number;
+  /** Edles Vampir-Outfit (Gruselhaus): Zierdetails über der Kleidung. */
+  vampir?: VampirStil | null;
+  /** 0..1: wie weit der Umhang umgelegt ist (1 = liegt auf den Schultern). */
+  umhang?: number;
+  /** Rückenansicht mit gezielt greifenden Händen (Sargdeckel, Umhang). */
+  backReach?: boolean;
+}
+
+/** Vampir-Outfit: Farben und Zierdetails. Proportionen bleiben unverändert. */
+export interface VampirStil {
+  name: string;
+  top: string;
+  bottom: string;
+  trim?: string;
+  kragen?: string;
+  kropfband?: { band: string; stein: string };
+  spitze?: string;
+  korsett?: { farbe: string; schnur: string };
+  jabot?: string;
+  glanz?: boolean;
+  umhang?: { aussen: string; futter: string };
 }
 
 /**
@@ -1570,6 +1591,230 @@ function drawTowel(ctx: C, r: Rig) {
   ctx.fill();
 }
 
+/* ------------------------------ Vampir-Outfits -------------------------- */
+
+/** Oberteil von vorn: Samt mit Lichtverlauf, Mieder, Borten, Spitze, Jabot, Kragen. */
+function drawVampirTorso(ctx: C, r: Rig, v: VampirStil) {
+  const topY = r.shoulderY;
+  const botY = r.hipY;
+  const h = botY - topY;
+  const g = ctx.createLinearGradient(-7, topY, 7, botY);
+  g.addColorStop(0, mixCol(v.top, "#ffffff", 0.14));
+  g.addColorStop(0.5, v.top);
+  g.addColorStop(1, mixCol(v.top, "#000000", 0.32));
+  ctx.fillStyle = g;
+  rr(ctx, -7.4, topY - 0.3, 14.8, h + 2, 5);
+  ctx.fill();
+  if (v.glanz) {
+    ctx.fillStyle = "rgba(255,255,255,.2)";
+    rr(ctx, -5, topY + 2.6, 1.8, h - 4.5, 0.9);
+    ctx.fill();
+  }
+  if (v.korsett) {
+    ctx.fillStyle = v.korsett.farbe;
+    ctx.beginPath();
+    ctx.moveTo(-5.6, topY + 6.4);
+    ctx.lineTo(5.6, topY + 6.4);
+    ctx.lineTo(4.9, botY + 0.6);
+    ctx.lineTo(0, botY + 2.2);
+    ctx.lineTo(-4.9, botY + 0.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = v.korsett.schnur;
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < 4; i++) {
+      const y = topY + 8 + i * 2.5;
+      ctx.beginPath();
+      ctx.moveTo(-1.5, y);
+      ctx.lineTo(1.5, y + 1.6);
+      ctx.moveTo(1.5, y);
+      ctx.lineTo(-1.5, y + 1.6);
+      ctx.stroke();
+    }
+    ctx.fillStyle = v.korsett.schnur;
+    for (let i = 0; i < 5; i++) {
+      for (const sx of [-1.7, 1.7]) {
+        ctx.beginPath();
+        ctx.arc(sx, topY + 8 + i * 2.5, 0.32, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  if (v.trim) {
+    ctx.strokeStyle = v.trim;
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(-7, botY + 1.1);
+    ctx.lineTo(7, botY + 1.1);
+    ctx.moveTo(-2.6, topY + 1.4);
+    ctx.lineTo(-2.2, botY + 1);
+    ctx.moveTo(2.6, topY + 1.4);
+    ctx.lineTo(2.2, botY + 1);
+    ctx.stroke();
+  }
+  if (v.spitze) {
+    ctx.fillStyle = v.spitze;
+    for (let x = -7.2; x < 7; x += 1.8) {
+      ctx.beginPath();
+      ctx.arc(x + 0.9, botY + 1.5, 0.9, 0, Math.PI);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 0.7;
+    for (let x = -4; x <= 4; x += 2) {
+      ctx.beginPath();
+      ctx.arc(x, topY + 1.6, 0.7, 0, Math.PI);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+  if (v.jabot) {
+    ctx.fillStyle = v.jabot;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.ellipse(0, topY + 2.6 + i * 2.2, 2.4 - i * 0.45, 1.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = "rgba(110,104,96,.55)";
+    ctx.lineWidth = 0.3;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.arc(0, topY + 3 + i * 2.2, 1.6 - i * 0.3, 0.2, Math.PI - 0.2);
+      ctx.stroke();
+    }
+  }
+  if (v.kragen) {
+    ctx.fillStyle = v.kragen;
+    ctx.beginPath();
+    ctx.moveTo(-4.8, topY + 0.6);
+    ctx.lineTo(-5.8, topY - 4.4);
+    ctx.quadraticCurveTo(0, topY - 2.4, 5.8, topY - 4.4);
+    ctx.lineTo(4.8, topY + 0.6);
+    ctx.quadraticCurveTo(0, topY + 2.2, -4.8, topY + 0.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,.25)";
+    ctx.fillRect(-0.3, topY - 3, 0.6, 3.4);
+  }
+}
+
+/** Oberteil von hinten: Schnürung, Borte, Spitze, Stehkragen. */
+function drawVampirRuecken(ctx: C, r: Rig, v: VampirStil) {
+  const topY = r.shoulderY;
+  const botY = r.hipY;
+  ctx.fillStyle = "rgba(255,255,255,.07)";
+  rr(ctx, -6.6, topY + 1, 4.6, botY - topY - 1, 2);
+  ctx.fill();
+  if (v.korsett) {
+    ctx.fillStyle = v.korsett.farbe;
+    rr(ctx, -4.6, topY + 6, 9.2, botY - topY - 5, 1.6);
+    ctx.fill();
+    ctx.strokeStyle = v.korsett.schnur;
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < 5; i++) {
+      const y = topY + 7 + i * 2.4;
+      ctx.beginPath();
+      ctx.moveTo(-1.4, y);
+      ctx.lineTo(1.4, y + 1.5);
+      ctx.moveTo(1.4, y);
+      ctx.lineTo(-1.4, y + 1.5);
+      ctx.stroke();
+    }
+  }
+  if (v.trim) {
+    ctx.fillStyle = v.trim;
+    ctx.fillRect(-7.4, botY + 0.6, 14.8, 0.8);
+  }
+  if (v.spitze) {
+    ctx.fillStyle = v.spitze;
+    for (let x = -7.4; x < 7.2; x += 1.8) {
+      ctx.beginPath();
+      ctx.arc(x + 0.9, botY + 1.6, 0.9, 0, Math.PI);
+      ctx.fill();
+    }
+  }
+  if (v.kragen) {
+    ctx.fillStyle = v.kragen;
+    ctx.beginPath();
+    ctx.moveTo(-4.6, topY + 0.8);
+    ctx.lineTo(-5.4, topY - 4);
+    ctx.quadraticCurveTo(0, topY - 5.4, 5.4, topY - 4);
+    ctx.lineTo(4.6, topY + 0.8);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+/** Umhang seitlich: hängt von den Schultern hinter dem Rücken, Futter an der Kante. */
+function drawUmhangSeite(ctx: C, r: Rig, u: { aussen: string; futter: string }, s: number) {
+  const top = r.shoulderY - 0.8;
+  const hem = lerp(r.hipY, -5.5, clamp01(s));
+  ctx.fillStyle = u.futter;
+  ctx.beginPath();
+  ctx.moveTo(2.6, top);
+  ctx.lineTo(-6.6, top + 0.5);
+  ctx.lineTo(-10.8, hem + 0.7);
+  ctx.lineTo(-1.6, hem + 0.7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = u.aussen;
+  ctx.beginPath();
+  ctx.moveTo(1.7, top - 0.2);
+  ctx.lineTo(-6.8, top + 0.2);
+  ctx.lineTo(-10.2, hem);
+  ctx.lineTo(-1.2, hem);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = mixCol(u.aussen, "#ffffff", 0.12);
+  ctx.lineWidth = 0.5;
+  for (const k of [0.3, 0.62]) {
+    ctx.beginPath();
+    ctx.moveTo(lerp(1.4, -6.6, k), top + 1);
+    ctx.lineTo(lerp(-1.4, -10, k), hem - 0.6);
+    ctx.stroke();
+  }
+}
+
+/** Umhang von hinten; s < 1 = er schwingt von rechts über den Rücken, Futter sichtbar. */
+function drawUmhangRuecken(ctx: C, r: Rig, u: { aussen: string; futter: string }, s: number) {
+  const k = clamp01(s);
+  const top = r.shoulderY - 0.6;
+  const hem = -5.5;
+  const sx = lerp(5.6, -7.8, k);
+  const hx = lerp(8, -10.8, k);
+  if (k < 0.98) {
+    ctx.fillStyle = u.futter;
+    ctx.beginPath();
+    ctx.moveTo(sx, top);
+    ctx.lineTo(sx + 2.6 * (1 - k) + 0.6, top + 0.8);
+    ctx.lineTo(hx + 4 * (1 - k) + 0.8, hem + 0.8);
+    ctx.lineTo(hx, hem + 0.8);
+    ctx.closePath();
+    ctx.fill();
+  }
+  const lead = k < 0.98 ? 1 - k : 0;
+  ctx.fillStyle = u.aussen;
+  ctx.beginPath();
+  ctx.moveTo(sx + 1.6 * lead, top);
+  ctx.lineTo(7.8, top);
+  ctx.lineTo(10.8, hem);
+  ctx.lineTo(hx + 3.2 * lead, hem);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = mixCol(u.aussen, "#000000", 0.35);
+  ctx.lineWidth = 0.6;
+  for (const f of [0.25, 0.5, 0.75]) {
+    const fx = lerp(sx, 7.8, f);
+    ctx.beginPath();
+    ctx.moveTo(fx, top + 1.5);
+    ctx.lineTo(lerp(hx, 10.8, f), hem - 0.5);
+    ctx.stroke();
+  }
+  if (k >= 0.98) {
+    ctx.fillStyle = u.futter;
+    ctx.fillRect(-10.8, hem - 0.2, 21.6, 0.8);
+  }
+}
+
 /* ------------------------------ Hauptroutine ---------------------------- */
 
 /** Zeichnet Luni und liefert die Weltposition der vorderen Hand zurück. */
@@ -1603,6 +1848,9 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     pianoSeat,
     headShake = 0,
     gaze = 0,
+    vampir = null,
+    umhang = 1,
+    backReach = false,
   } = opts;
 
   // Kränkliche Haut: je höher `sick`, desto grüner das Gesicht
@@ -1615,7 +1863,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     : LUNI_COLORS;
   // Ohne Kleidung (Handtuch oder hinter dem Vorhang) sind Arme und Beine Haut.
   const P = pajama;
-  const K = outfit === "dressed" && P
+  const KP = outfit === "dressed" && P
     ? {
         ...K0,
         cardigan: P.top,
@@ -1640,6 +1888,9 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
         sockL: [K0.skin, K0.skinShade],
         sockR: [K0.skin, K0.skinShade],
       };
+  const K = vampir && outfit === "dressed"
+    ? { ...KP, cardiganLight: vampir.spitze ?? vampir.trim ?? KP.cardiganLight }
+    : KP;
   const r = buildRig(state, t, walk, phase, armReach);
   if (pianoSeat !== undefined) {
     const p = ease(pianoSeat);
@@ -1669,21 +1920,22 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   // Greifen: die vordere Hand (armFar wird vorn gezeichnet) fährt exakt zum Ziel.
   // Das ist die Verbindung zwischen Hand und Instrument – kein Springen, weil
   // das Ziel selbst stetig wandert.
+  const backIK = pianoSeat !== undefined || backReach;
   if (handTarget) {
     // Ziel in den lokalen Raum umrechnen (Spiegelung beachten) und mit der
     // vorhandenen Zweigelenk-IK anvisieren. armIK kürzt zu weite Ziele auf die
     // feste Armlänge – der Arm kann sich dadurch nicht verlängern.
-    const tx = (handTarget[0] - x) / (scale * face) - (pianoSeat !== undefined ? r.rootX : 0);
-    const ty = (handTarget[1] - y) / scale - (pianoSeat !== undefined ? r.rootY : 0);
-    const sh: V = pianoSeat !== undefined ? [-6.2, r.shoulderY + 2.2] : [-3.4, r.shoulderY + 2];
+    const tx = (handTarget[0] - x) / (scale * face) - (backIK ? r.rootX : 0);
+    const ty = (handTarget[1] - y) / scale - (backIK ? r.rootY : 0);
+    const sh: V = backIK ? [-6.2, r.shoulderY + 2.2] : [-3.4, r.shoulderY + 2];
     const limb = armIK(sh, [tx, ty], -1);
     r.armFar = { elbow: limb.elbow, hand: [limb.hand[0], limb.hand[1]] };
   }
   if (handTarget2) {
     // Zweite Hand: ebenfalls echte Zweigelenk-IK mit fester Armlänge.
-    const tx = (handTarget2[0] - x) / (scale * face) - (pianoSeat !== undefined ? r.rootX : 0);
-    const ty = (handTarget2[1] - y) / scale - (pianoSeat !== undefined ? r.rootY : 0);
-    const sh: V = pianoSeat !== undefined ? [6.2, r.shoulderY + 2.2] : [3.4, r.shoulderY + 2];
+    const tx = (handTarget2[0] - x) / (scale * face) - (backIK ? r.rootX : 0);
+    const ty = (handTarget2[1] - y) / scale - (backIK ? r.rootY : 0);
+    const sh: V = backIK ? [6.2, r.shoulderY + 2.2] : [3.4, r.shoulderY + 2];
     const limb = armIK(sh, [tx, ty], 1);
     r.armNear = { elbow: limb.elbow, hand: limb.hand };
   }
@@ -1761,6 +2013,11 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     ctx.restore();
   };
 
+  if (vampir?.umhang && !back && outfit === "dressed" && umhang > 0.01) {
+    const u = vampir.umhang;
+    upperLean(() => drawUmhangSeite(ctx, r, u, umhang));
+  }
+
   /* --- Haare hinten (beim Vorbeugen hängen sie am Kopf, siehe dort) --- */
   if (r.bend < 0.7) upperLean(() => drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen));
 
@@ -1823,11 +2080,11 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
       ctx.fill();
     });
 
-  if (P && outfit === "dressed" && !back) drawPajamaDetails(ctx, r, P.top, P.bottom);
+  if (P && outfit === "dressed" && !back && !vampir) drawPajamaDetails(ctx, r, P.top, P.bottom);
 
   if (back) {
     /* --- Rückansicht: Arme seitlich, Oberkörper von hinten --- */
-    const arms = pianoSeat !== undefined
+    const arms = backIK
       ? { near: r.armNear, far: r.armFar, behind: false }
       : backArms(state, r, phase);
     const drawArms = () => {
@@ -1843,7 +2100,9 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     // verschwinden hinter dem Rücken.
     if (arms.behind) drawArms();
     drawTorsoBack(ctx, r, outfit, K);
+    if (vampir && outfit === "dressed") drawVampirRuecken(ctx, r, vampir);
     if (!arms.behind) drawArms();
+    if (vampir?.umhang && outfit === "dressed" && umhang > 0.01) drawUmhangRuecken(ctx, r, vampir.umhang, umhang);
     // Die langen Haare liegen über Rücken und Schultern.
     drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen * (wet > 0.3 ? 0.94 : 1), true);
   } else {
@@ -1851,7 +2110,10 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     upperLean(() => {
       ctx.save();
       ctx.scale(-1, 1);
-      if (outfit === "dressed") drawTorso(ctx, r);
+      if (outfit === "dressed") {
+        drawTorso(ctx, r);
+        if (vampir) drawVampirTorso(ctx, r, vampir);
+      }
       else if (outfit === "towel") drawTowel(ctx, r);
       else {
         ctx.fillStyle = K.skin;
@@ -1877,6 +2139,17 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     ctx.fillStyle = K.skinShade;
     rr(ctx, -2, r.headY + 7, 4, 4.6, 1.6);
     ctx.fill();
+    if (vampir?.kropfband && outfit === "dressed") {
+      ctx.fillStyle = vampir.kropfband.band;
+      rr(ctx, -2.2, r.headY + 9.2, 4.4, 1.3, 0.6);
+      ctx.fill();
+      if (!back) {
+        ctx.fillStyle = vampir.kropfband.stein;
+        ctx.beginPath();
+        ctx.arc(1.1, r.headY + 10.4, 0.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
   });
 
   /* --- Kopf --- */

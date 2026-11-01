@@ -48,7 +48,6 @@ dusche-routine | src/game/house.ts | startSh
 ## Neue Systeme (seit PR #6)
 
 traumhaus-datei | src/game/traumhaus.ts | export
-traum-datei | src/game/dream.ts | export
 dusche-datei | src/game/shower.ts | export
 gol-datei | src/game/gol.ts | export
 pixel-datei | src/game/pixel.ts | export
@@ -88,6 +87,29 @@ musikzimmer-vorhaenge | src/game/gruselhaus/musikzimmer.ts | drawVorhaenge
 musikzimmer-vorhang-griff | src/game/gruselhaus/musikzimmer.ts | vorhangGriff
 steine-gui | src/game/house.ts | steinWechsel
 musikzimmer-tests | tools/test-musikzimmer.mjs | Aufspringen
+
+## Schlafstätte der Vampirkönigin (Raum 03)
+
+schlafzimmer-datei | src/game/gruselhaus/schlafzimmer.ts | export
+schlafzimmer-burgwand | src/game/gruselhaus/schlafzimmer.ts | drawBurgWand
+schlafzimmer-sarg | src/game/gruselhaus/schlafzimmer.ts | drawSarg
+schlafzimmer-nachttisch | src/game/gruselhaus/schlafzimmer.ts | drawNachttisch
+schlafzimmer-schrank | src/game/gruselhaus/schlafzimmer.ts | drawSchrank
+schlafzimmer-leuchter | src/game/gruselhaus/schlafzimmer.ts | drawKronleuchter
+schlafzimmer-stationen | src/game/gruselhaus/schlafzimmer.ts | schlafzimmerStationen
+schlafzimmer-sargdeckel | src/game/gruselhaus/schlafzimmer.ts | drawSargDeckel
+schlafzimmer-totenkopf | src/game/gruselhaus/schlafzimmer.ts | drawTotenkopf
+schlafzimmer-trittschemel | src/game/gruselhaus/schlafzimmer.ts | drawTrittschemel
+schlafzimmer-brillenwurf | src/game/gruselhaus/schlafzimmer.ts | brillenZiel
+vampir-outfits | src/game/gruselhaus/vampir.ts | VAMPIR_OUTFITS
+vampir-outfitwechsel | src/game/gruselhaus/vampir.ts | naechstesOutfit
+vampir-zeichnung | src/game/luni.ts | drawVampirTorso
+vampir-umhang | src/game/luni.ts | drawUmhangRuecken
+sarg-ablauf | src/game/house.ts | updateSarg
+sarg-aufwachen | src/game/house.ts | sargAufwachen
+sarg-geraeusche | src/game/audio.ts | holzDumpf
+schlaf-zzz | src/game/house.ts | drawSleepZ
+schlafzimmer-tests | tools/test-schlafzimmer.mjs | Outfit
 
 ## Ton und Speicher
 
