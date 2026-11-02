@@ -125,6 +125,27 @@ badezimmer-einmalblitz | src/game/house.ts | bioFlashed
 badezimmer-haarkurve | src/game/luni.ts | drawLabTorso
 badezimmer-tests | tools/test-badezimmer.mjs | badezimmerStationen
 
+## Gruselhaus-Küche (Raum 05)
+
+kueche-leer | src/game/house.ts | if (!gr?.kueche)
+kueche-fenster | src/game/house.ts | windowRect(c, sky, 624, 364
+
+## Wetter und Jahreszeiten
+
+wetter-logik | src/game/wetter.ts | tickWetter
+wetter-jahreszeit | src/game/wetter.ts | jahreszeitFuer
+wetter-schneedecke | src/game/wetter.ts | snow
+wetter-effekte | src/game/wetter.ts | drawWetter
+wetterstation-datei | src/game/wetterstation.ts | drawWetterStation
+wetterstation-zusatz | src/game/wetterstation.ts | Zusatz
+echtwetter | src/game/wetter.ts | echtwetter
+wetter-tests | tools/test-wetter.mjs | Wetterstation
+hexenofen-datei | src/game/gruselhaus/hexenofen.ts | OFEN
+hexenofen-zeichnung | src/game/gruselhaus/hexenofen.ts | drawOfen
+hexenkessel-zeichnung | src/game/gruselhaus/hexenofen.ts | drawKessel
+hexenofen-tuer | src/game/house.ts | ofenZiel
+hexenofen-tests | tools/test-hexenofen.mjs | Hexenkessel
+
 ## Ton und Speicher
 
 audio-synth | src/game/audio.ts | class Sfx
