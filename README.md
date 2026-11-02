@@ -158,6 +158,7 @@ Modul; das normale Haus und das Traumhaus bleiben dabei unberührt.
 | Dachgeschoss links (Zockerzimmer) | Horror-Raumstation | fertig (`raumstation.ts`) |
 | Dachgeschoss rechts (Musikzimmer) | Musikzimmer („Der Tod spielt Klavier“) | fertig (`musikzimmer.ts`) |
 | 1. Stock links (Schlafzimmer) | Schlafstätte der Vampirkönigin | fertig (`schlafzimmer.ts`) |
+| 1. Stock rechts (Badezimmer) | Biohazard-Bad mit Dekon-Kapsel | fertig (`badezimmer.ts`) |
 | alle übrigen | – | noch das normale Haus |
 
 Raum 02 heißt **Musikzimmer**. Seine Klavierecke besteht aus einem alten,
@@ -224,6 +225,20 @@ Prüfungen: `node tools/test-schlafzimmer.mjs`.
 Die **Traumsequenz** ist aus dem Projekt entfernt (`dream.ts` und der
 Code-Export `traumsequenz-code.txt`). Luni schläft in allen Häusern ohne Traum;
 das Traumhaus (`#traumhaus`) als eigene Welt bleibt erhalten.
+
+Raum 04 ist im Gruselhaus ein **Biohazard-Bad** (`src/game/gruselhaus/badezimmer.ts`):
+vergilbte Dekontaminations-Kapsel mit geteilter Schiebetür, Biohazard-Zeichen,
+Sprühdüsen, geriffelten Schläuchen und Augen-Sichtfenster. Luni zieht sich wie
+beim Duschen zuerst um, legt ihre Brille im chirurgischen Edelstahlbecken ab,
+geht zum Bedienfeld, drückt den Knopf, betritt die geöffnete Kapsel und dreht
+sich nach vorne. Hinter geschlossener Tür sind nur ihre Augen sichtbar. Ein
+einmaliger kurzer Lichtblitz und austretender Dunst begleiten den Waschablauf;
+danach öffnet die Kapsel, Luni tritt heraus und nimmt das Schutzvlies von der
+Hazmat-Rolle. Die Bürste liegt im Laborspind neben dem CRT-Monitor: Haare kämmen
+bleibt eine eigene Klickaktion. Der Monitor zeigt ein prozedurales grünes
+Kamerabild. Das Verbrennungs-WC glüht beim Spülen kurz orange, nachdem Luni
+zum Hebel gelaufen ist. Normales Haus, Traumhaus und andere Räume bleiben
+unverändert. Prüfungen: `node tools/test-badezimmer.mjs`.
 
 ### Türen und Wege (alle Hauswelten)
 

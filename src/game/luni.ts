@@ -81,6 +81,8 @@ export type LuniState =
   | "reachUp"
   | "bend"
   | "brush"
+  | "labBend"
+  | "labBrush"
   | "sleepBend";
 
 export type LuniExpr =
@@ -289,6 +291,9 @@ interface Rig {
   footDrop: number;
   /** Vorbeugen des Oberkörpers um die Hüfte (Radiant, positiv = nach vorn) */
   bend: number;
+  /** Nur Gruselbad: zusätzlicher Nackenbogen, ohne Kopf oder Rumpf zu skalieren. */
+  neckBend: number;
+  spineCurve: number;
   /** Welche Hand Gegenstände hält */
   prop: "auto" | "near" | "far";
 }
@@ -386,6 +391,8 @@ function baseRig(): Rig {
     footNearDir: 1,
     footDrop: 0,
     bend: 0,
+    neckBend: 0,
+    spineCurve: 0,
     prop: "auto",
   };
 }
@@ -513,11 +520,18 @@ function buildRig(state: LuniState, t: number, walkP: number, phase: number, rea
     }
 
     case "bend":
-    case "brush": {
+    case "brush":
+    case "labBend":
+    case "labBrush": {
       // Tief nach vorn beugen; die Proportionen bleiben, nur die Hüfte knickt.
-      const b = state === "brush" ? 1 : ease(phase);
-      const th = 1.62 * b;
+      const lab = state === "labBend" || state === "labBrush";
+      const b = state === "brush" || state === "labBrush" ? 1 : ease(phase);
+      const th = (lab ? 1.36 : 1.62) * b;
       r.bend = th;
+      if (lab) {
+        r.neckBend = .52 * b;
+        r.spineCurve = b;
+      }
       r.rootX = -3 * b;
       r.rootY = breathe * 0.3 * (1 - b) + b * 1;
       r.legFar = leg([-3.6 + 4.2 * b, -10 + 0.8 * b], [-4.2 + 3 * b, -b]);
@@ -530,14 +544,18 @@ function buildRig(state: LuniState, t: number, walkP: number, phase: number, rea
       const SN: V = [3.4, -34];
       const hangF: V = [SF[0] + D[0] * 15, SF[1] + D[1] * 15];
       const hangN: V = [SN[0] + D[0] * 15, SN[1] + D[1] * 15];
-      if (state === "brush") {
+      if (state === "brush" || state === "labBrush") {
         // Bürste an den herabhängenden Haaren entlang, Strich nach unten,
         // dann leicht abgehoben zurück zum Ansatz.
         const k = (t * 0.95) % 1;
         const down = k < 0.72;
-        const sPos = down ? lerp(3, 13, ease(k / 0.72)) : lerp(13, 3, ease((k - 0.72) / 0.28));
-        const off = down ? 7.5 : 10.5;
-        const hand: V = [D[0] * sPos + P[0] * off, HEAD_Y + D[1] * sPos + P[1] * off];
+        const top = lab ? 1 : 3;
+        const tip = lab ? 8 : 13;
+        const sPos = down ? lerp(top, tip, ease(k / 0.72)) : lerp(tip, top, ease((k - 0.72) / 0.28));
+        const off = lab ? (down ? 3.5 : 5) : (down ? 7.5 : 10.5);
+        const neckX = lab ? (SHOULDER_Y - HEAD_Y) * Math.sin(r.neckBend) : 0;
+        const neckY = lab ? SHOULDER_Y + (HEAD_Y - SHOULDER_Y) * Math.cos(r.neckBend) : HEAD_Y;
+        const hand: V = [neckX + D[0] * sPos + P[0] * off, neckY + D[1] * sPos + P[1] * off];
         r.armFar = armIK(SF, hand, -1);
         r.armNear = armIK(SN, hangN, 1);
         r.prop = "far";
@@ -1352,6 +1370,38 @@ function pullBack(from: V, to: V, d: number): V {
 
 /* ------------------------------ Kleidung -------------------------------- */
 
+/** Gruselbad: sanfter Rückenbogen bei unveränderter Schulter-, Hüft- und Kopfgröße. */
+function drawLabTorso(ctx: C, r: Rig, outfit: "dressed" | "towel" | "none", K: typeof LUNI_COLORS) {
+  const top = r.shoulderY;
+  const bot = r.hipY;
+  const curve = r.spineCurve * 3;
+  if (outfit === "towel") {
+    ctx.fillStyle = K.skin;
+    rr(ctx, -6.2, top, 12.4, 5, 3);
+    ctx.fill();
+  }
+  ctx.fillStyle = outfit === "none" ? K.skin : outfit === "towel" ? "#e2eef2" : K.cardigan;
+  ctx.beginPath();
+  ctx.moveTo(-7, top + 1);
+  ctx.bezierCurveTo(-8 - curve * .3, top + 6, -6 + curve, bot - 5, -6.8, bot + 1);
+  ctx.quadraticCurveTo(0, bot + 2.2, 6.8, bot + 1);
+  ctx.bezierCurveTo(6 + curve, bot - 5, 8 + curve * .3, top + 6, 7, top + 1);
+  ctx.quadraticCurveTo(0, top - 1, -7, top + 1);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = outfit === "towel" ? "#aac9d2" : K.cardiganDark;
+  ctx.lineWidth = .8;
+  ctx.beginPath();
+  ctx.moveTo(-5.7, top + 2.5);
+  ctx.bezierCurveTo(-6 + curve, top + 9, -3 + curve, bot - 4, -4.4, bot);
+  ctx.stroke();
+  if (outfit === "towel") {
+    ctx.fillStyle = "#7fb6d0";
+    ctx.fillRect(-6.4, top + 6, 12.8, 1.1);
+    ctx.fillRect(-6.4, bot - .5, 12.8, 1.1);
+  }
+}
+
 function drawTorso(ctx: C, r: Rig) {
   const K = LUNI_COLORS;
   const topY = r.shoulderY;
@@ -2110,7 +2160,8 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     upperLean(() => {
       ctx.save();
       ctx.scale(-1, 1);
-      if (outfit === "dressed") {
+      if (r.spineCurve > 0.01) drawLabTorso(ctx, r, outfit, K);
+      else if (outfit === "dressed") {
         drawTorso(ctx, r);
         if (vampir) drawVampirTorso(ctx, r, vampir);
       }
@@ -2136,6 +2187,9 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
 
   /* --- Hals --- */
   upperLean(() => {
+    if (r.neckBend) {
+      ctx.save(); ctx.translate(0, r.shoulderY); ctx.rotate(r.neckBend); ctx.translate(0, -r.shoulderY);
+    }
     ctx.fillStyle = K.skinShade;
     rr(ctx, -2, r.headY + 7, 4, 4.6, 1.6);
     ctx.fill();
@@ -2150,11 +2204,15 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
         ctx.fill();
       }
     }
+    if (r.neckBend) ctx.restore();
   });
 
   /* --- Kopf --- */
   upperLean(() => {
   ctx.save();
+  if (r.neckBend) {
+    ctx.translate(0, r.shoulderY); ctx.rotate(r.neckBend); ctx.translate(0, -r.shoulderY);
+  }
   if (headShake) ctx.translate(headShake * 1.8, 0);
   ctx.translate(0, r.headY);
   ctx.rotate(r.headTilt + headShake * .12);
@@ -2180,12 +2238,16 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     ctx.beginPath();
     ctx.arc(-1.4, HEAD_Y - 1.6, HEAD_R + 0.6, 0, Math.PI * 2);
     ctx.fill();
-    const headWorldY = r.rootY + r.hipY + (HEAD_Y - r.hipY) * Math.cos(r.bend);
+    const neckX = (r.shoulderY - HEAD_Y) * Math.sin(r.neckBend);
+    const neckY = r.shoulderY + (HEAD_Y - r.shoulderY) * Math.cos(r.neckBend);
+    const headWorldY = r.rootY + r.hipY +
+      neckX * Math.sin(r.bend) + (neckY - r.hipY) * Math.cos(r.bend);
     const L = Math.max(8, -headWorldY - 1.6);
-    const sway = Math.sin(t * 1.7) * 0.5;
+    const sway = state === "labBrush" ? Math.sin(t * .95 * Math.PI * 2) * 1.2
+      : Math.sin(t * 1.7) * 0.5;
     ctx.save();
     ctx.translate(0, HEAD_Y);
-    ctx.rotate(-(r.bend + r.headTilt));
+    ctx.rotate(-(r.bend + r.neckBend + r.headTilt));
     const w = HEAD_R + 1;
     ctx.beginPath();
     ctx.moveTo(-w, -2);

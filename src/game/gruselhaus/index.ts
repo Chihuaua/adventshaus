@@ -15,12 +15,15 @@ export interface GruselRaeume {
   musikzimmer: boolean;
   /** Raum 03 · Schlafzimmer -> Schlafstätte der Vampirkönigin (1. Stock links) */
   schlafzimmer: boolean;
+  /** Raum 04 · Badezimmer -> Biohazard-Labor (1. Stock rechts) */
+  badezimmer: boolean;
 }
 
 export const GRUSELRAEUME: GruselRaeume = {
   raumstation: true,
   musikzimmer: true,
   schlafzimmer: true,
+  badezimmer: true,
 };
 
 export { RaumstationFx } from "./raumstation";
