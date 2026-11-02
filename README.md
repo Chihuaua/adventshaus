@@ -159,6 +159,7 @@ Modul; das normale Haus und das Traumhaus bleiben dabei unberührt.
 | Dachgeschoss rechts (Musikzimmer) | Musikzimmer („Der Tod spielt Klavier“) | fertig (`musikzimmer.ts`) |
 | 1. Stock links (Schlafzimmer) | Schlafstätte der Vampirkönigin | fertig (`schlafzimmer.ts`) |
 | 1. Stock rechts (Badezimmer) | Biohazard-Bad mit Dekon-Kapsel | fertig (`badezimmer.ts`) |
+| Erdgeschoss rechts (Küche & Treppenhaus) | leer geräumt, Fenster erhalten | Rohzustand |
 | alle übrigen | – | noch das normale Haus |
 
 Raum 02 heißt **Musikzimmer**. Seine Klavierecke besteht aus einem alten,
@@ -239,6 +240,27 @@ bleibt eine eigene Klickaktion. Der Monitor zeigt ein prozedurales grünes
 Kamerabild. Das Verbrennungs-WC glüht beim Spülen kurz orange, nachdem Luni
 zum Hebel gelaufen ist. Normales Haus, Traumhaus und andere Räume bleiben
 unverändert. Prüfungen: `node tools/test-badezimmer.mjs`.
+
+Raum 05 ist im Gruselhaus vorerst **leer geräumt**: Küche und angrenzendes Treppenhaus
+zeigen nur Wand, Boden und Fenster, keine Möbel. Die Küchenstationen bleiben unsichtbar
+funktionsfähig; die Gestaltung folgt einem neuen Auftrag. Das normale Haus behält seine Küche.
+
+### Wetter und Jahreszeiten (normales Haus und Gruselhaus)
+
+Die Jahreszeit folgt dem Systemdatum, die Wetterlage wird passend gewichtet zufällig gewählt und
+hält Stunden bis wenige Tage. Ein Schneefall baut eine Decke auf, die langsam taut, über
+Tagesgrenzen und Neustarts hinweg erhalten bleibt, solange das echte Wetter sie stützt.
+Das Wetter wirkt auf alle Fenster und den Außenbereich; Nebel bleibt draußen, Sturm bringt
+Seitenversatz, Gewitter einzelne Blitze. Sonne, Bewölkung, Regen, Schnee, Hagel, Nebel, Sturm
+und Gewitter sind möglich; Zusätze (Blitze, Wind, Nebel, Dunkel, Frost) lassen sich in begrenzter
+Zahl kombinieren. Die Jahreszeit färbt Himmel und Licht, ohne die echte Uhrzeit zu verändern.
+
+Das Wetter wird ausschließlich **hinter dem Haus** und in den Fenstern gezeichnet, nie über
+Wänden oder im Zimmer. Die **Wetterstation** liegt oben links im Erdsteinfeld (`src/game/wetterstation.ts`) und ist in
+beiden Häusern als reine GUI sichtbar: Jahreszeitenreihe, Wetterreihe, Plus/Minus für Zusätze,
+Echtwetter-Knopf. Kein Luni-Weg, wie bei den Wechselsteinen. Testwetter gilt nur im Speicher
+(bis Weltwechsel anders gewählt wird oder der Browser neu startet) und wird nicht gespeichert;
+Echtwetter kehrt zum tagesaktuellen Systemwetter zurück. Logik: `src/game/wetter.ts`.
 
 ### Türen und Wege (alle Hauswelten)
 

@@ -17,6 +17,8 @@ export interface GruselRaeume {
   schlafzimmer: boolean;
   /** Raum 04 · Badezimmer -> Biohazard-Labor (1. Stock rechts) */
   badezimmer: boolean;
+  /** Raum 05 · Küche im Gruselhaus: leer geräumt, Fenster erhalten (Rohzustand). */
+  kueche: boolean;
 }
 
 export const GRUSELRAEUME: GruselRaeume = {
@@ -24,6 +26,7 @@ export const GRUSELRAEUME: GruselRaeume = {
   musikzimmer: true,
   schlafzimmer: true,
   badezimmer: true,
+  kueche: true,
 };
 
 export { RaumstationFx } from "./raumstation";

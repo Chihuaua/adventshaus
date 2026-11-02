@@ -40,6 +40,9 @@ import { sfx } from "./audio";
 import { SaxophonMusic } from "./audio/saxophonVoice";
 import { SAX_DURATION_SECONDS } from "./audio/saxophonNotes";
 import { VAMPIR_OUTFITS, naechstesOutfit } from "./gruselhaus/vampir";
+import { drawKessel, drawOfen } from "./gruselhaus/hexenofen";
+import { drawWetter, ladeWetter, tickWetter, waehleJahreszeit, waehleWetter, schalteZusatz, echtwetter, type WetterState } from "./wetter";
+import { drawWetterStation, wetterStationHit, wetterStationLayout, type WetterBefehl, type WetterTreffer } from "./wetterstation";
 import { drawStein, steinAn, steinSlots, type SteinSlot } from "./steine";
 import { ladeSnapshot, speichereSnapshot, type HausSnapshot, type WeltId } from "./welten";
 import { GRUSELRAEUME, RaumstationFx, type GruselRaeume } from "./gruselhaus";
@@ -382,6 +385,10 @@ export interface Station {
 }
 
 const [FK, FE, FO, FD] = FLOOR_Y;
+/** Kesselstation nur für das Gruselhaus; das normale Haus behält "Herd". */
+function baseKessel(): Station {
+  return { id: "kessel", label: "Hexenkessel", floor: 1, x: 702, face: 1, state: "act", expr: "focus", hits: [[690, 380, 36, 26]] };
+}
 
 export const STATIONS: Station[] = [
   /* ---- Erdgeschoss ---- */
@@ -399,7 +406,10 @@ export const STATIONS: Station[] = [
     id: "tee", label: "Gesundheitstee", floor: 1, x: 642, face: 1, state: "act", expr: "happy",
     prop: "cup", hits: [[616, 380, 32, 30]],
   },
-  { id: "herd", label: "Herd", floor: 1, x: 708, face: 1, state: "act", expr: "focus", prop: "pan", hits: [[690, 350, 36, 98]] },
+  {
+    id: "herd", label: "Herd", floor: 1, x: 708, face: 1, state: "act", expr: "focus",
+    hits: [[690, 406, 36, 42]],
+  },
   { id: "esstisch", label: "Esstisch", floor: 1, x: 741, face: 1, state: "sit", expr: "happy", yOff: -12, prop: "cup", hits: [[730, 408, 86, 40]] },
   {
     id: "tabak", label: "Zigaretten stopfen", floor: 1, x: 741, face: 1, state: "roll", expr: "happy",
@@ -1908,7 +1918,7 @@ function drawHouse(
 
   /* ---- Fenster ---- */
   windowRect(c, sky, 330, 358, 64, 38, { curtain: "#c9453a" });
-  windowRect(c, sky, 624, 364, 50, 36);
+  if (!gr?.kueche) windowRect(c, sky, 624, 364, 50, 36);
   windowRect(c, sky, 740, 236, 44, 78, { mull: 2 });
   if (!gr?.schlafzimmer) {
     windowRect(c, sky, 334, 244, 62, 46, { curtain: "#7a3f55" });
@@ -1935,15 +1945,24 @@ function drawHouse(
   floorLamp(c, 302, FE);
   tvSet(c, 438, FE);
   kellerTuer(c, 500, FE);
-  fridge(c, 574, FE);
-  kitchenCounter(c, 614, FE, 76);
-  teaPot(c, 630, FE);
-  stove(c, 690, FE);
-  ceilingLamp(c, 650, FO + SLAB, 14);
-  kitchenTable(c, 724, FE, 74);
-  tobaccoTin(c, 766, FE);
-  chair(c, 732, FE, true);
-  chair(c, 796, FE, false);
+  // Gruselhaus: Küche ist leer geräumt. Wand, Boden und Fenster bleiben;
+  // die Stationen bleiben unsichtbar funktionsfähig, bis das Zimmer neu kommt.
+  if (gr?.kueche) {
+    // Hexenküche: die Küche ist ausgeräumt, nur der gusseiserne Ofen und der
+    // Hexenkessel stehen am Platz des alten Backofens. Feuer läuft dynamisch.
+    drawOfen(c, FE, 0, 0);
+    drawKessel(c, FE, 0);
+  } else {
+    fridge(c, 574, FE);
+    kitchenCounter(c, 614, FE, 76);
+    teaPot(c, 630, FE);
+    stove(c, 690, FE);
+    ceilingLamp(c, 650, FO + SLAB, 14);
+    kitchenTable(c, 724, FE, 74);
+    tobaccoTin(c, 766, FE);
+    chair(c, 732, FE, true);
+    chair(c, 796, FE, false);
+  }
 
   /* ---- 1. Stock ---- */
   rrect(c, 236, FO - 18, 16, 18, 3, "#c96f4a");
@@ -2490,6 +2509,16 @@ export class House {
   /** ausstehende Befehle nach der aktuellen Aktion.
    *  force = Rückkehr ohne Prüfung, sonst Spielerbefehl mit Prüfung. */
   private chain: { id: string; force: boolean }[] = [];
+  /** Wetter in beiden Häusern: Echtwetter gespeichert, Testwetter flüchtig. */
+  private wetter: WetterState = ladeWetter();
+  private wetterAdd: "plus" | "minus" | null = null;
+  private wetterHover: WetterTreffer | null = null;
+  private wetterT = 0;
+  /** Ofentür im Gruselhaus: 0 zu, 1 offen. */
+  private ofenOffen = 0;
+  /** Ziel der Feuertür und kurze Handanimation am Ofen. */
+  private ofenZiel = 0;
+  private ofenT = 0;
 
   constructor(canvas: HTMLCanvasElement, opts: HouseOptions = {}) {
     this.canvas = canvas;
@@ -2507,6 +2536,11 @@ export class House {
       if (GRUSELRAEUME.musikzimmer) st = musikzimmerStationen(st);
       if (GRUSELRAEUME.schlafzimmer) st = schlafzimmerStationen(st);
       if (GRUSELRAEUME.badezimmer) st = badezimmerStationen(st);
+      // Ofen heißt im Gruselhaus Ofen; der Kessel ist eine eigene Station.
+      st = st
+        .filter((x) => x.id !== "kessel")
+        .map((x) => (x.id === "herd" ? { ...x, label: "Ofen" } : x));
+      st = [...st, baseKessel()];
       this.stations = st;
       if (GRUSELRAEUME.musikzimmer) this.musikzimmer = new MusikzimmerAblauf();
     }
@@ -2717,6 +2751,13 @@ export class House {
   private onDown = (e: PointerEvent) => {
     sfx.ensure();
     const [x, y] = this.toWorld(e);
+    // Wetterstation: reine GUI, klickbar ohne Lunis Weg (auch im normalen Haus).
+    const wt = wetterStationHit(wetterStationLayout(this.wetter, this.wetterAdd), x, y);
+    if (wt?.befehl) {
+      this.wetterBefehl(wt.befehl);
+      sfx.ui();
+      return;
+    }
     if (this.golFullscreen) {
       this.onGolFullscreenClick(x, y);
       return;
@@ -2755,12 +2796,14 @@ export class House {
       return;
     }
     this.hover = this.steinUnter(x, y) ?? this.pick(x, y);
+    this.wetterHover = wetterStationHit(wetterStationLayout(this.wetter, this.wetterAdd), x, y);
     const onTv = this.golInserted && this.hitAtticTv(x, y);
-    this.canvas.style.cursor = this.hover || onTv ? "pointer" : "default";
+    this.canvas.style.cursor = this.wetterHover || this.hover || onTv ? "pointer" : "default";
   };
 
   private onLeave = () => {
     this.hover = null;
+    this.wetterHover = null;
     this.canvas.style.cursor = "default";
   };
 
@@ -2953,6 +2996,25 @@ export class House {
       this.smokeRequested = false;
       this.doorIntent = { id: "zimmertuer", want: this.cellarDoorV > 0.5 ? 0 : 1 };
       this.goTo(this.doorStand());
+      return;
+    }
+
+    // Hexenkessel hat eine eigene Station (Holz nachlegen folgt später).
+    if (id === "kessel") {
+      this.chain = [];
+      this.smokeRequested = false;
+      const st = find("kessel");
+      if (st) this.pending = { ...st, x: 702 };
+      return;
+    }
+    // Ofen: Luni geht hin und öffnet oder schließt die Feuertür.
+    if (id === "herd" && this.gruselBad) {
+      this.chain = [];
+      this.smokeRequested = false;
+      this.ofenZiel = this.ofenOffen > .5 ? 0 : 1;
+      this.ofenT = 0;
+      const st = find("herd");
+      if (st) this.pending = st;
       return;
     }
 
@@ -3291,6 +3353,11 @@ export class House {
   private update(dt: number, roomDt = dt, live = false) {
     this.elapsed += dt;
     this.updateHarvest(dt);
+    this.wetterT += dt;
+    if (this.wetterT >= 1) {
+      this.wetterT = 0;
+      this.wetter = tickWetter(this.wetter);
+    }
     if (this.gruselBad) {
       this.bioFlash = Math.max(0, this.bioFlash - dt / .28);
       this.bioPanelPress = Math.max(0, this.bioPanelPress - dt * 2.5);
@@ -3530,6 +3597,17 @@ export class House {
       }
       if (this.bioWcTime >= 2) {
         this.doorHand = null;
+        this.finishActivity();
+      }
+      return;
+    }
+
+    // Ofen: Feuertür sichtbar öffnen oder schließen, dann fertig.
+    if (this.gruselBad && act?.id === "herd") {
+      this.ofenT += dt;
+      this.ofenOffen += (this.ofenZiel - this.ofenOffen) * (1 - Math.exp(-7 * dt));
+      if (this.ofenT >= 1.4) {
+        this.ofenOffen = this.ofenZiel;
         this.finishActivity();
       }
       return;
@@ -4239,6 +4317,7 @@ export class House {
       pianoRise: this.pianoRise,
       pianoEscape: this.pianoEscape,
       pianoRefusal: this.pianoRefusal,
+      wetter: { ...this.wetter, zusatz: [...this.wetter.zusatz] },
       badezimmer: this.gruselBad ? {
         phase: this.shPhase, kapsel: this.bioDoor, drinnen: this.bioInside,
         nebel: this.bioMist, blitz: this.bioFlash, wc: this.bioWcGlow,
@@ -4411,8 +4490,28 @@ export class House {
     }
 
 
+    if (this.welt === "gruesel" && GRUSELRAEUME.kueche) {
+      // Feuer und Dampf laufen jede Bild, alles übrige bleibt statisch.
+      drawOfen(ctx, FLOOR_Y[1], this.elapsed, this.ofenOffen);
+      drawKessel(ctx, FLOOR_Y[1], this.elapsed);
+    }
+    drawWetter(ctx, this.wetter, this.elapsed);
+    drawWetterStation(ctx, this.wetter, this.wetterAdd, this.wetterHover);
     this.drawHoverLabel(ctx);
     if (this.golFullscreen) this.drawGolFullscreen(ctx);
+  }
+
+  private wetterBefehl(b: WetterBefehl) {
+    switch (b.k) {
+      case "season": this.wetter = waehleJahreszeit(this.wetter, b.v); break;
+      case "art": this.wetter = waehleWetter(this.wetter, b.v); break;
+      case "plus": this.wetterAdd = this.wetterAdd === "plus" ? null : "plus"; break;
+      case "minus": this.wetterAdd = this.wetterAdd === "minus" ? null : "minus"; break;
+      case "zusatz": this.wetter = schalteZusatz(this.wetter, b.v); this.wetterAdd = null; break;
+      case "echt": this.wetter = echtwetter(this.wetter); this.wetterAdd = null; break;
+    }
+    this.wetterHover = null;
+    this.last = performance.now();
   }
 
   private drawKellerDoor(c: C) {
@@ -4683,7 +4782,7 @@ export class House {
   /** Gedrehte Zigaretten und Schachtel auf dem Küchentisch */
   private drawCigPile(c: C) {
     // Schachtel liegt immer da; beim Einpacken ist der Deckel offen
-    cigCase(c, 740, FLOOR_Y[1], this.pack, this.packMove || this.takeMove);
+    if (!(this.welt === "gruesel" && GRUSELRAEUME.kueche)) cigCase(c, 740, FLOOR_Y[1], this.pack, this.packMove || this.takeMove);
     if (this.packMove) {
       // Zigaretten wandern vom Stapel in die Schachtel
       const p = clamp(this.packT / 1.1, 0, 1);
