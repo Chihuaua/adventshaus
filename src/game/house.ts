@@ -55,6 +55,11 @@ import { clipMusikzimmer, drawMusikzimmerEffects, drawMusikzimmer, drawMusiktuer
 import { klavierHaende, MusikzimmerAblauf } from "./gruselhaus/musikzimmer-ablauf";
 import { drawPixelText } from "./pixel";
 import {
+  BIO_BAD, badezimmerStationen, drawBioBadAfter, drawBioBadBefore,
+  drawBioBadStatic, drawBioBadWall, drawHazmatVlies, drawLabBrush, drawLabLockerOpen,
+  type BioBadFx,
+} from "./gruselhaus/badezimmer";
+import {
   BRILLEN_ZIELE,
   SARG,
   SCHLAFZIMMER,
@@ -1847,7 +1852,8 @@ function drawHouse(
   } else {
     wallBand(c, 270, 490, FD + SLAB, FO, "#b9808f", "#9c6676", 30);
   }
-  bathTiles(c, 490, OG_X1, FD + SLAB, FO);
+  if (gr?.badezimmer) drawBioBadWall(c);
+  else bathTiles(c, 490, OG_X1, FD + SLAB, FO);
   // Treppenhaus rechts (über EG und 1. Stock)
   wallBand(c, OG_X1, HR, FD + SLAB, FE, "#cdb78f", "#b79f74", 30);
   // Erdgeschoss
@@ -1862,7 +1868,8 @@ function drawHouse(
   const WOOD = "#a06f45";
   slab(c, CEL_X0, HR, FK, [[CEL_X0, 590, "#8a8d88", "none"], [590, HR, "#777a74", "none"]], "#2a2522");
   slab(c, 98, HR, FE, [[98, 560, WOOD, "wood"], [560, HR, "#e8e2d2", "tile"]]);
-  slab(c, 98, OG_X1 + 2, FO, [[98, 490, "#a87a52", "wood"], [490, OG_X1 + 2, "#4d9a66", "tile"]]);
+  slab(c, 98, OG_X1 + 2, FO, [[98, 490, "#a87a52", "wood"],
+    [490, OG_X1 + 2, gr?.badezimmer ? "#536260" : "#4d9a66", "tile"]]);
   slab(c, DG_X0, HR, FD, [[DG_X0, 530, gr?.raumstation ? "#5a5a6a" : "#3e3b52", "none"], [530, HR, WOOD, "wood"]]);
   if (gr?.raumstation) drawMetalFloor(c, DG_X0, 530, FD);
 
@@ -1957,10 +1964,13 @@ function drawHouse(
     wardrobe(c, 434, FO);
     ceilingLamp(c, 340, FD + SLAB, 14, "#f2d9a0");
   }
-  showerStatic(c, FO);
-  wcTuer(c, WC_DOOR_X, FO);
-  waschbeckenMitSpiegel(c, SINK_X, FO);
-  bathCeilingLamp(c, 590, FD + SLAB, FO, 490, OG_X1);
+  if (gr?.badezimmer) drawBioBadStatic(c);
+  else {
+    showerStatic(c, FO);
+    wcTuer(c, WC_DOOR_X, FO);
+    waschbeckenMitSpiegel(c, SINK_X, FO);
+    bathCeilingLamp(c, 590, FD + SLAB, FO, 490, OG_X1);
+  }
 
   /* ---- Dachgeschoss ---- */
   if (gr?.raumstation) {
@@ -2020,6 +2030,14 @@ const SH_SEQ = [
   "washHair", "washBody", "rinse", "waterOff", "takeTowel", "wrapOn",
   "openCurtain", "stepOut",
 ] as const;
+/** Gruselhaus: vorhandenes Umziehen/Brille/Waschen, aber Kapsel statt Vorhang. */
+const DEKON_SEQ = [
+  "toWardrobe", "openWardrobe", "undress", "wrap", "closeWardrobe",
+  "toSink", "glassesOff", "tossGlasses", "toPanel", "pressPanel", "capsuleOpen",
+  "towelOff", "throwTowel", "toShower", "turnFront", "capsuleClose",
+  "waterOn", "washHair", "washBody", "rinse", "waterOff",
+  "capsuleExitOpen", "stepOut", "takeTowel", "wrapOn", "capsuleExitClose",
+] as const;
 const DRESS_SEQ = ["dToWardrobe", "dOpen", "dDress", "dClose"] as const;
 const GLASS_SEQ = ["gToSink", "gPick"] as const;
 const CAB_OPEN_SEQ = ["cToCab", "cOpen"] as const;
@@ -2050,6 +2068,7 @@ interface SargPose {
 }
 type ShPhase =
   | (typeof SH_SEQ)[number]
+  | (typeof DEKON_SEQ)[number]
   | (typeof DRESS_SEQ)[number]
   | (typeof GLASS_SEQ)[number]
   | (typeof CAB_OPEN_SEQ)[number]
@@ -2062,6 +2081,8 @@ const GLASSES_FLIGHT = 1.35;
 const SH_DUR: Partial<Record<ShPhase, number>> = {
   glassesOff: 1.3, tossGlasses: 0.9,
   openWardrobe: 0.7, undress: 1.6, wrap: 1.5, closeWardrobe: 0.6,
+  pressPanel: 0.8, capsuleOpen: 1.1, turnFront: 0.8, capsuleClose: 1.1,
+  capsuleExitOpen: 1.1, capsuleExitClose: 1.1,
   closeCurtain: 1.3, towelOff: 1.1, throwTowel: 0.9, waterOn: 0.8,
   washHair: 3.4, washBody: 3.4, rinse: 2.8, waterOff: 0.8,
   takeTowel: 0.9, wrapOn: 1.5, openCurtain: 1.3,
@@ -2078,6 +2099,7 @@ const SH_LOCKED: ShPhase[] = [
   "gPick", "cOpen", "kClose",
   "bTake", "bStep", "bBend", "bBrush", "bUp", "bReturn", "bPut",
   "bedOpen", "bedTop", "bedBottom", "bedPants", "bedPajama", "bedCape", "bedClose", "bedSit", "bedToss",
+  "pressPanel", "capsuleOpen", "turnFront", "capsuleClose", "capsuleExitOpen", "capsuleExitClose",
 ];
 /** In diesen Schritten steht Luni in der Wanne, also hinter dem Vorhang. */
 const SH_INSIDE: ShPhase[] = [
@@ -2099,6 +2121,16 @@ const SH_STAND: Record<string, { x: number; face: 1 | -1 }> = {
   bReturn: { x: 636, face: 1 },
   bToWardrobe: { x: 458, face: 1 },
   bedSit: { x: 330, face: 1 },
+};
+const DEKON_STAND: Record<string, { x: number; face: 1 | -1 }> = {
+  toPanel: { x: BIO_BAD.panel.stand, face: -1 },
+  toShower: { x: BIO_BAD.kapsel.x + BIO_BAD.kapsel.w / 2, face: 1 },
+  stepOut: { x: BIO_BAD.panel.stand, face: 1 },
+  cToCab: { x: BIO_BAD.spind.stand, face: 1 },
+  kToCab: { x: BIO_BAD.spind.stand, face: 1 },
+  bToCab: { x: BIO_BAD.spind.stand, face: 1 },
+  bStep: { x: 609, face: 1 },
+  bReturn: { x: BIO_BAD.spind.stand, face: 1 },
 };
 interface Active {
   step: Step;
@@ -2392,6 +2424,16 @@ export class House {
   private water = false;
   private steam = 0;
   private towelOnRod = false;
+  /** Gruselhaus: getrennte, zeitgesteuerte Dekon-Kapsel und WC-Spülung. */
+  private bioDoor = 0;
+  private bioInside = false;
+  private bioMist = 0;
+  private bioFlash = 0;
+  private bioFlashed = false;
+  private bioPanelPress = 0;
+  private bioWcGlow = 0;
+  private bioWcTime = 0;
+  private bioWcTriggered = false;
   private wardrobeOpen = 0;
   /** Brille: auf der Nase, in der Hand, im Flug oder im Waschbecken */
   private glassesOn = true;
@@ -2464,6 +2506,7 @@ export class House {
       let st = STATIONS;
       if (GRUSELRAEUME.musikzimmer) st = musikzimmerStationen(st);
       if (GRUSELRAEUME.schlafzimmer) st = schlafzimmerStationen(st);
+      if (GRUSELRAEUME.badezimmer) st = badezimmerStationen(st);
       this.stations = st;
       if (GRUSELRAEUME.musikzimmer) this.musikzimmer = new MusikzimmerAblauf();
     }
@@ -2755,9 +2798,14 @@ export class House {
 
     // Duschen: hinter dem Vorhang wird nichts unterbrochen. Auf dem Weg
     // dorthin bricht ein anderer Wunsch den Ablauf ab.
-    if (this.shPhase && SH_LOCKED.includes(this.shPhase)) return;
+    if (this.shPhase && (SH_LOCKED.includes(this.shPhase) ||
+      (this.gruselBad && this.shPhase === "toShower"))) return;
     if (this.shPhase) this.cancelShower();
     if (id === "dusche") {
+      if (this.gruselBad && this.asleep) {
+        this.sargAufwachen(id);
+        return;
+      }
       this.chain = [];
       this.smokeRequested = false;
       this.startSh(this.outfit === "towel" ? "toSink" : "toWardrobe");
@@ -2932,6 +2980,13 @@ export class House {
       this.smokeRequested = false;
       const st = find("wctuer");
       if (st) this.pending = st;
+      return;
+    }
+    if (id === "bio_wc" && this.gruselBad) {
+      this.chain = [];
+      this.smokeRequested = false;
+      const wc = find(id);
+      if (wc) this.pending = wc;
       return;
     }
 
@@ -3236,6 +3291,13 @@ export class House {
   private update(dt: number, roomDt = dt, live = false) {
     this.elapsed += dt;
     this.updateHarvest(dt);
+    if (this.gruselBad) {
+      this.bioFlash = Math.max(0, this.bioFlash - dt / .28);
+      this.bioPanelPress = Math.max(0, this.bioPanelPress - dt * 2.5);
+      this.bioWcGlow = Math.max(0, this.bioWcGlow - dt / 1.5);
+      const mistOn = this.bioInside && this.bioDoor < .1 && this.water;
+      this.bioMist += ((mistOn ? 1 : 0) - this.bioMist) * (1 - Math.exp(-(mistOn ? 3.5 : 1.1) * dt));
+    }
 
     this.clockT += dt;
     if (this.clockT > 1 || this.bucket < 0) {
@@ -3455,6 +3517,22 @@ export class House {
       this.sick = clamp(this.sick - dt * 0.03, 0, 1);
     } else {
       this.sick = clamp(this.sick - dt * 0.01, 0, 1);
+    }
+
+    // Walk-First: Verbrennungs-WC erst am Hebel auslösen, nie aus der Ferne.
+    if (this.gruselBad && act?.id === "bio_wc") {
+      this.bioWcTime += dt;
+      this.doorHand = this.bioWcTime < 1.2 ? [BIO_BAD.wc.hebel[0], BIO_BAD.wc.hebel[1]] : null;
+      if (!this.bioWcTriggered && this.bioWcTime >= .45) {
+        this.bioWcTriggered = true;
+        this.bioWcGlow = 1;
+        sfx.ui();
+      }
+      if (this.bioWcTime >= 2) {
+        this.doorHand = null;
+        this.finishActivity();
+      }
+      return;
     }
 
     // Gesundheitstee in der Küche
@@ -4003,6 +4081,10 @@ export class House {
       if (this.target && !this.activity) {
         this.activity = this.target;
         this.lface = this.target.face;
+        if (this.gruselBad && this.target.id === "bio_wc") {
+          this.bioWcTime = 0;
+          this.bioWcTriggered = false;
+        }
         if (["zimmertuer", "musiktuer", "vorhang_links", "vorhang_rechts"].includes(this.activity.id)) {
           this.doorT = 0;
           this.doorActed = false;
@@ -4157,7 +4239,22 @@ export class House {
       pianoRise: this.pianoRise,
       pianoEscape: this.pianoEscape,
       pianoRefusal: this.pianoRefusal,
+      badezimmer: this.gruselBad ? {
+        phase: this.shPhase, kapsel: this.bioDoor, drinnen: this.bioInside,
+        nebel: this.bioMist, blitz: this.bioFlash, wc: this.bioWcGlow,
+        buersteImSpind: this.brushInCab,
+      } : null,
     };
+  }
+
+  private get gruselBad() {
+    return this.welt === "gruesel" && GRUSELRAEUME.badezimmer;
+  }
+
+  private bioFx(): BioBadFx {
+    return { door: this.bioDoor, inside: this.bioInside, mist: this.bioMist,
+      flash: this.bioFlash, flush: this.bioWcGlow, panelPress: this.bioPanelPress,
+      towel: this.towelOnRod, time: this.elapsed };
   }
 
   /* ------------------------------ Zeichnen ------------------------------- */
@@ -4233,6 +4330,15 @@ export class House {
       m.fillStyle = light; m.fillRect(534, 35, 296, 165); m.restore();
       a.save(); clipMusikzimmer(a, atticCeil); a.clearRect(534, 35, 296, 165); a.restore();
     }
+    if (this.gruselBad) {
+      // Kaltes, gedämpftes Laborlicht bleibt auf das Bad beschränkt.
+      m.save(); m.beginPath(); m.rect(491, 212, 202, 112); m.clip();
+      const cold = m.createRadialGradient(590, 250, 8, 590, 250, 130);
+      cold.addColorStop(0, "#e3eee5"); cold.addColorStop(1, "#9daeb2");
+      m.fillStyle = cold; m.fillRect(491, 212, 202, 112); m.restore();
+      a.save(); a.beginPath(); a.rect(491, 212, 202, 112); a.clip();
+      a.clearRect(491, 212, 202, 112); a.restore();
+    }
     this.dirty = false;
   }
 
@@ -4259,6 +4365,7 @@ export class House {
     if (this.welt === "gruesel" && GRUSELRAEUME.schlafzimmer) {
       drawSchlafzimmerEffects(ctx, this.elapsed, FLOOR_Y[2], { swing: this.leuchterW, blink: this.fledermausBlink });
     }
+    if (this.gruselBad) drawBioBadBefore(ctx, this.bioFx());
     this.drawSax(ctx);
     this.drawCigPile(ctx);
     this.drawAshtrayTray(ctx);
@@ -4273,9 +4380,18 @@ export class House {
     if (this.glassesInSink) glassesObj(ctx, SINK_DROP[0], SINK_DROP[1], 0.12, 0.45);
     this.drawBedToss(ctx);
     this.drawGlassesRest(ctx);
-    drawCabinetOpen(ctx, this.cabinetOpen, this.brushInCab);
+    if (this.gruselBad) drawLabLockerOpen(ctx, this.cabinetOpen, this.brushInCab);
+    else drawCabinetOpen(ctx, this.cabinetOpen, this.brushInCab);
     this.drawSargPass(ctx, false);
     this.drawLuniLayered(ctx);
+    if (this.gruselBad) {
+      drawBioBadAfter(ctx, this.bioFx(), () => drawLuni(ctx,
+        BIO_BAD.kapsel.x + BIO_BAD.kapsel.w / 2, FLOOR_Y[2], {
+          t: this.elapsed, scale: LUNI_SCALE, state: "idle", expr: "neutral",
+          face: 1, blink: 0, glasses: this.glassesOn, shadow: false,
+          outfit: this.outfit, wet: this.wet, sick: this.sick,
+        }));
+    }
     this.drawSargPass(ctx, true);
     this.drawGlassesMoving(ctx);
     this.drawGolInHand(ctx);
@@ -5261,14 +5377,14 @@ export class House {
   /* ------------------------------ Duschen -------------------------------- */
 
   private shStation(phase: ShPhase): Station {
-    const st = SH_STAND[phase];
+    const st = (this.gruselBad && DEKON_STAND[phase]) || SH_STAND[phase];
     return { id: `sh_${phase}`, label: "", floor: 2, x: st.x, face: st.face, state: "idle", expr: "happy", hits: [] };
   }
 
   private startSh(phase: ShPhase) {
     // Ohne Brille (weder auf der Nase noch in der Hand) gibt es nichts zu werfen.
     if (!this.glassesOn && !this.glassesInHand && (phase === "toSink" || phase === "glassesOff" || phase === "tossGlasses")) {
-      phase = "toShower";
+      phase = this.gruselBad ? "toPanel" : "toShower";
     }
     // Den Umhang gibt es nur bei Gruselhaus-Outfits mit Umhang.
     if (phase === "bedCape" && !(this.gruselSarg && this.vampirNeu !== null && VAMPIR_OUTFITS[this.vampirNeu].umhang)) {
@@ -5276,14 +5392,16 @@ export class House {
     }
     this.shPhase = phase;
     this.shT = 0;
-    if (SH_STAND[phase]) this.goTo(this.shStation(phase));
+    if (phase === "pressPanel" && this.gruselBad) this.bioFlashed = false;
+    if (SH_STAND[phase] || (this.gruselBad && DEKON_STAND[phase])) this.goTo(this.shStation(phase));
     if (phase === "stepOut") this.wet = 1;
   }
 
   private nextSh() {
     const p = this.shPhase;
     if (!p) return;
-    const seq = (ALL_SEQS.find((q) => q.includes(p)) ?? []) as readonly ShPhase[];
+    const seq = (this.gruselBad && (DEKON_SEQ as readonly string[]).includes(p)
+      ? DEKON_SEQ : ALL_SEQS.find((q) => q.includes(p)) ?? []) as readonly ShPhase[];
     const i = seq.indexOf(p);
     if (i < 0 || i === seq.length - 1) {
       this.shPhase = null;
@@ -5298,6 +5416,13 @@ export class House {
     this.shPhase = null;
     this.shT = 0;
     this.wardrobeOpen = 0;
+    if (this.gruselBad) {
+      this.bioDoor = 0;
+      this.bioInside = false;
+      this.bioMist = 0;
+      this.bioFlash = 0;
+      this.doorHand = null;
+    }
   }
 
   private updateShower(dt: number) {
@@ -5326,7 +5451,11 @@ export class House {
     if (dur === undefined) {
       // Laufschritt: endet, sobald sie am Ziel steht
       const arrived = !this.cur && this.path.length === 0 && !this.pending;
-      if (arrived && this.activity?.id === `sh_${ph}`) this.nextSh();
+      if (arrived && this.activity?.id === `sh_${ph}`) {
+        if (this.gruselBad && ph === "toShower") this.bioInside = true;
+        if (this.gruselBad && ph === "stepOut") this.bioInside = false;
+        this.nextSh();
+      }
       return;
     }
     this.shT += dt;
@@ -5354,6 +5483,20 @@ export class House {
       case "openCurtain":
         this.curtain = 1 - e;
         break;
+      case "pressPanel":
+        if (this.gruselBad) {
+          this.doorHand = p < .82 ? [BIO_BAD.panel.knopf[0], BIO_BAD.panel.knopf[1]] : null;
+          if (p >= .4) this.bioPanelPress = 1;
+        }
+        break;
+      case "capsuleOpen":
+      case "capsuleExitOpen":
+        this.bioDoor = e;
+        break;
+      case "capsuleClose":
+      case "capsuleExitClose":
+        this.bioDoor = 1 - e;
+        break;
       case "towelOff":
         if (p >= 0.6) this.outfit = "none";
         break;
@@ -5365,6 +5508,10 @@ export class House {
         break;
       case "waterOn":
         if (p >= 0.6) this.water = true;
+        if (this.gruselBad && p >= .65 && !this.bioFlashed) {
+          this.bioFlashed = true;
+          this.bioFlash = 1;
+        }
         break;
       case "gPick":
         if (p >= 0.38 && this.glassesInSink) {
@@ -5504,18 +5651,27 @@ export class House {
       case "wrap":
         return { state: "wrap", face: 1, phase: p, back: true };
       case "towelOff":
-        return { state: "wrap", face: 1, phase: 1 - p, back: false };
+        return { state: "wrap", face: this.gruselBad ? -1 : 1, phase: 1 - p, back: false };
       case "throwTowel":
       case "takeTowel":
-        return { state: "throw", face: 1, phase: p, back: false };
+        return { state: "throw", face: this.gruselBad ? -1 : 1, phase: p, back: false };
       case "wrapOn":
-        return { state: "wrap", face: 1, phase: p, back: false };
+        return { state: "wrap", face: this.gruselBad ? -1 : 1, phase: p, back: false };
       case "closeCurtain":
         return { state: "act", face: 1, phase: 0, back: false };
       case "openCurtain":
       case "waterOn":
       case "waterOff":
         return { state: "act", face: -1, phase: 0, back: false };
+      case "pressPanel":
+        return { state: "act", face: -1, phase: p, back: false };
+      case "capsuleOpen":
+        return { state: "idle", face: -1, phase: 0, back: false };
+      case "turnFront":
+      case "capsuleClose":
+      case "capsuleExitOpen":
+      case "capsuleExitClose":
+        return { state: "idle", face: 1, phase: 0, back: false };
       case "gPick":
         return { state: "glassesOn", face: 1, phase: p, back: false };
       case "bedOpen":
@@ -5538,11 +5694,11 @@ export class House {
       case "bPut":
         return { state: "reachUp", face: 1, phase: p, back: false };
       case "bBend":
-        return { state: "bend", face: 1, phase: p, back: false };
+        return { state: this.gruselBad ? "labBend" : "bend", face: 1, phase: p, back: false };
       case "bBrush":
-        return { state: "brush", face: 1, phase: 1, back: false };
+        return { state: this.gruselBad ? "labBrush" : "brush", face: 1, phase: 1, back: false };
       case "bUp":
-        return { state: "bend", face: 1, phase: 1 - p, back: false };
+        return { state: this.gruselBad ? "labBend" : "bend", face: 1, phase: 1 - p, back: false };
       case "glassesOff":
         return { state: "glasses", face: 1, phase: p, back: false };
       case "tossGlasses":
@@ -5563,6 +5719,11 @@ export class House {
    * Silhouette auf dem Stoff; der Rest (z. B. die Füße darunter) normal.
    */
   private drawLuniLayered(c: C) {
+    if (this.gruselBad) {
+      // Kapsel und Sichtfenster sind getrennte Vordergrund-Ebenen.
+      this.drawLuniNow(c);
+      return;
+    }
     const F = FLOOR_Y[2];
     const t = this.elapsed;
     if (this.water) drawShowerWater(c, F, t);
@@ -6178,9 +6339,27 @@ export class House {
 
   /** Brille in der Hand (über dem Gesicht) oder im hohen Bogen ins Becken. */
   private drawGlassesMoving(c: C) {
+    if (this.gruselBad && this.shPhase) {
+      const p = clamp(this.shT / (SH_DUR[this.shPhase] ?? 1), 0, 1);
+      const sx = BIO_BAD.hazmat.x;
+      const sy = BIO_BAD.hazmat.y - 5;
+      const [hx, hy] = this.hand;
+      if (this.shPhase === "towelOff" && p >= .45) {
+        drawHazmatVlies(c, hx, hy);
+      } else if (this.shPhase === "throwTowel" && !this.towelOnRod) {
+        const k = sanft((p - .38) / .17);
+        drawHazmatVlies(c, lerp(hx, sx, k), lerp(hy, sy, k));
+      } else if (this.shPhase === "takeTowel" && !this.towelOnRod) {
+        const k = sanft((p - .45) / .4);
+        drawHazmatVlies(c, lerp(sx, hx, k), lerp(sy, hy, k));
+      } else if (this.shPhase === "wrapOn" && this.outfit !== "towel") {
+        drawHazmatVlies(c, hx, hy);
+      }
+    }
     if (this.brushInHand) {
       const bent = this.shPhase === "bBrush" || this.shPhase === "bBend" || this.shPhase === "bUp";
-      brushObj(c, this.hand[0], this.hand[1], bent ? 0 : -0.7, this.lface);
+      if (this.gruselBad) drawLabBrush(c, this.hand[0], this.hand[1], bent ? 0 : -0.7, this.lface);
+      else brushObj(c, this.hand[0], this.hand[1], bent ? 0 : -0.7, this.lface);
     }
     if (this.glassesInHand) {
       const face = this.lface;
@@ -6619,13 +6798,32 @@ export class House {
       if (this.asleep) drawSleepZ(c, x + 6, y - 44, this.sleepT);
       return;
     }
+    if (this.gruselBad && this.shPhase === "turnFront" && !a && this.lf === 2) {
+      // Zwei gleich große 2D-Ansichten überblenden statt Lunis Körper zu stauchen.
+      const p = sanft(clamp(this.shT / (SH_DUR.turnFront as number), 0, 1));
+      c.save();
+      for (const [dir, opacity] of [[-1, 1 - p], [1, p]] as const) {
+        if (opacity <= 0) continue;
+        c.globalAlpha = this.alpha * opacity;
+        const hand = drawLuni(c, this.lx, FLOOR_Y[2], {
+          t: this.elapsed, face: dir, state: "idle", expr: "neutral",
+          scale: LUNI_SCALE, shadow: false, glasses: this.glassesOn,
+          outfit: this.outfit, wet: this.wet, sick: this.sick,
+        });
+        if (dir === 1 || p === 0) { this.hand[0] = hand[0]; this.hand[1] = hand[1]; }
+      }
+      c.restore();
+      this.lastPose = "turnFront";
+      return;
+    }
     const shp = this.showerPose();
     if (shp && !a) {
       state = shp.state;
       face = shp.face;
       posePhase = shp.phase;
       back = shp.back;
-      expr = state === "wash" && shp.phase > 2 ? "sleep" : "happy";
+      expr = this.gruselBad && (state === "labBrush" || state === "labBend" || state === "act") ? "focus"
+        : state === "wash" && shp.phase > 2 ? "sleep" : "happy";
     }
     if (this.golPhase === "rise") {
       const seat = STATIONS.find((stn) => stn.id === "gaming");

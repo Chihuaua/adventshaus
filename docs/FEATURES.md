@@ -111,6 +111,20 @@ sarg-geraeusche | src/game/audio.ts | holzDumpf
 schlaf-zzz | src/game/house.ts | drawSleepZ
 schlafzimmer-tests | tools/test-schlafzimmer.mjs | Outfit
 
+## Biohazard-Bad im Gruselhaus (Raum 04)
+
+badezimmer-datei | src/game/gruselhaus/badezimmer.ts | BIO_BAD
+badezimmer-kapsel | src/game/gruselhaus/badezimmer.ts | drawBioBadAfter
+badezimmer-sichtfenster | src/game/gruselhaus/badezimmer.ts | drawSichtfenster
+badezimmer-kamera | src/game/gruselhaus/badezimmer.ts | drawLabMonitor
+badezimmer-spind | src/game/gruselhaus/badezimmer.ts | drawLabLockerOpen
+badezimmer-wc | src/game/gruselhaus/badezimmer.ts | bio_wc
+badezimmer-stationen | src/game/gruselhaus/badezimmer.ts | badezimmerStationen
+badezimmer-dekon-ablauf | src/game/house.ts | DEKON_SEQ
+badezimmer-einmalblitz | src/game/house.ts | bioFlashed
+badezimmer-haarkurve | src/game/luni.ts | drawLabTorso
+badezimmer-tests | tools/test-badezimmer.mjs | badezimmerStationen
+
 ## Ton und Speicher
 
 audio-synth | src/game/audio.ts | class Sfx
