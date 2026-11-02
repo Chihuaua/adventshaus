@@ -40,7 +40,10 @@ import { sfx } from "./audio";
 import { SaxophonMusic } from "./audio/saxophonVoice";
 import { SAX_DURATION_SECONDS } from "./audio/saxophonNotes";
 import { VAMPIR_OUTFITS, naechstesOutfit } from "./gruselhaus/vampir";
-import { drawKessel, drawOfen } from "./gruselhaus/hexenofen";
+import {
+  KesselAblauf, OFEN, ZAUBER_ZEIT, drawKessel, drawKesselGedanke, drawKesselSchimmer, drawOfen,
+  drawZauberBlitz, kesselLoeffelSpitze,
+} from "./gruselhaus/hexenofen";
 import { drawWetter, ladeWetter, tickWetter, waehleJahreszeit, waehleWetter, schalteZusatz, echtwetter, type WetterState } from "./wetter";
 import { drawWetterStation, wetterStationHit, wetterStationLayout, type WetterBefehl, type WetterTreffer } from "./wetterstation";
 import { drawStein, steinAn, steinSlots, type SteinSlot } from "./steine";
@@ -384,10 +387,12 @@ export interface Station {
   blanket?: boolean;
 }
 
+type LuniCommand = string | Station;
+
 const [FK, FE, FO, FD] = FLOOR_Y;
 /** Kesselstation nur für das Gruselhaus; das normale Haus behält "Herd". */
 function baseKessel(): Station {
-  return { id: "kessel", label: "Hexenkessel", floor: 1, x: 702, face: 1, state: "act", expr: "focus", hits: [[690, 380, 36, 26]] };
+  return { id: "kessel", label: "Hexenkessel", floor: 1, x: 702, face: 1, state: "act", expr: "focus", hits: [[690, 380, 36, 26], [699, 356, 26, 24]] };
 }
 
 export const STATIONS: Station[] = [
@@ -498,7 +503,7 @@ function stairPos(s: Stair, t: number): Pt {
 
 /* ------------------------------ Lichtquellen --------------------------- */
 
-const LAMPS: { x: number; y: number; r: number }[] = [
+const LAMPS: { x: number; y: number; r: number; kueche?: boolean }[] = [
   { x: 170, y: 372, r: 100 },
   { x: 302, y: 372, r: 118 },
   { x: 650, y: 360, r: 125 },
@@ -508,7 +513,7 @@ const LAMPS: { x: number; y: number; r: number }[] = [
   { x: 430, y: 150, r: 135 },
   { x: 700, y: 150, r: 125 },
   { x: 470, y: 484, r: 115 },
-  { x: 700, y: 484, r: 115 },
+  { x: 700, y: 484, r: 115, kueche: true },
 ];
 
 /* ========================================================================
@@ -1818,6 +1823,30 @@ function bathCeilingLamp(c: C, x: number, ceilY: number, floorY: number, x0: num
   c.fill();
 }
 
+/**
+ * Zeichnet den Hexenofen, aber ohne das frueher rechts aufsteigende Rohr.
+ * Der Rohrcode bleibt in hexenofen.ts erhalten; ausgespart werden nur die
+ * Rohrflaeche und ihre Beschlaege. Die Deckplatte wird danach exakt in ihrer
+ * bisherigen Form ergaenzt, damit der Ofen keine Luecke bekommt.
+ */
+function hexenofenOhneRohr(c: C, zeichne: (cc: C) => void) {
+  const F = FE;
+  c.save();
+  c.beginPath();
+  c.rect(0, 0, W, H);
+  c.rect(OFEN.rohrX - 18, F - OFEN.korpus - 36, 24, 36.5);
+  c.clip("evenodd");
+  zeichne(c);
+  c.restore();
+  // Dieselbe native Rundung wie in hexenofen.ts, damit die Deckplatte
+  // ausserhalb der Rohrstelle pixelgleich bleibt.
+  c.fillStyle = "#48535a";
+  c.beginPath();
+  c.roundRect(OFEN.x - 1.8, F - OFEN.korpus - 3.4, OFEN.w + 3.6, 3.8, 1.2);
+  c.fill();
+  rect(c, OFEN.x - 1.2, F - OFEN.korpus - 3.4, OFEN.w + 2.4, .9, "#94a2a7");
+}
+
 function drawHouse(
   c: C,
   sky: HTMLCanvasElement,
@@ -1950,7 +1979,7 @@ function drawHouse(
   if (gr?.kueche) {
     // Hexenküche: die Küche ist ausgeräumt, nur der gusseiserne Ofen und der
     // Hexenkessel stehen am Platz des alten Backofens. Feuer läuft dynamisch.
-    drawOfen(c, FE, 0, 0);
+    hexenofenOhneRohr(c, (c) => drawOfen(c, FE, 0, 0));
     drawKessel(c, FE, 0);
   } else {
     fridge(c, 574, FE);
@@ -2277,7 +2306,7 @@ export class House {
   private pianoSeat = 0;
   private pianoRise = 0;
   private pianoRiseFrom = 0;
-  private pianoAfter: string | null = null;
+  private pianoAfter: LuniCommand | null = null;
   private pianoEscape = false;
   private pianoEscapeMoving = false;
   private pianoRefusal = 0;
@@ -2297,7 +2326,7 @@ export class House {
   private ashDir: "take" | "put" = "put";
   private ashT = 0;
   /** nach dem Ablegen auszuführender Befehl */
-  private ashNext: string | null = null;
+  private ashNext: LuniCommand | null = null;
   /** nach dem Ablegen folgt die Handy-Pause statt eines Befehls */
   private ashThenPhone = false;
   /** true = sie ist zum Rauchen hier (über den Aschenbecher bestellt) */
@@ -2310,7 +2339,7 @@ export class House {
   private standing = false;
   private standT = 0;
   /** Befehl, der nach dem Aufstehen ausgeführt wird */
-  private standNext: string | null = null;
+  private standNext: LuniCommand | null = null;
   /** sie läuft noch zum Tischchen, bevor die Armbewegung startet */
   private ashWalking = false;
   /** sie hat eine brennende Zigarette in der Hand (auch unterwegs) */
@@ -2409,7 +2438,7 @@ export class House {
   /** Luni ist im Sarg: Vorderwand und (fast geschlossener) Deckel liegen vor ihr. */
   private imSarg = false;
   /** Befehl, der sie geweckt hat; läuft nach dem Aussteigen. */
-  private nachAufwachen: string | null = null;
+  private nachAufwachen: LuniCommand | null = null;
   /** Vampir-Outfit: getragen, zuletzt gewählt, für heute Nacht gewählt. */
   private vampirStil: number | null = null;
   private vampirLetzt = -1;
@@ -2509,6 +2538,8 @@ export class House {
   /** ausstehende Befehle nach der aktuellen Aktion.
    *  force = Rückkehr ohne Prüfung, sonst Spielerbefehl mit Prüfung. */
   private chain: { id: string; force: boolean }[] = [];
+  /** Zwischenbilder fuer Flaechen, in denen kein Wetter erscheinen soll. */
+  private trockenPuffer = Array.from({ length: 6 }, () => document.createElement("canvas"));
   /** Wetter in beiden Häusern: Echtwetter gespeichert, Testwetter flüchtig. */
   private wetter: WetterState = ladeWetter();
   private wetterAdd: "plus" | "minus" | null = null;
@@ -2519,6 +2550,16 @@ export class House {
   /** Ziel der Feuertür und kurze Handanimation am Ofen. */
   private ofenZiel = 0;
   private ofenT = 0;
+  /** Beim aktuellen Ofenklick wurde schon Holz nachgelegt (einmal je Klick). */
+  private ofenHolz = false;
+  /** Hexenkessel: Trank, Überkochen, Löffel – der Ablauf liegt in hexenofen.ts. */
+  private kessel = new KesselAblauf();
+  /** Kessel-Zauber: Luni zaubert von überall, ohne zum Kessel zu laufen. */
+  private zauber: { t: number; treffer: boolean; halteBis: number; ende: number | null } | null = null;
+  private zauberWunsch = false;
+  /** zuletzt gezeichnete Hände und Kopfposition (für Blitze und Denkblase) */
+  private luniHaende: { front: Pt; rear: Pt } | null = null;
+  private luniKopf: { x: number; y: number; face: 1 | -1; sichtbar: boolean } | null = null;
 
   constructor(canvas: HTMLCanvasElement, opts: HouseOptions = {}) {
     this.canvas = canvas;
@@ -2748,6 +2789,24 @@ export class House {
     return best;
   }
 
+  /** Freie Klicks auf die Bodenlinie der Etage projizieren, nie ins Freie. */
+  private walkTargetAt(x: number, y: number): Station | null {
+    for (let floor = 0; floor < FLOOR_Y.length; floor++) {
+      const left = floor === 0 ? CEL_X0 : floor === 3 ? DG_X0 : HL;
+      const right = floor === 2 ? OG_X1 : HR;
+      const top = floor === 3 ? atticCeil(x) : FLOOR_Y[floor + 1] + SLAB;
+      if (x >= left && x <= right && y >= top && y <= FLOOR_Y[floor] + 6) {
+        return {
+          id: "laufziel", label: "", floor,
+          x: clamp(x, RANGE[floor][0], RANGE[floor][1]),
+          face: x < this.lx ? -1 : 1,
+          state: "idle", expr: "happy", hits: [],
+        };
+      }
+    }
+    return null;
+  }
+
   private onDown = (e: PointerEvent) => {
     sfx.ensure();
     const [x, y] = this.toWorld(e);
@@ -2779,7 +2838,11 @@ export class House {
       // Über command() laufen, damit Tür-, Rauch- und WC-Logik greifen
       this.command(st.id);
       this.hover = st;
+      return;
     }
+    const target = this.walkTargetAt(x, y);
+    if (target) this.command(target);
+    this.hover = null;
   };
 
   private onMove = (e: PointerEvent) => {
@@ -2798,7 +2861,8 @@ export class House {
     this.hover = this.steinUnter(x, y) ?? this.pick(x, y);
     this.wetterHover = wetterStationHit(wetterStationLayout(this.wetter, this.wetterAdd), x, y);
     const onTv = this.golInserted && this.hitAtticTv(x, y);
-    this.canvas.style.cursor = this.wetterHover || this.hover || onTv ? "pointer" : "default";
+    this.canvas.style.cursor = this.wetterHover || this.hover || onTv
+      ? "pointer" : this.walkTargetAt(x, y) ? "crosshair" : "default";
   };
 
   private onLeave = () => {
@@ -2812,8 +2876,15 @@ export class House {
    * nur wer aktiv raucht und die Gartentür öffnen will, legt vorher ab.
    * Die Schleusentür bedient sie mit Zigarette in der Hand.
    */
-  command(id: string) {
+  command(request: LuniCommand) {
+    const id = typeof request === "string" ? request : request.id;
     const find = (k: string) => this.stations.find((s) => s.id === k) ?? null;
+    if (id === "laufziel" && (this.bedPhase || this.sleepPhase)) return;
+    // Jeder andere Befehl beendet einen laufenden oder wartenden Zauber.
+    if (id !== "kessel") {
+      this.zauberWunsch = false;
+      this.zauberBeenden();
+    }
     if (this.musikzimmer) {
       this.musikzimmer.unlock();
       if (id === "klavier") {
@@ -2821,9 +2892,9 @@ export class House {
         if (this.activity?.id === "klavier" && this.pianoRise === 0) return;
         this.musikzimmer.requestPiano();
       }
-      if (this.pianoRise > 0) { this.pianoAfter = id; return; }
+      if (this.pianoRise > 0) { this.pianoAfter = request; return; }
       if (this.activity?.id === "klavier" && id !== "klavier") {
-        this.leaveMusicPiano(false, id);
+        this.leaveMusicPiano(false, request);
         return;
       }
       this.pianoEscape = false;
@@ -2846,7 +2917,7 @@ export class House {
     if (this.shPhase) this.cancelShower();
     if (id === "dusche") {
       if (this.gruselBad && this.asleep) {
-        this.sargAufwachen(id);
+        this.sargAufwachen(request);
         return;
       }
       this.chain = [];
@@ -2860,7 +2931,7 @@ export class House {
     if (this.sargPhase) {
       if (this.sargPhase === "zumSarg" && id !== "bett") this.sargAbbrechen();
       else {
-        if (this.sargWacht() && id !== "bett") this.nachAufwachen = id;
+        if (this.sargWacht() && id !== "bett") this.nachAufwachen = request;
         return;
       }
     }
@@ -2869,7 +2940,7 @@ export class House {
     if (this.asleep) {
       // Jede andere Aktion weckt sie.
       if (this.gruselSarg) {
-        this.sargAufwachen(id);
+        this.sargAufwachen(request);
         return;
       }
       this.aufwachen();
@@ -2929,6 +3000,10 @@ export class House {
     // Sitzt sie gemütlich auf dem Stuhl, steht sie erst sichtbar auf,
     // bevor der Befehl ausgeführt wird. (Klick auf denselben Stuhl ändert
     // nichts – sie bleibt sitzen.)
+    if (this.standing) {
+      this.standNext = request;
+      return;
+    }
     if (
       this.activity?.id === "raucherstuhl" &&
       id !== "raucherstuhl" &&
@@ -2937,7 +3012,7 @@ export class House {
     ) {
       this.standing = true;
       this.standT = 0;
-      this.standNext = id;
+      this.standNext = request;
       this.onPhone = false;
       this.phoneQueued = false;
       return;
@@ -2951,7 +3026,7 @@ export class House {
         // War die Ablage nur für die Handy-Pause gedacht, übernimmt jetzt
         // der neue Befehl – sie soll ja z. B. zur Tür statt ans Handy.
         this.ashThenPhone = false;
-        this.ashNext = id;
+        this.ashNext = request;
         return;
       }
       if (id === "raucherstuhl") return; // bereits auf dem Weg dorthin
@@ -2966,7 +3041,7 @@ export class House {
       } else {
         // Mitten in der Greif-Bewegung: fertig greifen, gleich wieder
         // ablegen, dann den neuen Befehl ausführen.
-        this.ashNext = id;
+        this.ashNext = request;
         return;
       }
     }
@@ -2999,12 +3074,11 @@ export class House {
       return;
     }
 
-    // Hexenkessel hat eine eigene Station (Holz nachlegen folgt später).
+    // Hexenkessel: Luni zaubert von überall – sie muss nicht in die Nähe.
     if (id === "kessel") {
       this.chain = [];
       this.smokeRequested = false;
-      const st = find("kessel");
-      if (st) this.pending = { ...st, x: 702 };
+      if (this.welt === "gruesel" && GRUSELRAEUME.kueche) this.zauberAnfordern();
       return;
     }
     // Ofen: Luni geht hin und öffnet oder schließt die Feuertür.
@@ -3013,6 +3087,7 @@ export class House {
       this.smokeRequested = false;
       this.ofenZiel = this.ofenOffen > .5 ? 0 : 1;
       this.ofenT = 0;
+      this.ofenHolz = false;
       const st = find("herd");
       if (st) this.pending = st;
       return;
@@ -3148,8 +3223,17 @@ export class House {
     // Neutrale Ziele beenden einen offenen Rauchwunsch, damit sie später
     // nicht überraschend von selbst zu rauchen beginnt.
     this.smokeRequested = false;
-    const st = find(id);
+    const st = typeof request === "string" ? find(id) : request;
     if (st) {
+      if (id === "laufziel") {
+        this.chain = [];
+        this.onPhone = false;
+        this.phoneQueued = false;
+        this.packMove = false;
+        this.takeMove = false;
+        this.doorIntent = null;
+        if (this.doorHandT < 0) this.doorHand = null;
+      }
       if (this.musikzimmer && id === "klavier") this.chain = [];
       this.pending = st;
     }
@@ -3202,7 +3286,7 @@ export class House {
    * Zigarette sichtbar ablegen: Der Arm fährt zum Aschenbecher, erst danach
    * geht Luni weiter. `next` wird nach der Bewegung ausgeführt.
    */
-  private putCigarette(next: string | null) {
+  private putCigarette(next: LuniCommand | null) {
     this.ashNext = next;
     this.startAsh("put");
   }
@@ -3353,6 +3437,10 @@ export class House {
   private update(dt: number, roomDt = dt, live = false) {
     this.elapsed += dt;
     this.updateHarvest(dt);
+    if (this.welt === "gruesel" && GRUSELRAEUME.kueche) {
+      this.kessel.update(dt);
+      this.updateZauber(dt);
+    }
     this.wetterT += dt;
     if (this.wetterT >= 1) {
       this.wetterT = 0;
@@ -3405,7 +3493,7 @@ export class House {
     this.updateActions(dt);
   }
 
-  private leaveMusicPiano(frightened: boolean, next: string | null = null) {
+  private leaveMusicPiano(frightened: boolean, next: LuniCommand | null = null) {
     this.musikzimmer?.stopLuni();
     this.pianoRise = .42;
     this.pianoRiseFrom = this.pianoSeat;
@@ -3455,6 +3543,88 @@ export class House {
     if (this.activity?.id === "klavier") this.pianoSeat = Math.min(1, this.pianoSeat + dt / .45);
     else if (music.luniPlaying) music.stopLuni();
     return false;
+  }
+
+  /* ---------------------------- Kessel-Zauber ---------------------------- */
+
+  /** Klick auf den Kessel: Luni zaubert dort, wo sie gerade steht. */
+  private zauberAnfordern() {
+    const z = this.zauber;
+    if (z && z.ende === null) {
+      // Sie zaubert schon: der Zauber hält länger, der Löffel rührt weiter.
+      if (z.treffer) {
+        z.halteBis = Math.max(z.halteBis, z.t + ZAUBER_ZEIT.halten);
+        this.kessel.ruehren();
+      }
+      return;
+    }
+    this.zauberWunsch = true;
+    this.pending = null;
+    this.target = null;
+    this.activity = null;
+    this.path = [];
+  }
+
+  private zauberBeenden() {
+    const z = this.zauber;
+    if (z && z.ende === null) z.ende = z.t;
+  }
+
+  /** 0..1: wie weit die Arme ausgestreckt sind. */
+  private zauberStaerke(): number {
+    const z = this.zauber;
+    if (!z) return 0;
+    const ab = z.ende === null ? 1 : Math.max(0, 1 - (z.t - z.ende) / ZAUBER_ZEIT.senken);
+    const e = (k: number) => k * k * (3 - 2 * k);
+    return e(Math.min(1, z.t / ZAUBER_ZEIT.arme)) * e(ab);
+  }
+
+  /** 0..1: wie weit die Blitze schon gewachsen sind (1 = am Löffel). */
+  private blitzLaenge(): number {
+    const z = this.zauber;
+    if (!z) return 0;
+    const ab = z.ende === null ? 1 : Math.max(0, 1 - (z.t - z.ende) / ZAUBER_ZEIT.senken);
+    return clamp((z.t - ZAUBER_ZEIT.arme) / ZAUBER_ZEIT.blitz, 0, 1) * ab;
+  }
+
+  private updateZauber(dt: number) {
+    const schlaeft = this.asleep || !!this.sleepPhase || this.lieDown || !!this.sargPhase || this.wcInside;
+    if (this.zauberWunsch && !this.zauber) {
+      if (schlaeft) {
+        this.zauberWunsch = false;
+      } else if (!this.cur || this.cur.step.k === "walk") {
+        // Ein Laufschritt endet sofort; auf einer Treppe wartet sie bis zum Ende.
+        this.zauberWunsch = false;
+        this.pending = null;
+        this.target = null;
+        this.activity = null;
+        this.path = [];
+        this.cur = null;
+        this.doorHand = null;
+        this.doorHandT = -1;
+        this.doorHandOpen = null;
+        this.doorIntent = null;
+        this.onPhone = false;
+        this.phoneQueued = false;
+        this.packMove = false;
+        this.takeMove = false;
+        const kx: number = OFEN.kessel.x;
+        this.lface = this.lx < kx - 1 ? 1 : this.lx > kx + 1 ? -1 : this.lface;
+        this.zauber = { t: 0, treffer: false, halteBis: 0, ende: null };
+      }
+      return;
+    }
+    const z = this.zauber;
+    if (!z) return;
+    z.t += dt;
+    if (z.ende === null && schlaeft) z.ende = z.t;
+    if (!z.treffer && z.t >= ZAUBER_ZEIT.arme + ZAUBER_ZEIT.blitz) {
+      z.treffer = true;
+      z.halteBis = z.t + ZAUBER_ZEIT.halten;
+      this.kessel.ruehren();
+    }
+    if (z.treffer && z.ende === null && z.t >= z.halteBis) z.ende = z.t;
+    if (z.ende !== null && z.t >= z.ende + ZAUBER_ZEIT.senken) this.zauber = null;
   }
 
   private updateHarvest(dt: number) {
@@ -3606,6 +3776,14 @@ export class House {
     if (this.gruselBad && act?.id === "herd") {
       this.ofenT += dt;
       this.ofenOffen += (this.ofenZiel - this.ofenOffen) * (1 - Math.exp(-7 * dt));
+      // Frisches Holz im Ofen: heute genügt dafür der Ofenklick. Später ruft
+      // das echte Nachlegen (nach dem Herunterbrennen) dieselbe Methode auf.
+      if (!this.ofenHolz && this.ofenT >= 0.5) {
+        this.ofenHolz = true;
+        // Frisches Holz im Ofen: heute genügt dafür der Ofenklick. Später ruft
+        // das echte Nachlegen (nach dem Herunterbrennen) dieselbe Methode auf.
+        this.kessel.holzNachgelegt();
+      }
       if (this.ofenT >= 1.4) {
         this.ofenOffen = this.ofenZiel;
         this.finishActivity();
@@ -3665,6 +3843,9 @@ export class House {
           } else if (seat) {
             this.pending = seat;
           }
+          const next = this.ashNext;
+          this.ashNext = null;
+          if (next) this.command(next);
         }
         return;
       }
@@ -4157,6 +4338,10 @@ export class House {
     const a = this.cur;
     if (!a) {
       if (this.target && !this.activity) {
+        if (this.target.id === "laufziel") {
+          this.target = null;
+          return;
+        }
         this.activity = this.target;
         this.lface = this.target.face;
         if (this.gruselBad && this.target.id === "bio_wc") {
@@ -4381,6 +4566,12 @@ export class House {
     const str = clamp((night - 0.12) / 0.5, 0, 1);
     if (str > 0) {
       for (const l of LAMPS) {
+        // Im Gruselhaus ist die Kuechenzeile entfernt; dort gibt es an
+        // dieser Stelle auch keine Lampe. Das normale Haus bleibt unberuehrt.
+        if (this.welt === "gruesel" && GRUSELRAEUME.kueche && l.x === 650 && l.y === 360) continue;
+        // Mit kueche: die zweite Kellerlampe leuchtet die Gruselhaus-Küche
+        // nicht durch die Decke.»
+        if (this.welt === "gruesel" && GRUSELRAEUME.kueche && l.kueche === true) continue;
         const r1 = l.r * 0.78;
         const g1 = m.createRadialGradient(l.x, l.y, 4, l.x, l.y, r1);
         g1.addColorStop(0, `rgba(255,255,255,${0.9 * str})`);
@@ -4419,6 +4610,49 @@ export class House {
       a.clearRect(491, 212, 202, 112); a.restore();
     }
     this.dirty = false;
+  }
+
+  /** Schimmer, Blitze und Denkblase – nach der Nachtabdunkelung, damit sie leuchten. */
+  private drawKesselEffekte(c: C) {
+    const fx = this.kessel.zustand();
+    drawKesselSchimmer(c, FE, this.elapsed, fx, this.night);
+    const h = this.luniHaende;
+    const laenge = this.blitzLaenge();
+    if (this.zauber && h && laenge > 0.01) {
+      const ziel = kesselLoeffelSpitze(FE, fx);
+      drawZauberBlitz(c, h.front, ziel, laenge, this.elapsed, 1);
+      drawZauberBlitz(c, h.rear, ziel, laenge, this.elapsed, 2);
+    }
+    const k = this.luniKopf;
+    if (k && k.sichtbar && fx.gedanke > 0.01) {
+      drawKesselGedanke(c, clamp(k.x, 24, W - 24), k.y - 61, k.face, this.elapsed, fx.gedanke);
+    }
+  }
+
+  private drawHexenofen(c: C) {
+    hexenofenOhneRohr(c, (c) => drawOfen(c, FE, this.elapsed, this.ofenOffen));
+    if (this.ofenOffen < .98) {
+      // Nur im Sichtfenster das verdeckte Feuer freilegen. Derselbe Renderer
+      // liefert die Flammen; Tuerrand, Glas und Fensterkreuz bleiben erhalten.
+      const dx = OFEN.x + 8, dy = FE - OFEN.korpus + 7, dw = OFEN.w - 16;
+      const x = dx + 3.6, y = dy + 4.2, w = dw - 7.2, h = 13;
+      c.save();
+      c.beginPath();
+      c.moveTo(x, y + h);
+      c.lineTo(x, y + h * .4);
+      c.quadraticCurveTo(x + w * .22, y + h * .05, x + w / 2, y);
+      c.quadraticCurveTo(x + w * .78, y + h * .05, x + w, y + h * .4);
+      c.lineTo(x + w, y + h);
+      c.closePath();
+      c.clip();
+      drawOfen(c, FE, this.elapsed, 1);
+      c.globalAlpha *= Math.min(1, (1 - this.ofenOffen) * 1.4);
+      rect(c, x, y, w, h, "rgba(240,150,54,.20)");
+      line(c, dx + dw / 2, dy + 4.4, dx + dw / 2, dy + 17, "rgba(115,128,132,.75)", .7);
+      line(c, dx + 4, dy + 11.2, dx + dw - 4, dy + 11.2, "rgba(115,128,132,.6)", .6);
+      c.restore();
+    }
+    drawKessel(c, FE, this.elapsed, this.kessel.zustand());
   }
 
   private draw() {
@@ -4461,6 +4695,8 @@ export class House {
     this.drawGlassesRest(ctx);
     if (this.gruselBad) drawLabLockerOpen(ctx, this.cabinetOpen, this.brushInCab);
     else drawCabinetOpen(ctx, this.cabinetOpen, this.brushInCab);
+    // Auch der animierte Ofen steht hinter Luni, nicht vor ihrem Laufweg.
+    if (this.welt === "gruesel" && GRUSELRAEUME.kueche) this.drawHexenofen(ctx);
     this.drawSargPass(ctx, false);
     this.drawLuniLayered(ctx);
     if (this.gruselBad) {
@@ -4490,12 +4726,42 @@ export class House {
     }
 
 
-    if (this.welt === "gruesel" && GRUSELRAEUME.kueche) {
-      // Feuer und Dampf laufen jede Bild, alles übrige bleibt statisch.
-      drawOfen(ctx, FLOOR_Y[1], this.elapsed, this.ofenOffen);
-      drawKessel(ctx, FLOOR_Y[1], this.elapsed);
+    if (this.welt === "gruesel" && GRUSELRAEUME.kueche) this.drawKesselEffekte(ctx);
+
+    // Der Wetterpfad zeichnet am Schornstein durch die Even-Odd-Regel zwei
+    // Pixelreihen Regen auf die obere Wandkante. Diese schmale Kante wird in
+    // beiden Haeusern ausgespart; im Gruselhaus zusaetzlich die drei Fenster,
+    // die dort nicht mehr existieren, und die Deckenfläche oberhalb der
+    // Hexenküche, wo die zweite Kellerlampe sonst durchstrahlt.
+    const trockeneFlaechen: Rect4[] = [[698, 128, 26, 2]];
+    if (this.welt === "gruesel") {
+      trockeneFlaechen.push([624, 364, 50, 36], [334, 244, 62, 46], [330, 98, 56, 44]);
+      // Kueche oberhalb der Decke der zweiten Kellerlampe bleibt frei.
+      trockeneFlaechen.push([600, 330, 210, 65]);
     }
+    const k = this.scale * this.dpr;
+    if (this.elapsed === 2) {
+      // Erste Zeichnung: trockeneFlaechen liegen noch nicht im Zwischenbild
+      // (die Nachtabdunkelung über dem Ofen läuft erst danach). Dann lassen
+      // wir sie einen Frame zu, damit das Zwischenbild bereit ist.
+    }
+    const kopien = trockeneFlaechen.map(([wx, wy, ww, wh], i) => {
+      const x = Math.round(wx * k), y = Math.round(wy * k);
+      const w = Math.max(1, Math.round(ww * k)), h = Math.max(1, Math.round(wh * k));
+      const cv = this.trockenPuffer[i];
+      if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+      const cc = cv.getContext("2d");
+      cc?.clearRect(0, 0, w, h);
+      cc?.drawImage(this.canvas, x, y, w, h, 0, 0, w, h);
+      return { cv, x, y };
+    });
     drawWetter(ctx, this.wetter, this.elapsed);
+    if (kopien.length) {
+      const base = ctx.getTransform();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      for (const { cv, x, y } of kopien) ctx.drawImage(cv, x, y);
+      ctx.setTransform(base);
+    }
     drawWetterStation(ctx, this.wetter, this.wetterAdd, this.wetterHover);
     this.drawHoverLabel(ctx);
     if (this.golFullscreen) this.drawGolFullscreen(ctx);
@@ -5919,10 +6185,11 @@ export class House {
   }
 
   /** Ein Befehl weckt sie: Deckel aufdrücken, aufsetzen, aussteigen, Deckel schließen. */
-  private sargAufwachen(id: string) {
+  private sargAufwachen(request: LuniCommand) {
     this.asleep = false;
     this.sleepT = 0;
-    this.nachAufwachen = id === "bett" ? null : id;
+    const id = typeof request === "string" ? request : request.id;
+    this.nachAufwachen = id === "bett" ? null : request;
     this.activity = null;
     this.target = null;
     this.cur = null;
@@ -6727,6 +6994,8 @@ export class House {
   }
 
   private drawLuniNow(c: C) {
+    this.luniHaende = null;
+    this.luniKopf = null;
     if (this.alpha <= 0.01) return;
     if (this.gruselSarg && this.asleep) {
       // Sie liegt im geschlossenen Sarg: nur die Zzz steigen aus der Deckelfuge.
@@ -7041,6 +7310,26 @@ export class House {
     }
     if (this.shPhase === "bedPajama") umhang = 0;
 
+    // Kessel-Zauber: beide Arme weit ausgestreckt, die Hände zielen über handTarget.
+    // Lunis Größe und Proportionen bleiben dabei unverändert.
+    const zs = this.zauberStaerke();
+    if (zs > 0.001 && !this.saxPhase && !back) {
+      const lokal = (lx: number, ly: number): [number, number] =>
+        [x + face * LUNI_SCALE * lx, y + yOff + LUNI_SCALE * ly];
+      const wob = Math.sin(this.elapsed * 9) * 0.5 * zs;
+      saxHand = lokal(lerp(-7.5, -17.5, zs), lerp(-22, -42, zs) + wob);
+      saxHand2 = lokal(lerp(7.5, 17.5, zs), lerp(-22, -42, zs) - wob);
+      expr = this.zauber?.treffer ? "happy" : "focus";
+    }
+    // Überkochender Kessel: Luni verdreht in Abständen die Augen.
+    let eyeRoll = 0;
+    if (this.kessel.phase === "ueberlauf" && !this.zauber && !back) {
+      // Solange er überkocht, schaut sie genervt; alle 7 s verdreht sie dazu die Augen.
+      if (state === "idle" || state === "walk") expr = "annoyed";
+      const rollen = this.kessel.t % 7;
+      if (rollen < 2.2) eyeRoll = rollen / 2.2;
+    }
+
     c.save();
     if (clip) {
       c.beginPath();
@@ -7098,9 +7387,12 @@ export class House {
       handOut: saxHands,
       betweenBodyAndArms: this.saxPhase ? () => this.drawSaxCarried(c) : null,
       armsInFront: !!this.saxPhase,
+      eyeRoll,
     });
     this.hand[0] = hand[0];
     this.hand[1] = hand[1];
+    this.luniHaende = { front: [saxHands.front[0], saxHands.front[1]], rear: [saxHands.rear[0], saxHands.rear[1]] };
+    this.luniKopf = { x, y: y + yOff, face, sichtbar: !hiddenInWc && this.alpha > 0.5 };
     // Hustenstöße: kleine Wolken vor dem Mund
     if (this.sick > 0.3) {
       const burst = coughPulse(this.elapsed) * clamp((this.sick - 0.3) / 0.4, 0, 1);
