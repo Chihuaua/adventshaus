@@ -13,14 +13,43 @@ import { useEffect, useState } from "react";
  * README und Merkzettel verweisen hierher.
  */
 
-export const EROEFFNUNGSTEXT = `Repository: https://github.com/Chihuaua/adventshaus – Stand: main
-Lies README.md komplett, besonders „Grundsätze“, „Arbeitsablauf mit KI-Assistenten“ und „Regel 0“. Halte dich daran.
+export const EROEFFNUNGSTEXT = `Repository: https://github.com/Chihuaua/adventshaus
+Basis: main – neuerster Commit. Verwende keinen Tag, außer ich nenne ihn ausdrücklich; Tags können hinter main zurückfallen.
 
-Regel 0: Klone den Stand und führe ihn aus – baue ihn nicht nach. Ändere nichts, was ich nicht verlange: keine Texte, Erklärungen, Buttons, Styles oder Größen hinzufügen oder anpassen. Nur die Aufgabe unten.
+Kennung: Ich adressiere dich mit KI-A: oder KI-B:. Ist die Kennung unklar oder widersprüchlich, frage nach, bevor du Dateien änderst. Nur die von mir benannte Sitzung schreibt ins Postfach. Eine Umbenennung gilt nur, wenn ich sie mit „Namensänderung KI-A: …“ oder „Namensänderung KI-B: …“ ausspreche.
 
-Ablauf: 1) klonen, npm ci, npx tsc --noEmit, npm run build – bestätige, dass es baut. 2) Frag mich nach dem Postfach-Token (ich schicke es in zwei Hälften). 3) Setze die Aufgabe um und zeig sie mir lauffähig (npm run dev, Screenshot oder Vorschau). 4) Erst nach meinem „ja“: Patch + Prüfsumme ins Postfach legen, wie in der README beschrieben. Ich übernehme per Knopf.
+Regel 0: Klone den Stand in die Sandbox-Wurzel, nicht in einen Unterordner, und führe ihn aus. Baue ihn nicht nach. Ändere nur, was ich ausdrücklich verlange: keine Texte, Erklärungen, Buttons, Styles, Größen oder neuen Komponenten um das Spiel. Keine neuen npm-Pakete. Nichts löschen oder umbenennen ohne Auftrag.
 
-Aufgabe: Noch keine. Klone den Stand, zeig ihn mir unverändert, frag nach dem Token – dann sage ich dir, was zu tun ist.`
+Vor der Arbeit:
+  git fetch origin && git log --oneline -1 origin/main
+  ADVENTS_PROJ="$PWD" bash tools/check.sh | tail -4
+
+Ausgabe lesen: „Fehlt: 0“ ist Pflicht. „FEHLT“ heißt: eine vorhandene Funktion ist verloren – anhalten und melden, nicht weiterbauen. „Offen“ bezeichnet nur bewusst offene Punkte aus docs/FEATURES.md und ist kein Fehler.
+
+Lies README.md vollständig, besonders Grundsätze, Regel 0 und den Arbeitsablauf. Lies docs/BERATER-INFO.md nur, wenn ich es sage. Prüfe, ob alle genannten Dateien auf main existieren; fehlt eine, frage nach, statt zu raten.
+
+Prüfen und zeigen:
+  ./node_modules/.bin/tsc --noEmit && npm run build
+Niemals npx tsc. Starte den Dev-Server in der Wurzel und prüfe:
+  curl -s http://localhost:5173 | grep -o '<title>[^<]*</title>'
+Erwartet: Little Computer Luni · Das Adventshaus. Steht dort etwas anderes oder „Ready to build“, ist die Vorschau falsch. Zeig mir einen Screenshot der laufenden Szene und prüfe Klicks im Browser.
+
+Arbeite klein: ein Schritt, eine Prüfung. Halte Antworten und Ausgaben kurz (tail/head); keine kompletten Protokolle. Keine Dateiinhalte zum Abtippen, sondern einen Patch.
+
+Nicht anfassen: src/game/original.ts, src/StudioApp.tsx, src/App.tsx, der resize()-Fix in house.ts, package.json, package-lock.json, index.html, vite.config.ts, tsconfig.json, .bezel, .screen-glass, .bg-room, Canvas 960×600.
+Nicht zurückholen: Kamin, PDF-Download, engine.ts, Hud.tsx, Overlays.tsx, TouchControls.tsx.
+Bilder aus dem Chat sind Anhänge, keine Projektdateien. Das Projekt bleibt assetfrei; nichts davon ins Repository legen.
+
+Basis prüfen: Ein Patch muss auf dem aktuellen origin/main aufsetzen. Weicht die Basis ab, neu aufsetzen und den alten Patch nicht einspielen. Ist eine Funktion scheinbar weg, prüfe zuerst den Aufruf und die Tageszeit, bevor du sie als fehlend meldest.
+
+Token und Postfach: Fordere den Postfach-Token nur an, wenn ein fertiger Patch abgelegt werden soll. Ich schicke ihn in zwei Hälften; er darf nur Gists lesen und schreiben. Gib ihn nie aus, schreibe ihn nicht ins Projekt und widerrufe ihn nach Gebrauch. Zum Klonen und Lesen ist kein Token nötig.
+
+Abschluss:
+  ADVENTS_PROJ="$PWD" bash tools/check.sh | tail -4
+  git diff --stat
+Zeige beides. Erwartet: Fehlt 0 und ausschließlich die besprochenen Dateien. Erst nach meinem ausdrücklichen „ja“: Patch mit git format-patch -1 --stdout als aktuell.patch und die ersten 16 Zeichen von sha256 als aktuell.json ins Postfach legen, beide gemeinsam. Nie direkt ins Repository schreiben.
+
+Aufgabe: Noch keine. Zeige mir zuerst den geklonten Stand unverändert, die Prüfergebnisse und die laufende Vorschau. Frage nach der Kennung, falls ich sie nicht genannt habe, und warte dann auf meine Aufgabe.`
 
 const LINKS = {
   token: "https://github.com/settings/personal-access-tokens",

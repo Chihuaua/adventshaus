@@ -446,27 +446,14 @@ als `~/patch.patch` ab und führt `cd ~/projekte/adventshaus && git am <
 
 ### Für den Besitzer: Eröffnungstext für einen neuen Chat
 
-Am einfachsten: Spiel lokal starten (Knopf → „Spiel starten“) – unter dem Haus
-liegt die Leiste **ÜBERGABE** mit „Eröffnungstext kopieren“, „Token – wo?“,
-„Postfach“ und „Freigaben“ (`src/components/Uebergabe.tsx`, nur im
-Entwicklungsmodus sichtbar). Der Text dort ist die gepflegte Fassung; hier
-zur Sicherheit noch einmal:
+Der Text wird an **einer** Stelle gepflegt: `EROEFFNUNGSTEXT` in
+`src/components/Uebergabe.tsx`. Spiel lokal starten (Knopf → „Spiel starten“),
+unter dem Haus liegt die Leiste **ÜBERGABE** mit „Eröffnungstext kopieren“.
+Dort stehen auch „Token – wo?“, „Postfach“ und „Freigaben“.
 
-> Repository: https://github.com/Chihuaua/adventshaus – Stand: main
-> Lies README.md komplett, besonders „Grundsätze“, „Arbeitsablauf mit
-> KI-Assistenten“ und „Regel 0“. Halte dich daran.
->
-> Regel 0: Klone den Stand und führe ihn aus – baue ihn nicht nach. Ändere
-> nichts, was ich nicht verlange: keine Texte, Erklärungen, Buttons, Styles
-> oder Größen hinzufügen oder anpassen. Nur die Aufgabe unten.
->
-> Ablauf: 1) klonen, npm ci, npx tsc --noEmit, npm run build – bestätige,
-> dass es baut. 2) Frag mich nach dem Postfach-Token (ich schicke es in zwei
-> Hälften). 3) Setze die Aufgabe um und zeig sie mir lauffähig. 4) Erst nach
-> meinem „ja“: Patch + Prüfsumme ins Postfach, wie in der README beschrieben.
-> Ich übernehme per Knopf.
->
-> Aufgabe: Noch keine. Klone den Stand, zeig ihn mir unverändert, frag nach dem Token – dann sage ich dir, was zu tun ist.
+Der Desktop-Knopf **KI-Start** legt denselben Text aus `~/ki-start.txt` in die
+Zwischenablage. Beide Fassungen müssen gleich bleiben; hier steht bewusst keine
+zweite Kopie, damit sie nicht auseinanderlaufen.
 
 Der Text ist so abschickbar. Die eigentliche Aufgabe folgt im zweiten
 Schritt – erst, wenn die KI den unveränderten Stand gezeigt und nach dem
