@@ -146,7 +146,8 @@ kuechenwand-licht | src/game/gruselhaus/kueche.ts | kuecheLichtpools
 kuechenwand-flammen | src/game/gruselhaus/kueche.ts | drawKuecheFlammen
 kuechenwand-verdrahtet | src/game/house.ts | drawHexenkuecheRaum(c)
 kuechenwand-truhe | src/game/gruselhaus/kueche.ts | drawTruhe
-kuechenwand-truhe-aufsatz | src/game/gruselhaus/kueche.ts | drawTruheAufsatz
+kuechenwand-kerzen | src/game/gruselhaus/kueche.ts | Genau drei Kerzen
+kuechenwand-truhe-aufsatz | src/game/gruselhaus/kueche.ts | Aufgeschlagenes Buch
 kuechenwand-truhe-knie | src/game/gruselhaus/kueche.ts | kneeY
 kuechenwand-truhe-station | src/game/house.ts | "truhe"
 kuechenwand-fenstermaske | src/game/gruselhaus/kueche.ts | drawFensterMaske
