@@ -139,6 +139,22 @@ kueche-station | src/game/house.ts | "holzlager"
 kueche-holz-tragen | src/game/house.ts | carryHolz
 kueche-nachfuellen | src/game/house.ts | HOLZ_REFILL_SEK
 kueche-tests | tools/test-kueche.mjs | Holzlager
+kuechenwand-bruchstein | src/game/gruselhaus/kueche.ts | drawHexenkuecheRaum
+kuechenwand-fenster | src/game/gruselhaus/kueche.ts | drawKuchenFenster
+kuechenwand-steintreppe | src/game/gruselhaus/kueche.ts | drawSteintreppe
+kuechenwand-licht | src/game/gruselhaus/kueche.ts | kuecheLichtpools
+kuechenwand-flammen | src/game/gruselhaus/kueche.ts | drawKuecheFlammen
+kuechenwand-verdrahtet | src/game/house.ts | drawHexenkuecheRaum(c)
+kuechenwand-truhe | src/game/gruselhaus/kueche.ts | drawTruhe
+kuechenwand-truhe-aufsatz | src/game/gruselhaus/kueche.ts | drawTruheAufsatz
+kuechenwand-truhe-knie | src/game/gruselhaus/kueche.ts | kneeY
+kuechenwand-truhe-station | src/game/house.ts | "truhe"
+kuechenwand-fenstermaske | src/game/gruselhaus/kueche.ts | drawFensterMaske
+kuechenwand-tests | tools/test-kueche.mjs | Küchenfenster
+kuechenwand-mauerwerk | src/game/gruselhaus/kueche.ts | mauerSteine
+kuechenwand-schleier | src/game/gruselhaus/kueche.ts | drawKuecheSchleier
+kueche-abdeckplatte | src/game/gruselhaus/kueche.ts | platteRechts
+kueche-endwand | src/game/gruselhaus/kueche.ts | wandBreite
 
 ## Wetter und Jahreszeiten
 

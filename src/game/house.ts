@@ -44,7 +44,10 @@ import {
   KesselAblauf, OFEN, ZAUBER_ZEIT, drawKessel, drawKesselGedanke, drawKesselSchimmer, drawOfen,
   drawZauberBlitz, kesselLoeffelSpitze,
 } from "./gruselhaus/hexenofen";
-import { HOLZ_MAX, HOLZ_REFILL_SEK, drawHolzlager, holzlagerStationen } from "./gruselhaus/kueche";
+import {
+  HOLZ_MAX, HOLZ_REFILL_SEK, drawEisenBruestung, drawHexenkuecheRaum, drawHolzlager, drawKuecheFlammen,
+  drawFensterGlanz, drawFensterMaske, drawKuchenFenster, drawKuchenFensterWetter, drawKuecheSchein, drawKuecheSchleier, drawSteintreppe, drawTruhe, drawTruheAufsatz, kuechenStationen, kuecheLichtpools,
+} from "./gruselhaus/kueche";
 import { drawWetter, ladeWetter, tickWetter, waehleJahreszeit, waehleWetter, schalteZusatz, echtwetter, type WetterState } from "./wetter";
 import { drawWetterStation, wetterStationHit, wetterStationLayout, type WetterBefehl, type WetterTreffer } from "./wetterstation";
 import { drawStein, steinAn, steinSlots, type SteinSlot } from "./steine";
@@ -1912,6 +1915,8 @@ function drawHouse(
     [490, OG_X1 + 2, gr?.badezimmer ? "#536260" : "#4d9a66", "tile"]]);
   slab(c, DG_X0, HR, FD, [[DG_X0, 530, gr?.raumstation ? "#5a5a6a" : "#3e3b52", "none"], [530, HR, WOOD, "wood"]]);
   if (gr?.raumstation) drawMetalFloor(c, DG_X0, 530, FD);
+  // Hexenküche und rechtes Treppenhaus: Bruchstein, Pflaster, Einrichtung.
+  if (gr?.kueche) drawHexenkuecheRaum(c);
 
   /* ---- Außenwände ---- */
   rect(c, 98, 118, 12, FE + SLAB - 118, "#4a3a33");
@@ -1931,9 +1936,12 @@ function drawHouse(
   partition(c, 590, FE + SLAB, FK);
 
   /* ---- Treppen ---- */
-  for (const s of STAIRS) drawStair(c, s);
+  // Im Gruselhaus kommt die Treppe zum 1. Stock als Steintreppe erst nach
+  // dem Fenster – so liegt ihr Geländer davor statt dahinter.
+  for (const s of STAIRS) if (!(gr?.kueche && s.id === "eg_og")) drawStair(c, s);
   railing(c, DG_X0 - 14, FD, 12);
-  railing(c, OG_X1 - 12, FO, 12);
+  if (gr?.kueche) drawEisenBruestung(c, OG_X1 - 12, FO, 12);
+  else railing(c, OG_X1 - 12, FO, 12);
 
   /* ---- Dachbalken ---- */
   if (gr?.raumstation) {
@@ -1949,7 +1957,11 @@ function drawHouse(
   /* ---- Fenster ---- */
   windowRect(c, sky, 330, 358, 64, 38, { curtain: "#c9453a" });
   if (!gr?.kueche) windowRect(c, sky, 624, 364, 50, 36);
-  windowRect(c, sky, 740, 236, 44, 78, { mull: 2 });
+  if (gr?.kueche) {
+    drawKuchenFenster(c, sky);
+    const st = STAIRS.find((x) => x.id === "eg_og");
+    if (st) drawSteintreppe(c, st.footX, FLOOR_Y[st.lower], st.topX, FLOOR_Y[st.upper]);
+  } else windowRect(c, sky, 740, 236, 44, 78, { mull: 2 });
   if (!gr?.schlafzimmer) {
     windowRect(c, sky, 334, 244, 62, 46, { curtain: "#7a3f55" });
   }
@@ -2562,6 +2574,15 @@ export class House {
   private lagerT = 0;
   /** Luni trägt ein Scheit vom Lager zum Ofen. */
   private carryHolz = false;
+  /** Birnbaumtruhe: steht alle 10 Minuten auf, geht zur Seite und bleibt dort. */
+  private truheModus: "steht" | "auf" | "geht" | "setzt" = "steht";
+  private truheT = 0;
+  private truheOffset = 0;
+  private truheZiel = 0;
+  private truheRichtung: 1 | -1 = 1;
+  private truheWarte = 600;
+  private truheLift = 0;
+  private truheGeh = 0;
   /** Kessel-Zauber: Luni zaubert von überall, ohne zum Kessel zu laufen. */
   private zauber: { t: number; treffer: boolean; halteBis: number; ende: number | null } | null = null;
   private zauberWunsch = false;
@@ -2590,7 +2611,7 @@ export class House {
         .filter((x) => x.id !== "kessel")
         .map((x) => (x.id === "herd" ? { ...x, label: "Ofen" } : x));
       st = [...st, baseKessel()];
-      if (GRUSELRAEUME.kueche) st = holzlagerStationen(st);
+      if (GRUSELRAEUME.kueche) st = kuechenStationen(st);
       this.stations = st;
       if (GRUSELRAEUME.musikzimmer) this.musikzimmer = new MusikzimmerAblauf();
     }
@@ -3083,6 +3104,16 @@ export class House {
       return;
     }
 
+    // Truhe: Sie steht selbst auf und geht ein Stück – Luni bleibt, wo sie ist.
+    if (id === "truhe" && this.welt === "gruesel" && GRUSELRAEUME.kueche) {
+      if (this.truheModus === "steht") {
+        this.truheZiel = this.truheOffset < 8 ? 16 : 0;
+        this.truheRichtung = this.truheZiel > this.truheOffset ? 1 : -1;
+        this.truheModus = "auf"; this.truheT = 0; this.truheWarte = 0;
+      }
+      return;
+    }
+
     // Holzlager: Luni geht hin und richtet den Stapel. Hängt ein Ofenbefehl
     // in der Kette, holt sie dort ein Scheit und trägt es zum Ofen.
     if (id === "holzlager" && this.welt === "gruesel" && GRUSELRAEUME.kueche) {
@@ -3469,6 +3500,32 @@ export class House {
       this.updateZauber(dt);
       // lagerT ist während der Lageraktivität der Fortschritt, danach Wackeln.
       if (this.lagerT > 0 && this.activity?.id !== "holzlager") this.lagerT = Math.max(0, this.lagerT - dt);
+      // Birnbaumtruhe: alle zehn Minuten aufstehen, ein Stück gehen, dort
+      // bleiben und beim nächsten Mal zurück. Beine erst beim Aufstehen sichtbar.
+      if (this.truheModus === "steht") {
+        this.truheWarte += dt;
+        if (this.truheWarte >= 600) {
+          this.truheZiel = this.truheOffset < 8 ? 16 : 0;
+          this.truheRichtung = this.truheZiel > this.truheOffset ? 1 : -1;
+          this.truheModus = "auf"; this.truheT = 0; this.truheWarte = 0;
+        }
+      } else if (this.truheModus === "auf") {
+        this.truheT += dt;
+        this.truheLift = Math.min(1, this.truheT / 1.8);
+        if (this.truheT >= 2.0) { this.truheModus = "geht"; this.truheT = 0; }
+      } else if (this.truheModus === "geht") {
+        this.truheT += dt;
+        const d = this.truheZiel - this.truheOffset;
+        const step = 6 * dt;
+        if (Math.abs(d) <= step) { this.truheOffset = this.truheZiel; this.truheModus = "setzt"; this.truheT = 0; }
+        else this.truheOffset += Math.sign(d) * step;
+        this.truheLift = 1;
+        this.truheGeh = this.truheT;
+      } else {
+        this.truheT += dt;
+        this.truheLift = Math.max(0, 1 - this.truheT / 1.6);
+        if (this.truheT >= 1.8) { this.truheLift = 0; this.truheModus = "steht"; this.truheT = 0; this.truheGeh = 0; }
+      }
       // Der Stapel füllt sich in Echtzeit langsam wieder – ganz ohne Klick.
       if (this.holz < HOLZ_MAX) {
         this.holzT += dt;
@@ -4643,6 +4700,8 @@ export class House {
         a.fill();
       }
     }
+    // Hexenküche: Kerze und Fackel sind die einzigen Lichtquellen dort.
+    if (str > 0 && this.welt === "gruesel" && GRUSELRAEUME.kueche) kuecheLichtpools(m, a, str);
     m.globalCompositeOperation = "source-over";
     a.globalCompositeOperation = "source-over";
     if (this.musikzimmer) {
@@ -4667,6 +4726,11 @@ export class House {
 
   /** Schimmer, Blitze und Denkblase – nach der Nachtabdunkelung, damit sie leuchten. */
   private drawKesselEffekte(c: C) {
+    drawKuchenFensterWetter(c, this.wetter.art, this.elapsed);
+    drawFensterGlanz(c, this.elapsed);
+    // Lila Schleier zuerst, damit Kerze, Fackel und Trank darüber leuchten.
+    drawKuecheSchleier(c, this.night);
+    drawKuecheSchein(c, this.elapsed, this.night);
     const fx = this.kessel.zustand();
     drawKesselSchimmer(c, FE, this.elapsed, fx, this.night);
     const h = this.luniHaende;
@@ -4683,6 +4747,7 @@ export class House {
   }
 
   private drawHexenofen(c: C) {
+    drawKuecheFlammen(c, this.elapsed);
     hexenofenOhneRohr(c, (c) => drawOfen(c, FE, this.elapsed, this.ofenOffen));
     if (this.ofenOffen < .98) {
       // Nur im Sichtfenster das verdeckte Feuer freilegen. Derselbe Renderer
@@ -4706,6 +4771,8 @@ export class House {
       c.restore();
     }
     drawHolzlager(c, FE, this.holz, this.lagerT);
+    drawTruhe(c, FE, this.truheOffset, this.elapsed, this.truheLift, this.truheRichtung, this.truheGeh);
+    drawTruheAufsatz(c, this.elapsed, 405);
     drawKessel(c, FE, this.elapsed, this.kessel.zustand());
   }
 
@@ -4716,6 +4783,46 @@ export class House {
     ctx.setTransform(s, 0, 0, s, 0, 0);
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(this.bg, 0, 0, W, H);
+
+    // Wetter früh, damit Fenstermaske, Truhe und Luni danach sauber darüber liegen.
+    if (this.welt === "gruesel" && GRUSELRAEUME.kueche) {
+      // Der Wetterpfad zeichnet am Schornstein durch die Even-Odd-Regel zwei
+      // Pixelreihen Regen auf die obere Wandkante. Diese schmale Kante wird in
+      // beiden Haeusern ausgespart; im Gruselhaus zusaetzlich die drei Fenster,
+      // die dort nicht mehr existieren, und die Deckenfläche oberhalb der
+      // Hexenküche, wo die zweite Kellerlampe sonst durchstrahlt.
+      const trockeneFlaechen: Rect4[] = [[698, 128, 26, 2]];
+      if (this.welt === "gruesel") {
+        trockeneFlaechen.push([624, 364, 50, 36], [334, 244, 62, 46], [330, 98, 56, 44]);
+        // Kueche oberhalb der Decke der zweiten Kellerlampe bleibt frei.
+        trockeneFlaechen.push([600, 330, 210, 65]);
+      }
+      const k = this.scale * this.dpr;
+      if (this.elapsed === 2) {
+        // Erste Zeichnung: trockeneFlaechen liegen noch nicht im Zwischenbild
+        // (die Nachtabdunkelung über dem Ofen läuft erst danach). Dann lassen
+        // wir sie einen Frame zu, damit das Zwischenbild bereit ist.
+      }
+      const kopien = trockeneFlaechen.map(([wx, wy, ww, wh], i) => {
+        const x = Math.round(wx * k), y = Math.round(wy * k);
+        const w = Math.max(1, Math.round(ww * k)), h = Math.max(1, Math.round(wh * k));
+        const cv = this.trockenPuffer[i];
+        if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+        const cc = cv.getContext("2d");
+        cc?.clearRect(0, 0, w, h);
+        cc?.drawImage(this.canvas, x, y, w, h, 0, 0, w, h);
+        return { cv, x, y };
+      });
+      drawWetter(ctx, this.wetter, this.elapsed);
+      if (kopien.length) {
+        const base = ctx.getTransform();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        for (const { cv, x, y } of kopien) ctx.drawImage(cv, x, y);
+        ctx.setTransform(base);
+      }
+      // Nach dem Wetter: runde Fenstermaske (nur im Gruselhaus) hält Regen im Glas.
+      if (this.welt === "gruesel" && GRUSELRAEUME.kueche) drawFensterMaske(ctx);
+    }
 
     this.drawKellerDoor(ctx);
     cellarDoor(ctx, 590, FK - 80, 80, this.cellarDoorV);
@@ -4782,40 +4889,8 @@ export class House {
 
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) this.drawKesselEffekte(ctx);
 
-    // Der Wetterpfad zeichnet am Schornstein durch die Even-Odd-Regel zwei
-    // Pixelreihen Regen auf die obere Wandkante. Diese schmale Kante wird in
-    // beiden Haeusern ausgespart; im Gruselhaus zusaetzlich die drei Fenster,
-    // die dort nicht mehr existieren, und die Deckenfläche oberhalb der
-    // Hexenküche, wo die zweite Kellerlampe sonst durchstrahlt.
-    const trockeneFlaechen: Rect4[] = [[698, 128, 26, 2]];
-    if (this.welt === "gruesel") {
-      trockeneFlaechen.push([624, 364, 50, 36], [334, 244, 62, 46], [330, 98, 56, 44]);
-      // Kueche oberhalb der Decke der zweiten Kellerlampe bleibt frei.
-      trockeneFlaechen.push([600, 330, 210, 65]);
-    }
-    const k = this.scale * this.dpr;
-    if (this.elapsed === 2) {
-      // Erste Zeichnung: trockeneFlaechen liegen noch nicht im Zwischenbild
-      // (die Nachtabdunkelung über dem Ofen läuft erst danach). Dann lassen
-      // wir sie einen Frame zu, damit das Zwischenbild bereit ist.
-    }
-    const kopien = trockeneFlaechen.map(([wx, wy, ww, wh], i) => {
-      const x = Math.round(wx * k), y = Math.round(wy * k);
-      const w = Math.max(1, Math.round(ww * k)), h = Math.max(1, Math.round(wh * k));
-      const cv = this.trockenPuffer[i];
-      if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
-      const cc = cv.getContext("2d");
-      cc?.clearRect(0, 0, w, h);
-      cc?.drawImage(this.canvas, x, y, w, h, 0, 0, w, h);
-      return { cv, x, y };
-    });
-    drawWetter(ctx, this.wetter, this.elapsed);
-    if (kopien.length) {
-      const base = ctx.getTransform();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      for (const { cv, x, y } of kopien) ctx.drawImage(cv, x, y);
-      ctx.setTransform(base);
-    }
+    // Normales Haus: Wetter wie bisher über der Szene.
+    if (!(this.welt === "gruesel" && GRUSELRAEUME.kueche)) drawWetter(ctx, this.wetter, this.elapsed);
     drawWetterStation(ctx, this.wetter, this.wetterAdd, this.wetterHover);
     this.drawHoverLabel(ctx);
     if (this.golFullscreen) this.drawGolFullscreen(ctx);
