@@ -130,6 +130,16 @@ badezimmer-tests | tools/test-badezimmer.mjs | badezimmerStationen
 kueche-leer | src/game/house.ts | if (!gr?.kueche)
 kueche-fenster | src/game/house.ts | windowRect(c, sky, 624, 364
 
+## Holzlager in der Hexenküche (Raum 05, Zusatz)
+
+kueche-datei | src/game/gruselhaus/kueche.ts | export
+kueche-holzlager | src/game/gruselhaus/kueche.ts | drawHolzlager
+kueche-stationen | src/game/gruselhaus/kueche.ts | holzlagerStationen
+kueche-station | src/game/house.ts | "holzlager"
+kueche-holz-tragen | src/game/house.ts | carryHolz
+kueche-nachfuellen | src/game/house.ts | HOLZ_REFILL_SEK
+kueche-tests | tools/test-kueche.mjs | Holzlager
+
 ## Wetter und Jahreszeiten
 
 wetter-logik | src/game/wetter.ts | tickWetter
