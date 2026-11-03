@@ -199,9 +199,9 @@ export const KUECHE_WAND = {
   kueche: [560, 336, 134, 112] as Rechteck,
   treppenhaus: [694, 212, 136, 236] as Rechteck,
   /** Kreisglas des Radfensters – quadratische Hülle ist das Wetterfenster. */
-  fenster: [587, 347, 42, 42] as Rechteck,
+  fenster: [585, 354, 46, 46] as Rechteck,
   /** Runder Steinbogen von der linken Stützwand bis zur Holzlagerwand. */
-  bogen: { x0: 566, x1: 650, boden: 405, spring: 378, r: 42 } as { x0: number; x1: number; boden: number; spring: number; r: number },
+  bogen: { x0: 566, x1: 650, boden: 405, spring: 382, r: 42 } as { x0: number; x1: number; boden: number; spring: number; r: number },
   /** Untere Breite = zwei Drittel der Abdeckplatte (128 / 3 * 2 = 85,3). */
   fensterBreite: 86,
   /** Truhe zwischen linker Wand und Holzlager, mittig. */
@@ -414,9 +414,9 @@ export function drawKuchenFenster(c: C, sky: CanvasImageSource) {
   c.strokeStyle = "rgba(255,235,210,.28)"; c.lineWidth = 0.8;
   c.beginPath(); c.arc(mid, spring, r - 0.6, Math.PI, 0); c.stroke();
   // Arbeitsplatte / Sims
-  rect(c, 558, boden, 100, 4, "#6d655d");
-  rect(c, 558, boden, 100, 0.9, "rgba(255,235,210,.22)");
-  rect(c, 558, boden + 4, 100, 1.2, "rgba(0,0,0,.4)");
+  rect(c, 558, boden, 92, 4, "#6d655d");
+  rect(c, 558, boden, 92, 0.9, "rgba(255,235,210,.22)");
+  rect(c, 558, boden + 4, 92, 1.2, "rgba(0,0,0,.4)");
 }
 
 /** Nach dem Wetter: Stein und Nische um das runde Glas wiederherstellen. */
@@ -510,9 +510,9 @@ export function drawFensterGlanz(c: C, t: number) {
 export function drawTruhe(c: C, F: number, lauf: number, t: number, lift: number, richtung: 1 | -1, geh: number) {
   void t;
   const { x, w } = KUECHE_WAND.truhe;
-  const standUnten = F - 2;
+  const standUnten = F - 1;
   const unten = standUnten - lift * 12;
-  const oben = unten - 31;
+  const oben = unten - 34;
   c.save();
   c.translate(lauf, 0);
   // Schatten
@@ -521,7 +521,7 @@ export function drawTruhe(c: C, F: number, lauf: number, t: number, lift: number
   c.fillStyle = "#0b0806"; c.fill(); c.restore();
   // Beine: stehen unsichtbar; beim Aufstehen drücken die Knie durch, dann trappeln sie.
   if (lift > 0.02) {
-    const n = 10;
+    const n = 12;
     for (let i = 0; i < n; i++) {
       const base = x + 6 + (i * (w - 12)) / (n - 1);
       const phase = geh > 0 ? Math.sin(geh * 9 + i * 0.85) : 0;
@@ -574,12 +574,21 @@ export function drawTruheAufsatz(c: C, t: number, itemY = 405) {
   // Kräuter und Glaskolben hängen links bzw. stehen rechts auf der Platte
   kraeuter(c, x + 8, 11, 0);
   kraeuter(c, x + 18, 9, 1);
-  // Buch
-  c.fillStyle = "#4a1d22";
-  c.beginPath(); c.moveTo(x + 26, itemY); c.lineTo(x + 48, itemY); c.lineTo(x + 47, itemY - 2.4); c.lineTo(x + 27, itemY - 2.4); c.closePath(); c.fill();
-  c.fillStyle = "#e3d4b0";
-  c.beginPath(); c.moveTo(x + 27, itemY - 0.2); c.lineTo(x + 37, itemY - 1); c.lineTo(x + 37, itemY - 3.8); c.lineTo(x + 27.4, itemY - 2.6); c.closePath(); c.fill();
-  c.beginPath(); c.moveTo(x + 37, itemY - 1); c.lineTo(x + 47, itemY - 0.2); c.lineTo(x + 46.6, itemY - 2.6); c.lineTo(x + 37, itemY - 3.8); c.closePath(); c.fill();
+  // Aufgeschlagenes Buch: dunkler Einband, zwei helle Seiten, Rücken in der Mitte
+  c.fillStyle = "#3f1a1f";
+  c.beginPath();
+  c.moveTo(x + 24, itemY); c.lineTo(x + 48, itemY);
+  c.quadraticCurveTo(x + 49, itemY - 3, x + 48, itemY - 4);
+  c.lineTo(x + 37, itemY - 5.2); c.lineTo(x + 26, itemY - 4);
+  c.quadraticCurveTo(x + 24.6, itemY - 2.6, x + 24, itemY); c.closePath(); c.fill();
+  c.fillStyle = "#ece0c2";
+  c.beginPath(); c.moveTo(x + 25.4, itemY - 0.5); c.quadraticCurveTo(x + 31, itemY - 1.4, x + 36.6, itemY - 1.1); c.lineTo(x + 36.6, itemY - 4.4); c.quadraticCurveTo(x + 31, itemY - 4.6, x + 25.6, itemY - 3.6); c.closePath(); c.fill();
+  c.beginPath(); c.moveTo(x + 37.4, itemY - 1.1); c.quadraticCurveTo(x + 43, itemY - 1.4, x + 47.6, itemY - 0.5); c.lineTo(x + 47.2, itemY - 3.6); c.quadraticCurveTo(x + 43, itemY - 4.6, x + 37.4, itemY - 4.4); c.closePath(); c.fill();
+  for (let k = 0; k < 3; k++) {
+    strich(c, x + 27, itemY - 1.6 - k * 0.7, x + 35.6, itemY - 2 - k * 0.7, "rgba(120,90,60,.45)", 0.3);
+    strich(c, x + 38.4, itemY - 2 - k * 0.7, x + 46.4, itemY - 1.6 - k * 0.7, "rgba(120,90,60,.45)", 0.3);
+  }
+  strich(c, x + 37, itemY - 1.1, x + 37, itemY - 4.8, "rgba(90,60,30,.7)", 0.5);
   // Totenkopf
   disc(c, x + 53, itemY - 3.4, 3.2, "#e8e0cc");
   rrFill(c, x + 50.4, itemY - 2.2, 5.2, 3.1, 1.2, "#e8e0cc");
@@ -587,14 +596,14 @@ export function drawTruheAufsatz(c: C, t: number, itemY = 405) {
   disc(c, x + 54.4, itemY - 3.7, 0.9, "#2b2722");
   // Kerzen
   // Genau drei Kerzen auf der Arbeitsplatte.
-  for (const [dx, hh] of [[58, 5], [63, 8], [68, 6]] as const) {
+  for (const [dx, hh] of [[57, 5], [61.5, 8], [66, 6]] as const) {
     rect(c, x + dx, itemY - hh, 2.6, hh, "#e2d5b8");
     const fl = 0.84 + 0.12 * Math.sin(t * 12 + dx);
     ell(c, x + dx + 1.3, itemY - hh - 1.6, 1.3, 2.6 * fl, "#ffb347");
     ell(c, x + dx + 1.3, itemY - hh - 1.2, 0.6, 1.3 * fl, "#fff1c4");
   }
   // Glaskolben rechts am Rand
-  glasKolben(c, x + 75, itemY);
+  glasKolben(c, x + 74, itemY);
 }
 
 function glasKolben(c: C, bx: number, y: number) {

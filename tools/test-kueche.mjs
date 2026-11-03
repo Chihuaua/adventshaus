@@ -46,9 +46,9 @@ test("Geltungsbereich: Lagerstation nur im Gruselhaus", () => {
   assert.match(house, /if \(GRUSELRAEUME\.kueche\) st = kuechenStationen\(st\)/);
 });
 test("Küchenfenster: rundes Glas ist exakt das Wetterfenster", () => {
-  assert.deepEqual([...K.KUECHE_WAND.fenster], [587, 347, 42, 42]);
+  assert.deepEqual([...K.KUECHE_WAND.fenster], [585, 354, 46, 46]);
   assert.match(readFileSync("src/game/wetter.ts", "utf8"), /\[740, 236, 44, 78\]/);
-  assert.match(readFileSync("src/game/gruselhaus/kueche.ts", "utf8"), /drawKuchenFensterWetter/);
+  assert.ok(K.KUECHE_WAND.fenster[1] - (K.KUECHE_WAND.bogen.spring - (K.KUECHE_WAND.bogen.r - 9)) >= 4, "Rad sitzt nicht mittig unter dem Bogen");
 });
 test("Licht nur aus echten Quellen: Kerze in der Küche, Fackel im Treppenhaus", () => {
   const drin = ([x, y], [rx, ry, rw, rh]) => x > rx && x < rx + rw && y > ry && y < ry + rh;
@@ -135,17 +135,17 @@ test("Birnbaumtruhe: 80 breit, Beine mit Knien, geht alle 10 Minuten und bleibt 
   const st = K.kuechenStationen([]);
   assert.ok(st.some((x) => x.id === "truhe"), "Truhenstation fehlt");
   const src = readFileSync("src/game/gruselhaus/kueche.ts", "utf8");
-  for (const marker of ["const n = 10", "kneeY", "lift > 0.02", "Birnbaum"]) assert.ok(src.includes(marker), marker);
+  for (const marker of ["const n = 12", "kneeY", "lift > 0.02", "Birnbaum"]) assert.ok(src.includes(marker), marker);
   const house = readFileSync("src/game/house.ts", "utf8");
   assert.match(house, /this\.truheWarte >= 600/);
   assert.match(house, /this\.truheModus = "auf"/);
   assert.match(house, /this\.truheOffset = this\.truheZiel/);
 });
-test("Arbeitsplatte: Buch, Totenkopf und genau drei Kerzen; zehn Beinchen", () => {
+test("Arbeitsplatte: Buch, Totenkopf, drei Kerzen; zwölf Beinchen", () => {
   const src = readFileSync("src/game/gruselhaus/kueche.ts", "utf8");
-  assert.ok(src.includes("[[58, 5], [63, 8], [68, 6]]"), "nicht genau drei Kerzen");
-  assert.ok(!src.includes("[[59, 8], [65, 6]]"), "alte zwei Kerzen noch da");
-  assert.match(src, /const n = 10/);
+  const zeile = src.split("\n").find((l) => l.includes("as const") && l.includes("[") && l.includes("hh")) || "";
+  assert.ok(zeile.includes("57, 5") && zeile.includes("61.5, 8") && zeile.includes("66, 6"), "nicht genau drei Kerzen: " + zeile.trim());
+  assert.match(src, /const n = 12/);
   assert.match(src, /drawTruheAufsatz/);
 });
 console.log(`\n${n} Küchen-Tests bestanden.`);
