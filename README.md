@@ -159,7 +159,7 @@ Modul; das normale Haus und das Traumhaus bleiben dabei unberührt.
 | Dachgeschoss rechts (Musikzimmer) | Musikzimmer („Der Tod spielt Klavier“) | fertig (`musikzimmer.ts`) |
 | 1. Stock links (Schlafzimmer) | Schlafstätte der Vampirkönigin | fertig (`schlafzimmer.ts`) |
 | 1. Stock rechts (Badezimmer) | Biohazard-Bad mit Dekon-Kapsel | fertig (`badezimmer.ts`) |
-| Erdgeschoss rechts (Küche & Treppenhaus) | Hexenofen mit Kessel, gemauerter Holzlagerplatz daneben | fertig |
+| Erdgeschoss rechts (Küche & Treppenhaus) | Hexenküche: Bruchstein, hohe Abdeckplatte, Radfenster im Rundbogen, Wandnische mit Kerze, Hexenofen mit Kessel, Holzlager, laufende Birnbaumtruhe, violetter Schimmer; Steintreppe, Eisengeländer, Fackel | fertig |
 | alle übrigen | – | noch das normale Haus |
 
 Raum 02 heißt **Musikzimmer**. Seine Klavierecke besteht aus einem alten,
