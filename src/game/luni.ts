@@ -152,6 +152,8 @@ export interface LuniOpts {
   headShake?: number;
   /** Blick im Figurenraum; die Spiegelung folgt weiterhin face. */
   gaze?: number;
+  /** 0..1: Fortschritt einer Augenroll-Bewegung (genervter Blick); 0 = aus. */
+  eyeRoll?: number;
   /** Edles Vampir-Outfit (Gruselhaus): Zierdetails über der Kleidung. */
   vampir?: VampirStil | null;
   /** 0..1: wie weit der Umhang umgelegt ist (1 = liegt auf den Schultern). */
@@ -1099,6 +1101,42 @@ function drawHairFront(ctx: C, flow: number, up: boolean, lenK: number) {
   ctx.restore();
 }
 
+/**
+ * Augenrollen: weiße Augen, die Pupillen wandern links -> oben -> rechts und
+ * zurück zur Mitte. `p` 0..1 ist der Fortschritt. Gezeichnet im Kopfraum
+ * direkt nach drawFace, damit Pose, Neigung und Brille unverändert mitgehen.
+ */
+function drawEyeRoll(ctx: C, p: number) {
+  const farX = -2.6, nearX = 3.6, eyeY = 0.4;
+  const k = Math.max(0, Math.min(1, p));
+  let ox: number;
+  let oy: number;
+  if (k < 0.12) {
+    ox = (-0.9 * k) / 0.12;
+    oy = 0;
+  } else if (k < 0.72) {
+    const a = Math.PI + ((k - 0.12) / 0.6) * Math.PI;
+    ox = Math.cos(a) * 0.9;
+    oy = Math.sin(a) * 0.8;
+  } else {
+    ox = 0.9 * (1 - (k - 0.72) / 0.28);
+    oy = 0;
+  }
+  ctx.save();
+  ctx.translate(0, HEAD_Y);
+  for (const [x, r] of [[farX, 1.9], [nearX, 2.1]] as const) {
+    ctx.fillStyle = "#f7f5ef";
+    ctx.beginPath();
+    ctx.ellipse(x, eyeY, r, r * 0.9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = LUNI_COLORS.eye;
+    ctx.beginPath();
+    ctx.arc(x + ox, eyeY + oy, 0.95, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 /* ------------------------------ Gesicht -------------------------------- */
 
 function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = true, gaze = 0) {
@@ -1898,6 +1936,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     pianoSeat,
     headShake = 0,
     gaze = 0,
+    eyeRoll = 0,
     vampir = null,
     umhang = 1,
     backReach = false,
@@ -2279,7 +2318,8 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   } else {
     if (hairAside > 0.01) drawHairAside(ctx, hairAside);
     else drawHairFront(ctx, r.hairFlow, r.hairUp, r.hairLen);
-    drawFace(ctx, expr, blink, t, glasses, gaze);
+    drawFace(ctx, eyeRoll > 0.01 ? "annoyed" : expr, blink, t, glasses, gaze);
+    if (eyeRoll > 0.01) drawEyeRoll(ctx, eyeRoll);
   }
   if (wet > 0.02 && r.bend < 0.7) {
     // nasser Glanz und Tropfen an den Haarspitzen
