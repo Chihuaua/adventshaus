@@ -44,6 +44,7 @@ import {
   KesselAblauf, OFEN, ZAUBER_ZEIT, drawKessel, drawKesselGedanke, drawKesselSchimmer, drawOfen,
   drawZauberBlitz, kesselLoeffelSpitze,
 } from "./gruselhaus/hexenofen";
+import { HOLZ_MAX, HOLZ_REFILL_SEK, drawHolzlager, holzlagerStationen } from "./gruselhaus/kueche";
 import { drawWetter, ladeWetter, tickWetter, waehleJahreszeit, waehleWetter, schalteZusatz, echtwetter, type WetterState } from "./wetter";
 import { drawWetterStation, wetterStationHit, wetterStationLayout, type WetterBefehl, type WetterTreffer } from "./wetterstation";
 import { drawStein, steinAn, steinSlots, type SteinSlot } from "./steine";
@@ -2554,6 +2555,13 @@ export class House {
   private ofenHolz = false;
   /** Hexenkessel: Trank, Überkochen, Löffel – der Ablauf liegt in hexenofen.ts. */
   private kessel = new KesselAblauf();
+  /** Holzlager neben dem Ofen: Bestand (0..HOLZ_MAX), Nachfülldauer, Trägt sie ein Scheit? */
+  private holz = HOLZ_MAX;
+  private holzT = 0;
+  /** Oberstes Scheit wackelt kurz, wenn sie den Stapel richtet. */
+  private lagerT = 0;
+  /** Luni trägt ein Scheit vom Lager zum Ofen. */
+  private carryHolz = false;
   /** Kessel-Zauber: Luni zaubert von überall, ohne zum Kessel zu laufen. */
   private zauber: { t: number; treffer: boolean; halteBis: number; ende: number | null } | null = null;
   private zauberWunsch = false;
@@ -2582,6 +2590,7 @@ export class House {
         .filter((x) => x.id !== "kessel")
         .map((x) => (x.id === "herd" ? { ...x, label: "Ofen" } : x));
       st = [...st, baseKessel()];
+      if (GRUSELRAEUME.kueche) st = holzlagerStationen(st);
       this.stations = st;
       if (GRUSELRAEUME.musikzimmer) this.musikzimmer = new MusikzimmerAblauf();
     }
@@ -3074,6 +3083,16 @@ export class House {
       return;
     }
 
+    // Holzlager: Luni geht hin und richtet den Stapel. Hängt ein Ofenbefehl
+    // in der Kette, holt sie dort ein Scheit und trägt es zum Ofen.
+    if (id === "holzlager" && this.welt === "gruesel" && GRUSELRAEUME.kueche) {
+      this.chain = [];
+      this.smokeRequested = false;
+      const st = find("holzlager");
+      if (st) this.pending = st;
+      return;
+    }
+
     // Hexenkessel: Luni zaubert von überall – sie muss nicht in die Nähe.
     if (id === "kessel") {
       this.chain = [];
@@ -3081,13 +3100,21 @@ export class House {
       if (this.welt === "gruesel" && GRUSELRAEUME.kueche) this.zauberAnfordern();
       return;
     }
-    // Ofen: Luni geht hin und öffnet oder schließt die Feuertür.
+    // Ofen: Luni geht hin und öffnet oder schließt die Feuertür. Ist Holz im
+    // Lager und kocht nichts, holt sie erst sichtbar ein Scheit ab (Kette).
     if (id === "herd" && this.gruselBad) {
       this.chain = [];
       this.smokeRequested = false;
       this.ofenZiel = this.ofenOffen > .5 ? 0 : 1;
       this.ofenT = 0;
       this.ofenHolz = false;
+      const lagerBereit = this.welt === "gruesel" && GRUSELRAEUME.kueche
+        && this.holz > 0 && this.kessel.phase === "ruhig";
+      if (lagerBereit) {
+        this.chain = [{ id: "herd", force: true }];
+        const kl = find("holzlager");
+        if (kl) { this.pending = kl; return; }
+      }
       const st = find("herd");
       if (st) this.pending = st;
       return;
@@ -3440,6 +3467,13 @@ export class House {
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) {
       this.kessel.update(dt);
       this.updateZauber(dt);
+      // lagerT ist während der Lageraktivität der Fortschritt, danach Wackeln.
+      if (this.lagerT > 0 && this.activity?.id !== "holzlager") this.lagerT = Math.max(0, this.lagerT - dt);
+      // Der Stapel füllt sich in Echtzeit langsam wieder – ganz ohne Klick.
+      if (this.holz < HOLZ_MAX) {
+        this.holzT += dt;
+        if (this.holzT >= HOLZ_REFILL_SEK) { this.holzT = 0; this.holz++; }
+      }
     }
     this.wetterT += dt;
     if (this.wetterT >= 1) {
@@ -3772,6 +3806,24 @@ export class House {
       return;
     }
 
+    // Holzlager: Sie richtet kurz. Hängt ein Ofenbefehl in der Kette,
+    // nimmt sie ein Scheit mit und trägt es weiter zum Ofen.
+    if (act?.id === "holzlager") {
+      this.lagerT += dt;
+      if (this.lagerT >= 1.1) {
+        this.lagerT = 0;
+        if (this.chain.some((step) => step.id === "herd") && this.holz > 0) {
+          this.holz--;
+          this.carryHolz = true;
+        }
+        sfx.ui();
+        // Fortschritt abgeschlossen: kurzes Wackeln des obersten Scheit.
+        this.lagerT = 0.6;
+        this.finishActivity();
+      }
+      return;
+    }
+
     // Ofen: Feuertür sichtbar öffnen oder schließen, dann fertig.
     if (this.gruselBad && act?.id === "herd") {
       this.ofenT += dt;
@@ -3780,10 +3832,11 @@ export class House {
       // das echte Nachlegen (nach dem Herunterbrennen) dieselbe Methode auf.
       if (!this.ofenHolz && this.ofenT >= 0.5) {
         this.ofenHolz = true;
-        // Frisches Holz im Ofen: heute genügt dafür der Ofenklick. Später ruft
-        // das echte Nachlegen (nach dem Herunterbrennen) dieselbe Methode auf.
-        this.kessel.holzNachgelegt();
+        // Nur getragenes Holz lässt den Trank steigen. Ein Klick ohne Holz
+        // oder bei laufendem Trank startet kein Überkochen.
+        if (this.carryHolz) this.kessel.holzNachgelegt();
       }
+      if (this.carryHolz && this.ofenT >= 0.9) this.carryHolz = false;
       if (this.ofenT >= 1.4) {
         this.ofenOffen = this.ofenZiel;
         this.finishActivity();
@@ -4652,6 +4705,7 @@ export class House {
       line(c, dx + 4, dy + 11.2, dx + dw - 4, dy + 11.2, "rgba(115,128,132,.6)", .6);
       c.restore();
     }
+    drawHolzlager(c, FE, this.holz, this.lagerT);
     drawKessel(c, FE, this.elapsed, this.kessel.zustand());
   }
 
@@ -7527,6 +7581,17 @@ export class House {
           c.fill();
         }
       }
+    }
+    if (this.carryHolz) {
+      // Das Scheit hängt am vorderen Arm – es wandert mit, bis es im Ofen liegt.
+      c.save();
+      c.translate(hand[0] + 2, hand[1] + 2);
+      c.rotate(-0.15);
+      rect(c, -1, -1.6, 9.5, 3.2, "#6f4322");
+      rect(c, -1, -1.6, 9.5, 0.9, "rgba(255,220,170,.35)");
+      disc(c, -1, 0, 1.8, "#c89a63");
+      disc(c, -1, 0, 1.1, "#7c4a26");
+      c.restore();
     }
     if (st?.prop) drawProp(c, st.prop, hand[0], hand[1], face);
     if (st?.blanket) {
