@@ -5,12 +5,15 @@ import { loadMuted, saveMuted } from "@/game/storage";
 import { wechsleWelt } from "@/game/welten";
 import { Icon } from "@/components/Icons";
 import Uebergabe from "@/components/Uebergabe";
+import StandTransfer from "@/components/StandTransfer";
 
 
 
 export default function HouseView({ welt = "normal" }: { welt?: "normal" | "gruesel" }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [muted, setMuted] = useState(false);
+  // Osterei „Datenkoffer“: Luni hat den Koffer im Keller geöffnet.
+  const [transfer, setTransfer] = useState(false);
 
   useEffect(() => {
     const m = loadMuted();
@@ -21,7 +24,7 @@ export default function HouseView({ welt = "normal" }: { welt?: "normal" | "grue
   useEffect(() => {
     const cv = canvasRef.current;
     if (!cv) return;
-    const house = new House(cv, { welt, onWelt: wechsleWelt });
+    const house = new House(cv, { welt, onWelt: wechsleWelt, onUpdate: () => setTransfer(true) });
     house.mount();
     const onFonts = () => house.resize();
     if (document.fonts?.ready) void document.fonts.ready.then(onFonts);
@@ -89,6 +92,7 @@ export default function HouseView({ welt = "normal" }: { welt?: "normal" | "grue
         </div>
 
         <Uebergabe />
+        <StandTransfer offen={transfer} zu={() => setTransfer(false)} />
       </div>
     </div>
   );
