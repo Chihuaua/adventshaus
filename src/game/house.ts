@@ -133,6 +133,13 @@ const ASH_X = 726;
 const PHONE_X = 742;
 const DG_X0 = 262; // Dachgeschoss-Boden beginnt hier, links davon Treppenhaus
 const OG_X1 = 694; // 1.-Stock-Boden endet hier, rechts davon Treppenhaus
+
+/* --------------------- Osterei: Datenkoffer (Keller) ------------------- */
+// Steht auf den Kartons mitten im Krempelraum; Bodenlinie der Kartons ist 548.
+const KOFFER_X = 444;
+const KOFFER_Y = 522;
+const KOFFER_W = 34;
+const KOFFER_H = 26;
 const LUNI_SCALE = 1.08;
 const SPEED = 80;
 
@@ -464,6 +471,11 @@ export const STATIONS: Station[] = [
   },
   { id: "krempel", label: "Krempel-Regale", floor: 0, x: 384, face: -1, state: "think", expr: "think", hits: [[354, 466, 56, 106], [528, 480, 60, 92]] },
   { id: "xmaskiste", label: "Weihnachtskiste", floor: 0, x: 548, face: 1, state: "act", expr: "happy", hits: [[526, 540, 44, 32]] },
+  {
+    // Osterei: der Datenkoffer steht auf den Kartons im Krempelraum.
+    id: "datenkoffer", label: "Datenkoffer", floor: 0, x: 461, face: 1, state: "act", expr: "think",
+    hits: [[440, 516, 40, 34]],
+  },
   { id: "leinen", label: "Jacken & Hundeleinen", floor: 0, x: 640, face: 1, state: "act", expr: "neutral", hits: [[604, 486, 76, 86]] },
   {
     id: "raucherstuhl", label: "Stuhl", floor: 0, x: 708, face: 1, state: "sit", expr: "happy",
@@ -1434,6 +1446,88 @@ function xmasBox(c: C, x: number, F: number) {
   disc(c, x + 4, F - 26, 2, "#c9453a");
 }
 
+/**
+ * Osterei: der Datenkoffer steht auf den Kartons im Krempelraum. Korpus,
+ * Riemen, Schnalle, Griff und die Disketten daneben stehen immer da; Deckel,
+ * Antenne, LED und die Signalbögen erscheinen mit der Öffnung
+ * (`deckel` und `antenne` von 0 bis 1).
+ */
+function drawDatenKoffer(
+  c: C,
+  deckel: number,
+  antenne: number,
+  phase: "oeffnen" | "offen" | "schliessen" | null,
+  t: number,
+) {
+  const x = KOFFER_X, y = KOFFER_Y, w = KOFFER_W, h = KOFFER_H;
+
+  // Schlagschatten auf den Kartons
+  c.globalAlpha = 0.22;
+  rrect(c, x + 2, y + h - 2, w, 4, 2, "#17110c");
+  c.globalAlpha = 1;
+
+  // Zwei Disketten lehnen links daneben – sie bleiben immer liegen.
+  for (let i = 0; i < 2; i++) {
+    c.save();
+    c.translate(x - 7 - i * 2, y + h - 9 - i * 3);
+    c.rotate(-0.12 - i * 0.06);
+    rect(c, -4, -5, 8, 10, "#33312e");
+    rect(c, -4, -5, 3, 10, "#c2c2c2");
+    rect(c, -4, 3, 8, 2, "#8d8d8d");
+    c.restore();
+  }
+
+  // Korpus
+  rrect(c, x, y, w, h, 3, "#7a5230");
+  rect(c, x, y + h - 4, w, 4, "#65412a");
+  rect(c, x + 1, y + 1, w - 2, 2, "rgba(255,255,255,.10)");
+  // Riemen und Schnalle
+  rect(c, x + 5, y, 3, h, "#4a2f1a");
+  rect(c, x + w - 8, y, 3, h, "#4a2f1a");
+  rect(c, x + w / 2 - 2.5, y + 3, 5, 6, "#c9a94a");
+  rect(c, x + w / 2 - 1, y + 4.5, 2, 3, "#7a6420");
+  // Tragegriff
+  rrect(c, x + w / 2 - 5, y - 3.5, 10, 4, 2, "#4a2f1a");
+
+  // Deckel klappt nach hinten auf
+  if (deckel > 0.02) {
+    c.save();
+    c.translate(x + 2, y + 4);
+    c.rotate(-deckel * 1.05);
+    rrect(c, -2, -6, w - 1, 8, 3, "#8a5f38");
+    rect(c, -2, -6, w - 1, 2, "#6b4526");
+    c.restore();
+    c.globalAlpha = deckel * 0.5;
+    rect(c, x + 2, y + 2, w - 4, 3, "#3a2413");
+    c.globalAlpha = 1;
+  }
+
+  // Antenne mit Alu-Bällchen
+  if (antenne > 0.02) {
+    const ax = x + w - 6, ay = y + 2;
+    const tx = ax + 15 * antenne, ty = ay - 20 * antenne;
+    line(c, ax, ay, tx, ty, "#9a9a9a", 1.1);
+    disc(c, tx, ty, 2.1, "#cfcfcf");
+    disc(c, tx - 0.6, ty - 0.6, 0.7, "#f2f2f2");
+  }
+
+  // Im offenen Zustand: blinkende LED und zwei wandernde Signalbögen
+  if (phase === "offen") {
+    disc(c, x + 3.5, y + h - 7, 1.7, (t * 1.6) % 1 < 0.5 ? "#5ce08a" : "#2a6a44");
+    const bx = x + w - 6 + 15, by = y + 2 - 20;
+    for (let i = 0; i < 2; i++) {
+      const p = ((t * 1.1) + i * 0.35) % 1;
+      c.globalAlpha = (1 - p) * 0.8;
+      c.strokeStyle = "#9fd8e8";
+      c.lineWidth = 1;
+      c.beginPath();
+      c.arc(bx, by, 3 + i * 3 + p * 3, -Math.PI * 0.85, -Math.PI * 0.35);
+      c.stroke();
+      c.globalAlpha = 1;
+    }
+  }
+}
+
 function bulb(c: C, x: number, y0: number, len: number) {
   line(c, x, y0, x, y0 + len, "#1c1a18", 1.2);
   rect(c, x - 2.4, y0 + len, 4.8, 4, "#3a3632");
@@ -2209,6 +2303,12 @@ export interface HouseOptions {
   welt?: "normal" | "gruesel";
   /** Ein Klick auf einen Wechselstein: Ziel-Hauswelt */
   onWelt?: (ziel: WeltId) => void;
+  /**
+   * Osterei „Datenkoffer“: Luni hat den Koffer geöffnet – die Oberfläche
+   * soll den Stand-Übertragungsdialog zeigen. Reines Signal nach draußen,
+   * das Spiel selbst kennt keinen DOM-Code.
+   */
+  onUpdate?: () => void;
 }
 
 function drawProp(c: C, kind: Prop, x: number, y: number, face: 1 | -1) {
@@ -2424,6 +2524,16 @@ export class House {
   private golAnimT = 0;
   private golFullscreen = false;
 
+  /* --- Datenkoffer (Osterei): Deckel, Antenne und der Update-Hinweis --- */
+  private kofferPhase: "oeffnen" | "offen" | "schliessen" | null = null;
+  private kofferT = 0;
+  /** Deckelöffnung 0..1 und Antennenauszug 0..1 */
+  private kofferDeckel = 0;
+  private kofferAntenne = 0;
+  /** Der Update-Dialog wurde für diesen Öffnungsvorgang schon gemeldet. */
+  private kofferGemeldet = false;
+  private onUpdate: (() => void) | null = null;
+
   // Bett-Routine und Traum
   private bedPhase: "toss" | null = null;
   private pyjama: { top: string; bottom: string } | null = null;
@@ -2617,6 +2727,7 @@ export class House {
     }
     const alt = opts.onTraumhaus;
     this.onWelt = opts.onWelt ?? (alt ? (z) => { if (z === "traum") alt(); } : null);
+    this.onUpdate = opts.onUpdate ?? null;
     this.steine = steinSlots(this.welt);
     this.steinStationen = this.steine.map((sl) => ({
       id: `stein_${sl.art}`,
@@ -2914,6 +3025,11 @@ export class House {
     if (id !== "kessel") {
       this.zauberWunsch = false;
       this.zauberBeenden();
+    }
+    // Datenkoffer (Osterei): jeder andere Wunsch lässt den Deckel zufallen.
+    if (id !== "datenkoffer" && (this.kofferPhase === "offen" || this.kofferPhase === "oeffnen")) {
+      this.kofferPhase = "schliessen";
+      this.kofferT = 0;
     }
     if (this.musikzimmer) {
       this.musikzimmer.unlock();
@@ -3275,6 +3391,22 @@ export class House {
       this.golPhase = "reach";
       this.golAnimT = 0;
       this.goTo("gol_game");
+      return;
+    }
+
+    // Datenkoffer (Osterei): Luni geht hin, öffnet den Koffer, und die
+    // Oberfläche zeigt den Stand-Übertragungsdialog. Ein zweiter Klick auf
+    // den Koffer lässt den Deckel wieder zufallen.
+    if (id === "datenkoffer") {
+      if (this.kofferPhase === "schliessen") return;
+      if (this.kofferPhase === "offen") {
+        this.kofferPhase = "schliessen";
+        this.kofferT = 0;
+        return;
+      }
+      this.smokeRequested = false;
+      const kf = find("datenkoffer");
+      if (kf) this.pending = kf;
       return;
     }
 
@@ -3759,6 +3891,34 @@ export class House {
   /** Raucherecke, Zigaretten drehen, Tür aufmachen, Befehlskette */
   private updateActions(dt: number) {
     const act = this.activity;
+
+    // --- Datenkoffer (Osterei): Deckel auf, Antenne aus, dann melden ---
+    if (this.kofferPhase) {
+      this.kofferT += dt;
+      if (this.kofferPhase === "oeffnen") {
+        const t = Math.min(1, this.kofferT / 0.8);
+        this.kofferDeckel = t * t * (3 - 2 * t);
+        this.kofferAntenne = Math.max(0, Math.min(1, (this.kofferT - 0.2) / 0.6));
+        if (t >= 1) {
+          this.kofferPhase = "offen";
+          this.kofferT = 0;
+          if (!this.kofferGemeldet) {
+            this.kofferGemeldet = true;
+            this.onUpdate?.();
+          }
+        }
+      } else if (this.kofferPhase === "schliessen") {
+        const t = Math.min(1, this.kofferT / 0.5);
+        const e = t * t * (3 - 2 * t);
+        this.kofferDeckel = 1 - e;
+        this.kofferAntenne = Math.max(0, 1 - e);
+        if (t >= 1) {
+          this.kofferPhase = null;
+          this.kofferT = 0;
+          this.kofferGemeldet = false;
+        }
+      }
+    }
 
     // Gartentür frisch geöffnet und Rauch im Keller -> Abzugsstoß nach
     // draußen: Die Schwaden ziehen sichtbar durch den Türspalt in den Garten.
@@ -4462,6 +4622,11 @@ export class House {
           this.doorT = 0;
           this.doorActed = false;
         }
+        // Datenkoffer (Osterei): bei Ankunft klappt der Deckel auf.
+        if (this.activity.id === "datenkoffer" && !this.kofferPhase) {
+          this.kofferPhase = "oeffnen";
+          this.kofferT = 0;
+        }
         if (this.target.id === "klavier" && this.musikzimmer) {
           if (!this.musikzimmer.startLuni()) {
             this.pianoRefusal = .9;
@@ -4859,6 +5024,8 @@ export class House {
     // Auch der animierte Ofen steht hinter Luni, nicht vor ihrem Laufweg.
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) this.drawHexenofen(ctx);
     this.drawSargPass(ctx, false);
+    // Osterei: der Datenkoffer steht hinter Luni, nicht vor ihrem Laufweg.
+    this.drawKoffer(ctx);
     this.drawLuniLayered(ctx);
     if (this.gruselBad) {
       drawBioBadAfter(ctx, this.bioFx(), () => drawLuni(ctx,
@@ -6212,6 +6379,11 @@ export class House {
    * Luni mit Duschvorhang. Was hinter dem Vorhang liegt, erscheint als graue
    * Silhouette auf dem Stoff; der Rest (z. B. die Füße darunter) normal.
    */
+  /** Osterei: Datenkoffer im Keller – Deckel, Antenne, LED, Signalbögen. */
+  private drawKoffer(c: C) {
+    drawDatenKoffer(c, this.kofferDeckel, this.kofferAntenne, this.kofferPhase, this.elapsed);
+  }
+
   private drawLuniLayered(c: C) {
     if (this.gruselBad) {
       // Kapsel und Sichtfenster sind getrennte Vordergrund-Ebenen.
