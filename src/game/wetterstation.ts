@@ -9,7 +9,8 @@ import {
 type C = CanvasRenderingContext2D;
 export type WetterBefehl =
   | { k: "season"; v: Jahreszeit } | { k: "art"; v: WetterArt }
-  | { k: "plus" } | { k: "minus" } | { k: "zusatz"; v: Zusatz } | { k: "echt" };
+  | { k: "plus" } | { k: "minus" } | { k: "zusatz"; v: Zusatz } | { k: "echt" }
+  | { k: "toggle" };
 export interface WetterTreffer { x: number; y: number; w: number; h: number; label: string; befehl: WetterBefehl | null }
 
 const B = 26; // Klickfläche: mind. 24×24
@@ -40,8 +41,13 @@ function sym(c: C, art: WetterArt | "echt" | "plus" | "minus" | "fruehling", x: 
 }
 
 /** Trefferflächen. add = Zusatzauswahl; sonst zwei Reihen über den Steinen. */
-export function wetterStationLayout(w: WetterState, add: "plus" | "minus" | null): WetterTreffer[] {
-  const out: WetterTreffer[] = [];
+export function wetterStationLayout(w: WetterState, add: "plus" | "minus" | null, offen = true, schaltbar = true): WetterTreffer[] {
+  const out: WetterTreffer[] = schaltbar ? [{
+    x: 194, y: 570, w: 72, h: B,
+    label: offen ? "Wettermenü schließen" : "Wettermenü öffnen",
+    befehl: { k: "toggle" },
+  }] : [];
+  if (!offen) return out;
   if (add) {
     ZUSAETZE.forEach((z, i) => out.push({
       x: FX + i * 30, y: 540, w: B, h: B,
@@ -67,8 +73,9 @@ export function wetterStationHit(hits: WetterTreffer[], x: number, y: number) {
 const NAMN = (s: Jahreszeit) => ({ fruehling: "Frühling", sommer: "Sommer", herbst: "Herbst", winter: "Winter" }[s]);
 
 /** Zeichnet beide Reihen und die Bedienleiste; kein Wetter darüber. */
-export function drawWetterStation(c: C, w: WetterState, add: "plus" | "minus" | null, hover: WetterTreffer | null) {
+export function drawWetterStation(c: C, w: WetterState, add: "plus" | "minus" | null, hover: WetterTreffer | null, offen = true, schaltbar = true) {
   c.save();
+  if (offen) {
   // Panel A: zwei Reihen, endet oberhalb der Steine (Steine ab y≈506)
   rr(c, 2, 450, 342, 60, 5, COL.grund);
   c.strokeStyle = COL.rand; c.lineWidth = 1; c.beginPath(); c.roundRect(3, 451, 340, 58, 5); c.stroke();
@@ -109,6 +116,20 @@ export function drawWetterStation(c: C, w: WetterState, add: "plus" | "minus" | 
     rr(c, FX, 566, 48, B, 3, "#203026");
     c.fillStyle = COL.text; c.fillText("ABBRECHEN", FX + 3, 581);
     c.fillStyle = COL.text; c.fillText(beschreibung(w).slice(0, 26), FX + 52, 580);
+  }
+  }
+  if (schaltbar) {
+    rr(c, 194, 570, 72, B, 3, COL.grund);
+    c.strokeStyle = COL.rand; c.lineWidth = 1;
+    c.strokeRect(194.5, 570.5, 71, B - 1);
+    c.fillStyle = COL.text;
+    c.font = '600 10px "Space Grotesk", sans-serif';
+    c.fillText("WETTER", 200, 587);
+    c.beginPath();
+    c.moveTo(253, offen ? 580 : 576);
+    c.lineTo(258, offen ? 575 : 581);
+    c.lineTo(263, offen ? 580 : 576);
+    c.strokeStyle = COL.text; c.lineWidth = 1.5; c.stroke();
   }
   c.restore();
   if (hover) {
