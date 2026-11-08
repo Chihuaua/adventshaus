@@ -136,6 +136,8 @@ export interface LuniOpts {
   armsInFront?: boolean;
   /** Kleidung: angezogen, Handtuch oder (nur hinter dem Vorhang) ohne */
   outfit?: "dressed" | "towel" | "none";
+  /** Beim Umziehen Oberteil und Hose getrennt zeigen, ohne Handtuch-Platzhalter. */
+  kleidung?: { oberteil: boolean; hose: boolean };
   /** Rücken zum Betrachter: Haare statt Gesicht */
   back?: boolean;
   /** 0..1: nasse Haare, Tropfen */
@@ -146,6 +148,8 @@ export interface LuniOpts {
   pajama?: { top: string; bottom: string } | null;
   /** 0..1: in der Seitenlage die Haare neben das Ohr legen */
   hairAside?: number;
+  /** Nur Bett: 0 = sitzend, 1 = liegend; ohne Vorgabe unveränderte Liegepose. */
+  lieDown?: number;
   /** Nur Musikzimmer: frontaler Hocker, 0 = stehen, 1 = sitzen. */
   pianoSeat?: number;
   /** Verneinende Kopfbewegung, ohne die laufende Koerperpose zu ersetzen. */
@@ -1440,8 +1444,7 @@ function drawLabTorso(ctx: C, r: Rig, outfit: "dressed" | "towel" | "none", K: t
   }
 }
 
-function drawTorso(ctx: C, r: Rig) {
-  const K = LUNI_COLORS;
+function drawTorso(ctx: C, r: Rig, K = LUNI_COLORS) {
   const topY = r.shoulderY;
   const botY = r.hipY;
   const h = botY - topY;
@@ -1928,11 +1931,13 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     betweenBodyAndArms = null,
     armsInFront = false,
     outfit = "dressed",
+    kleidung,
     back = false,
     wet = 0,
     glasses = true,
     pajama = null,
     hairAside = 0,
+    lieDown,
     pianoSeat,
     headShake = 0,
     gaze = 0,
@@ -1950,9 +1955,8 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
         skinShade: mixCol(LUNI_COLORS.skinShade, "#7d9a5e", sick * 0.75),
       }
     : LUNI_COLORS;
-  // Ohne Kleidung (Handtuch oder hinter dem Vorhang) sind Arme und Beine Haut.
   const P = pajama;
-  const KP = outfit === "dressed" && P
+  const bekleidet = P
     ? {
         ...K0,
         cardigan: P.top,
@@ -1965,22 +1969,50 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
         sockL: [P.bottom, P.bottom],
         sockR: [P.bottom, P.bottom],
       }
-    : outfit === "dressed"
-    ? K0
-    : {
+    : K0;
+  const haut = {
+    ...K0,
+    leggings: K0.skinShade,
+    leggingsLight: K0.skin,
+    cardigan: K0.skin,
+    cardiganDark: K0.skinShade,
+    cardiganLight: K0.skin,
+    sockL: [K0.skin, K0.skinShade],
+    sockR: [K0.skin, K0.skinShade],
+  };
+  const KP = kleidung
+    ? {
         ...K0,
-        leggings: K0.skinShade,
-        leggingsLight: K0.skin,
-        cardigan: K0.skin,
-        cardiganDark: K0.skinShade,
-        cardiganLight: K0.skin,
-        sockL: [K0.skin, K0.skinShade],
-        sockR: [K0.skin, K0.skinShade],
-      };
-  const K = vampir && outfit === "dressed"
+        cardigan: kleidung.oberteil ? bekleidet.cardigan : haut.cardigan,
+        cardiganDark: kleidung.oberteil ? bekleidet.cardiganDark : haut.cardiganDark,
+        cardiganLight: kleidung.oberteil ? bekleidet.cardiganLight : haut.cardiganLight,
+        tee: bekleidet.tee,
+        teeShade: bekleidet.teeShade,
+        leggings: kleidung.hose ? bekleidet.leggings : haut.leggings,
+        leggingsLight: kleidung.hose ? bekleidet.leggingsLight : haut.leggingsLight,
+        sockL: kleidung.hose ? bekleidet.sockL : haut.sockL,
+        sockR: kleidung.hose ? bekleidet.sockR : haut.sockR,
+      }
+    : outfit === "dressed" ? bekleidet : haut;
+  const oberteil = kleidung ? (kleidung.oberteil ? "dressed" : "none") : outfit;
+  const K = vampir && oberteil === "dressed"
     ? { ...KP, cardiganLight: vampir.spitze ?? vampir.trim ?? KP.cardiganLight }
     : KP;
   const r = buildRig(state, t, walk, phase, armReach);
+  if (state === "lie" && lieDown !== undefined) {
+    const p = clamp01(lieDown);
+    const sit = buildRig("sleepBend", t, walk, 1, armReach);
+    r.rootRot *= p;
+    r.rootY = lerp(sit.rootY, r.rootY, p);
+    r.headTilt = lerp(sit.headTilt, r.headTilt, p);
+    for (const key of ["armFar", "armNear", "legFar", "legNear"] as const) {
+      const a = sit[key], b = r[key];
+      r[key] = {
+        elbow: [lerp(a.elbow[0], b.elbow[0], p), lerp(a.elbow[1], b.elbow[1], p)],
+        hand: [lerp(a.hand[0], b.hand[0], p), lerp(a.hand[1], b.hand[1], p)],
+      };
+    }
+  }
   if (pianoSeat !== undefined) {
     const p = ease(pianoSeat);
     r.rootY = 9 * p;
@@ -2102,7 +2134,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     ctx.restore();
   };
 
-  if (vampir?.umhang && !back && outfit === "dressed" && umhang > 0.01) {
+  if (vampir?.umhang && !back && oberteil === "dressed" && umhang > 0.01) {
     const u = vampir.umhang;
     upperLean(() => drawUmhangSeite(ctx, r, u, umhang));
   }
@@ -2169,7 +2201,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
       ctx.fill();
     });
 
-  if (P && outfit === "dressed" && !back && !vampir) drawPajamaDetails(ctx, r, P.top, P.bottom);
+  if (P && oberteil === "dressed" && !back && !vampir) drawPajamaDetails(ctx, r, P.top, P.bottom);
 
   if (back) {
     /* --- Rückansicht: Arme seitlich, Oberkörper von hinten --- */
@@ -2188,10 +2220,15 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     // Hände vor dem Körper (Handtuch binden, in den Schrank greifen)
     // verschwinden hinter dem Rücken.
     if (arms.behind) drawArms();
-    drawTorsoBack(ctx, r, outfit, K);
-    if (vampir && outfit === "dressed") drawVampirRuecken(ctx, r, vampir);
+    drawTorsoBack(ctx, r, oberteil, K);
+    if (kleidung?.hose && !kleidung.oberteil) {
+      ctx.fillStyle = K.leggings;
+      rr(ctx, -6.8, r.hipY - 1.6, 13.6, 3.6, 1.6);
+      ctx.fill();
+    }
+    if (vampir && oberteil === "dressed") drawVampirRuecken(ctx, r, vampir);
     if (!arms.behind) drawArms();
-    if (vampir?.umhang && outfit === "dressed" && umhang > 0.01) drawUmhangRuecken(ctx, r, vampir.umhang, umhang);
+    if (vampir?.umhang && oberteil === "dressed" && umhang > 0.01) drawUmhangRuecken(ctx, r, vampir.umhang, umhang);
     // Die langen Haare liegen über Rücken und Schultern.
     drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen * (wet > 0.3 ? 0.94 : 1), true);
   } else {
@@ -2199,12 +2236,12 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     upperLean(() => {
       ctx.save();
       ctx.scale(-1, 1);
-      if (r.spineCurve > 0.01) drawLabTorso(ctx, r, outfit, K);
-      else if (outfit === "dressed") {
-        drawTorso(ctx, r);
+      if (r.spineCurve > 0.01) drawLabTorso(ctx, r, oberteil, K);
+      else if (oberteil === "dressed") {
+        drawTorso(ctx, r, kleidung || (P && state === "lie") ? K : LUNI_COLORS);
         if (vampir) drawVampirTorso(ctx, r, vampir);
       }
-      else if (outfit === "towel") drawTowel(ctx, r);
+      else if (oberteil === "towel") drawTowel(ctx, r);
       else {
         ctx.fillStyle = K.skin;
         rr(ctx, -6.4, r.shoulderY, 12.8, r.hipY - r.shoulderY + 2, 5);
@@ -2224,15 +2261,16 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     if (!bent) drawFrontArm();
   }
 
-  /* --- Hals --- */
+  /* --- Hals: in der Rückansicht vollständig von den Haaren verdeckt --- */
   upperLean(() => {
+    if (back) return;
     if (r.neckBend) {
       ctx.save(); ctx.translate(0, r.shoulderY); ctx.rotate(r.neckBend); ctx.translate(0, -r.shoulderY);
     }
     ctx.fillStyle = K.skinShade;
     rr(ctx, -2, r.headY + 7, 4, 4.6, 1.6);
     ctx.fill();
-    if (vampir?.kropfband && outfit === "dressed") {
+    if (vampir?.kropfband && oberteil === "dressed") {
       ctx.fillStyle = vampir.kropfband.band;
       rr(ctx, -2.2, r.headY + 9.2, 4.4, 1.3, 0.6);
       ctx.fill();
@@ -2257,19 +2295,24 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   ctx.rotate(r.headTilt + headShake * .12);
   ctx.translate(0, -r.headY);
 
-  // Ohr hinten
-  ctx.fillStyle = K.skinShade;
-  ctx.beginPath();
-  ctx.arc(-7.4, HEAD_Y + 1.2, 1.9, 0, Math.PI * 2);
-  ctx.fill();
+  // Ohr und Gesichtshaut liegen nur in der Vorder-/Seitenansicht vor den Haaren.
+  if (!back) {
+    ctx.fillStyle = K.skinShade;
+    ctx.beginPath();
+    ctx.arc(-7.4, HEAD_Y + 1.2, 1.9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = K.skin;
+    ctx.beginPath();
+    ctx.arc(0, HEAD_Y, HEAD_R, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
-  // Kopf
-  ctx.fillStyle = K.skin;
-  ctx.beginPath();
-  ctx.arc(0, HEAD_Y, HEAD_R, 0, Math.PI * 2);
-  ctx.fill();
-
-  if (r.bend >= 0.7) {
+  if (back) {
+    ctx.fillStyle = LUNI_COLORS.hair;
+    ctx.beginPath();
+    ctx.arc(0, HEAD_Y - 0.6, HEAD_R + 0.8, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (r.bend >= 0.7) {
     // Vorgebeugt: Gesicht zeigt zum Boden. Haare bedecken den Hinterkopf und
     // hängen senkrecht herunter, bis knapp über den Boden.
     drawFace(ctx, expr, blink, t, glasses, gaze);
@@ -2309,12 +2352,6 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     }
     ctx.globalAlpha = 1;
     ctx.restore();
-  } else if (back) {
-    // Hinterkopf: nur Haare, kein Gesicht
-    ctx.fillStyle = LUNI_COLORS.hair;
-    ctx.beginPath();
-    ctx.arc(0, HEAD_Y - 0.6, HEAD_R + 0.8, 0, Math.PI * 2);
-    ctx.fill();
   } else {
     if (hairAside > 0.01) drawHairAside(ctx, hairAside);
     else drawHairFront(ctx, r.hairFlow, r.hairUp, r.hairLen);

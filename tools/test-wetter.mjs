@@ -90,6 +90,20 @@ test("Wetterstation: alle Knöpfe in der Erdfläche, mindestens 24×24", () => {
   for (const h of add) assert.ok(h.w >= 24 && h.h >= 24);
 });
 
+test("Wetterstation: eingeklappt nur Schalter, ohne verdeckte Wechselsteine", () => {
+  const w = { season: "herbst", art: "regen", zusatz: [], test: false, until: 0, snow: 0, updated: 0 };
+  const offen = S.wetterStationLayout(w, null, true);
+  const zu = S.wetterStationLayout(w, null, false);
+  assert.equal(zu.length, 1);
+  assert.equal(zu[0].befehl?.k, "toggle");
+  assert.equal(offen.filter(h => h.befehl?.k === "toggle").length, 1);
+  assert.equal(S.wetterStationHit(zu, 10, 458), null);
+  assert.equal(S.wetterStationHit(zu, 222, 540), null);
+  assert.equal(S.wetterStationHit(zu, 278, 536), null);
+  assert.equal(S.wetterStationHit(zu, zu[0].x + 10, zu[0].y + 10)?.befehl?.k, "toggle");
+  assert.equal(S.wetterStationLayout(w, null, true, false).some(h => h.befehl?.k === "toggle"), false);
+});
+
 test("Wetterstation: Treffer landen auf dem richtigen Befehl", () => {
   const w = { season: "herbst", art: "regen", zusatz: [], test: false, until: 0, snow: 0, updated: 0 };
   const hits = S.wetterStationLayout(w, null);
