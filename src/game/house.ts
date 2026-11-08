@@ -1163,13 +1163,13 @@ function piano(c: C, x: number, F: number) {
   rect(c, x - 2, F - 58, 48, 4, "#3a2a24");
   rect(c, x - 2, F - 58, 48, 1.3, "rgba(255,255,255,.12)");
 
-  // Notenpult mit aufgelegtem Notenblatt
-  rrect(c, x + 5, F - 47, 26, 15, 2, "#241a16");
+  // Notenpult mit aufgelegtem Notenblatt, mittig auf dem 44 Einheiten breiten Korpus (Mitte x+22)
+  rrect(c, x + 9, F - 47, 26, 15, 2, "#241a16");
   c.fillStyle = "#efe6cf";
-  c.fillRect(x + 7, F - 45, 22, 11);
+  c.fillRect(x + 11, F - 45, 22, 11);
   c.strokeStyle = "rgba(80,58,34,.45)";
   c.lineWidth = 0.35;
-  for (let i = 0; i < 4; i++) line(c, x + 8, F - 43 + i * 2.2, x + 28, F - 43 + i * 2.2, "rgba(80,58,34,.45)", 0.35);
+  for (let i = 0; i < 4; i++) line(c, x + 12, F - 43 + i * 2.2, x + 32, F - 43 + i * 2.2, "rgba(80,58,34,.45)", 0.35);
 
   /* ---- Klaviatur: dieselbe linke Kante wie der Korpus ---- */
   const kx = x;
