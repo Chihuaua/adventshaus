@@ -4,7 +4,6 @@ import { sfx } from "@/game/audio";
 import { loadMuted, saveMuted } from "@/game/storage";
 import { wechsleWelt } from "@/game/welten";
 import { Icon } from "@/components/Icons";
-import Uebergabe from "@/components/Uebergabe";
 import StandTransfer from "@/components/StandTransfer";
 
 
@@ -91,7 +90,6 @@ export default function HouseView({ welt = "normal" }: { welt?: "normal" | "grue
           </div>
         </div>
 
-        <Uebergabe />
         <StandTransfer offen={transfer} zu={() => setTransfer(false)} />
       </div>
     </div>
