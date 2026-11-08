@@ -181,12 +181,11 @@ speicher-mute | src/game/storage.ts | loadMuted
 ## Oberfläche
 
 haus-ansicht | src/components/HouseView.tsx | HouseView
-uebergabe-datei | src/components/Uebergabe.tsx | EROEFFNUNGSTEXT
 studio-ansicht | src/StudioApp.tsx | export
 
 ---
 
 ## Noch offen (dürfen fehlen, werden gemeldet)
 
-uebergabe-eingebaut | src/components/HouseView.tsx | import Uebergabe
 overflow-x | src/components/HouseView.tsx | overflow-x-hidden
+ki-start | docs/KI-START.md | Die einzige Pflicht-Lektüre

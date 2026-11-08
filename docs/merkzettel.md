@@ -56,41 +56,19 @@ Wiederherstellen (falls Arbeitsordner kaputt):
 
 Vorher: Knopf drücken (zieht alles nach), bei Meilenstein Tag setzen (A).
 
-Eröffnungstext: Spiel starten (Knopf → Enter) → unter dem Haus Leiste
-"ÜBERGABE" → "Eröffnungstext kopieren" → im neuen Chat Strg+V.
-Daneben "Token – wo?" zeigt den Weg zum Token. Zur Sicherheit der Text:
+Eröffnungstext: Projektmanager → „Eröffnungstext kopieren“ → im neuen Chat Strg+V.
+Führende Quelle: `docs/KI-START.md`. Kein Token im Chat; du legst Patch-Dateien selbst ins Postfach.
 
-    Repository: https://github.com/Chihuaua/adventshaus – Stand: main
-    Lies README.md komplett, besonders "Grundsätze", "Arbeitsablauf mit
-    KI-Assistenten" und "Regel 0". Halte dich daran.
-    Regel 0: Klone den Stand und führe ihn aus – baue ihn nicht nach.
-    Ändere nichts, was ich nicht verlange: keine Texte, Erklärungen,
-    Buttons, Styles oder Größen hinzufügen oder anpassen. Nur die Aufgabe.
-    Ablauf: 1) klonen, npm ci, npx tsc --noEmit, npm run build – bestätige,
-    dass es baut. 2) Frag mich nach dem Postfach-Token (zwei Hälften).
-    3) Aufgabe umsetzen und lauffähig zeigen. 4) Erst nach meinem "ja":
-    Patch + Prüfsumme ins Postfach (README). Ich übernehme per Knopf.
-    Aufgabe: Noch keine. Klone den Stand, zeig ihn mir unverändert, frag nach dem Token – dann sage ich dir, was zu tun ist.
+So abschicken. Die eigentliche Aufgabe nennst du erst, wenn die KI den Stand unverändert gezeigt hat.
 
-So abschicken. Die eigentliche Aufgabe nennst du erst, wenn die KI den
-Stand unverändert gezeigt und nach dem Token gefragt hat.
-
-Dann das Gist-Token geben: GitHub → Settings → Developer settings →
-Fine-grained tokens → "adventshaus-postfach". Falls abgelaufen: neues mit
-NUR "Gists: Read and write", kein Repository-Zugriff. Im Chat in zwei
-Hälften schicken, damit GitHubs Scanner es nicht zurückzieht.
-
-Nie zwei Chats gleichzeitig an denselben Dateien. Im Battle-Modus (zwei
-KIs auf einmal) nur EINER das Token geben – sonst überschreibt die zweite
-das Postfach der ersten.
+Nie zwei Chats gleichzeitig an denselben Dateien. Im Battle-Modus arbeitet nur die benannte KI mit dem Postfach.
 
 Woran du erkennst, dass eine KI sich nicht an Regel 0 hält: Texte über oder
 unter dem Haus, andere Schriftgrößen, fehlende oder zusätzliche Knöpfe,
 "verbesserte" Farben. Dann: nicht ins Postfach legen lassen, sondern
 "Regel 0 – bitte den geklonten Stand unverändert lassen" antworten.
 
-Fehlt die Leiste ÜBERGABE unter dem Haus: Die KI zeigt den Produktionsbuild.
-Das ist richtig so – die Leiste gibt es nur bei npm run dev.
+Die Übergabe-Leiste wurde entfernt. Eröffnungstext und Postfach liegen im Projektmanager.
 
 ----------------------------------------------------------------------
 

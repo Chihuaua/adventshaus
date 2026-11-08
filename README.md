@@ -320,10 +320,10 @@ ergänzt. Genau das soll diese Regel verhindern.
 
 | Ansicht | Start | Zeigt |
 |---|---|---|
-| **Entwicklung** | `npm run dev` | Spiel **plus** Leiste „ÜBERGABE“ unter dem Haus (Eröffnungstext, Token-Weg, Postfach, Freigaben) |
-| **Spiel** | `npm run build` → `dist/index.html` | nur das Spiel – die Leiste ist absichtlich nicht enthalten |
+| **Entwicklung** | `npm run dev` | Spiel (ohne Übergabe-Leiste; Eröffnungstext im Projektmanager) |
+| **Spiel** | `npm run build` → `dist/index.html` | nur das Spiel – keine Übergabe-Leiste |
 
-Fehlt die Leiste, ist das kein Fehler, sondern der Produktionsbuild.
+Die Übergabe-Leiste wurde entfernt; Eröffnungstext und Postfach liegen im Projektmanager.
 
 ### Rollen
 
@@ -446,19 +446,12 @@ als `~/patch.patch` ab und führt `cd ~/projekte/adventshaus && git am <
 
 ### Für den Besitzer: Eröffnungstext für einen neuen Chat
 
-Der Text wird an **einer** Stelle gepflegt: `EROEFFNUNGSTEXT` in
-`src/components/Uebergabe.tsx`. Spiel lokal starten (Knopf → „Spiel starten“),
-unter dem Haus liegt die Leiste **ÜBERGABE** mit „Eröffnungstext kopieren“.
-Dort stehen auch „Token – wo?“, „Postfach“ und „Freigaben“.
+Der Eröffnungstext wird im **Projektmanager** gepflegt (führende Quelle `KI-START.md`,
+im Spiel-Repo als `docs/KI-START.md` gespiegelt) und über „Eröffnungstext kopieren“ in die
+Zwischenablage gelegt. Im Spiel gibt es **keine Übergabe-Leiste** mehr.
 
-Der Desktop-Knopf **KI-Start** legt denselben Text aus `~/ki-start.txt` in die
-Zwischenablage. Beide Fassungen müssen gleich bleiben; hier steht bewusst keine
-zweite Kopie, damit sie nicht auseinanderlaufen.
-
-Der Text ist so abschickbar. Die eigentliche Aufgabe folgt im zweiten
-Schritt – erst, wenn die KI den unveränderten Stand gezeigt und nach dem
-Token gefragt hat. Das trennt „kann sie das Projekt korrekt übernehmen?“
-von „kann sie die Aufgabe lösen?“.
+Kein Token im Chat: Der Besitzer legt Patch-Dateien selbst ins Postfach. Die eigentliche
+Aufgabe folgt im zweiten Schritt – erst wenn die KI den unveränderten Stand gezeigt hat.
 
 ---
 
