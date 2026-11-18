@@ -189,3 +189,11 @@ studio-ansicht | src/StudioApp.tsx | export
 
 overflow-x | src/components/HouseView.tsx | overflow-x-hidden
 ki-start | docs/KI-START.md | Die einzige Pflicht-Lektüre
+
+## Adventskalender (Zielbild aus dem Spielkonzept)
+
+adventskalender-datei | src/game/advent.ts | adventFrei
+adventskalender-zoom | src/game/house.ts | drawAdventskalender
+adventskalender-station | src/game/house.ts | "adventskalender"
+adventskalender-tastatur | src/game/house.ts | adventOeffne
+adventskalender-tests | tools/test-adventskalender.mjs | Türchen

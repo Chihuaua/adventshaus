@@ -11,7 +11,13 @@
    Himmel hinter den Fenstern folgt der Tageszeit.
    ======================================================================= */
 
-import { coughPulse, drawLuni, drawZzz, LUNI_COLORS, smokeCycle, type LuniExpr, type LuniState } from "./luni";
+import { coughPulse, drawLuni, drawZzz, LUNI_COLORS, SITZ_HUB, SITZ_MUND, smokeCycle, type LuniExpr, type LuniState } from "./luni";
+import {
+  ADVENT_NACH_DATUM, ADVENT_TAGE, ADVENT_WAND, adventFrei, adventHinweis, adventMischung,
+  adventOeffnen, adventRahmen, adventSternVerdient, adventTuer, adventTuerBei, adventTueren, adventWand,
+  ladeAdvent, type AdventStand,
+} from "./advent";
+import { HandyAblauf, HANDY_TASCHE_SICHTBAR } from "./handy";
 import {
   GOL_BTN,
   GOL_RULES,
@@ -124,13 +130,34 @@ const CELLAR_WALL = "#4b4a48";
 const PILE_MAX = 9;
 /** So viele passen in die Schachtel */
 const PACK_MAX = 23;
-/** Standplatz vor dem Aschenbecher-Tischchen im Keller */
-/** Sitzposition; der Beistelltisch steht direkt in Armreichweite daneben. */
-const ASH_STAND_X = 708;
-/** Beistelltisch im Keller: Plattenoberkante und die darauf liegenden Dinge */
-const SIDE_TOP = 550;
-const ASH_X = 726;
-const PHONE_X = 742;
+/** Sitzplatz, Beistelltisch und Gegenstände der Raucherecke */
+const ASH_STAND_X = 684;
+const SIDE_X = ASH_STAND_X + 24;
+const SIDE_TOP = FLOOR_Y[0] - 30;
+const ASH_X = SIDE_X - 9;
+const BUCKET_X = SIDE_X;
+const FEUERZEUG_TISCH: Pt = [SIDE_X - 15, SIDE_TOP - 1.4];
+const FEUERZEUG_LIEGEND = -Math.PI / 2;
+const FEUERZEUG_TISCH_CHANCE = 0.15;
+const ZUENDEN = {
+  holen: -1.08, tischGriff: -0.68, eingesteckt: -0.16,
+  mund: 0.56, tasche: 0.99, flamme: 1.58, glimmt: 1.83,
+  flammeAus: 2.06, ablage: 2.67, mundGriff: 3.09, ende: 3.56,
+} as const;
+/** Gesundheitstee: Kanne auf der Küchenzeile, Tasse rechts daneben */
+const TEA_X = 642;
+const TEE_TASSE_X = 653;
+const TEA_Y = FLOOR_Y[1] - 40;
+const TEE_POSE_X = 620;
+const TEE_STAND_KANNE = TEA_X - 14;
+const TEE_STAND_TASSE = TEE_TASSE_X - 11;
+const KANNENGRIFF: Pt = [-10, -6];
+const TASSENGRIFF: Pt = [4.1, -2.8]; // Griff an der Henkelseite, weg vom Hals
+const AUSGUSS: Pt = [12, -10];
+const TEE_SCHLUCK = { start: 5.2, dauer: 0.86, anzahl: 3 } as const;
+const TEE_TRINKEN_ENDE = TEE_SCHLUCK.start + TEE_SCHLUCK.dauer * TEE_SCHLUCK.anzahl;
+const TEE_ABGESETZT = TEE_TRINKEN_ENDE + 0.5;
+const TEA_DAUER = TEE_ABGESETZT + 0.3;
 const DG_X0 = 262; // Dachgeschoss-Boden beginnt hier, links davon Treppenhaus
 const OG_X1 = 694; // 1.-Stock-Boden endet hier, rechts davon Treppenhaus
 
@@ -141,6 +168,8 @@ const KOFFER_Y = 522;
 const KOFFER_W = 34;
 const KOFFER_H = 26;
 const LUNI_SCALE = 1.08;
+/** Adventskalender: Zurück-Knopf im Vollbild (Fernseh-tauglich, ≥ 24 hoch). */
+const ADVENT_ZURUECK = { x: 836, y: 30, w: 100, h: 28 };
 const SPEED = 80;
 
 /** „Paulchen“: das bisher einzige Saxophonstück. Weitere Lieder später ergänzen. */
@@ -176,6 +205,40 @@ const RANGE: [number, number][] = [
 
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const weich = (v: number) => {
+  const p = clamp(v, 0, 1);
+  return p * p * (3 - 2 * p);
+};
+const punktMischen = (a: Pt, b: Pt, p: number): Pt => [lerp(a[0], b[0], p), lerp(a[1], b[1], p)];
+const drehen = ([x, y]: Pt, winkel: number): Pt => [x * Math.cos(winkel) - y * Math.sin(winkel), x * Math.sin(winkel) + y * Math.cos(winkel)];
+
+function teeStandX(t: number) {
+  // Neben Kanne und Tasse treten, zum Einschenken wieder etwas nach links.
+  if (t < 0.4) return lerp(TEE_POSE_X, TEE_STAND_TASSE, weich(t / 0.32));
+  if (t < 0.83) return lerp(TEE_STAND_TASSE, TEE_STAND_KANNE, weich((t - 0.4) / 0.43));
+  if (t < 1.29) return TEE_STAND_KANNE;
+  if (t < 1.62) return lerp(TEE_STAND_KANNE, TEE_POSE_X, weich((t - 1.29) / 0.33));
+  if (t < 3.8) return TEE_POSE_X;
+  if (t < 4.22) return lerp(TEE_POSE_X, TEE_STAND_KANNE, weich((t - 3.8) / 0.42));
+  if (t < TEE_TRINKEN_ENDE) return TEE_STAND_KANNE;
+  if (t < TEE_ABGESETZT) return lerp(TEE_STAND_KANNE, TEE_STAND_TASSE, weich((t - TEE_TRINKEN_ENDE) / (TEE_ABGESETZT - TEE_TRINKEN_ENDE)));
+  return lerp(TEE_STAND_TASSE, TEE_POSE_X, weich((t - TEE_ABGESETZT) / (TEA_DAUER - TEE_ABGESETZT)));
+}
+
+function teeSchluck(t: number) {
+  const fortschritt = clamp((t - TEE_SCHLUCK.start) / TEE_SCHLUCK.dauer, 0, TEE_SCHLUCK.anzahl);
+  const schlucke = Math.floor(fortschritt);
+  const takt = fortschritt - schlucke;
+  // Tasse nach jedem Schluck sichtbar etwas senken. Der Tee wirkt nur am Mund.
+  const hub = weich(takt / 0.25) * (1 - weich((takt - 0.64) / 0.26));
+  const getrunken = (schlucke + weich((takt - 0.25) / 0.39)) / TEE_SCHLUCK.anzahl;
+  return { hub, getrunken };
+}
+
+function teeFuellstand(t: number, getrunken: number) {
+  return t < 3.8 ? clamp((t - 1.6) / 2.2, 0, 1) : 1 - getrunken;
+}
+
 const hash = (n: number) => {
   const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
   return s - Math.floor(s);
@@ -412,6 +475,11 @@ export const STATIONS: Station[] = [
   { id: "garderobe", label: "Garderobe", floor: 1, x: 220, face: 1, state: "act", expr: "neutral", hits: [[196, 372, 48, 76]] },
   { id: "buecher", label: "Bücherregal", floor: 1, x: 278, face: 1, state: "act", expr: "happy", prop: "book", hits: [[258, 356, 40, 92]] },
   {
+    // Hängt im Wohnzimmer über dem Fernseher (TV-Mitte x=465) und ist daran ausgerichtet.
+    id: "adventskalender", label: "Adventskalender", floor: 1, x: 465, face: 1, state: "idle", expr: "happy",
+    hits: [[438, 336, 54, 56]],
+  },
+  {
     id: "sofa", label: "Sofa & Fernseher", floor: 1, x: 372, face: 1, state: "sit", expr: "happy", yOff: -16, screen: "tv_e",
     hits: [[306, 402, 96, 46], [438, 392, 54, 56]],
   },
@@ -419,8 +487,8 @@ export const STATIONS: Station[] = [
   { id: "kuehlschrank", label: "Kühlschrank", floor: 1, x: 593, face: 1, state: "act", expr: "happy", hits: [[574, 370, 38, 78]] },
   { id: "kaffee", label: "Kaffeemaschine", floor: 1, x: 674, face: 1, state: "act", expr: "happy", prop: "cup", hits: [[662, 386, 26, 26]] },
   {
-    id: "tee", label: "Gesundheitstee", floor: 1, x: 642, face: 1, state: "act", expr: "happy",
-    prop: "cup", hits: [[616, 380, 32, 30]],
+    id: "tee", label: "Gesundheitstee", floor: 1, x: TEE_POSE_X, face: 1, state: "idle", expr: "happy",
+    hits: [[628, 380, 30, 30]],
   },
   {
     id: "herd", label: "Herd", floor: 1, x: 708, face: 1, state: "act", expr: "focus",
@@ -476,14 +544,18 @@ export const STATIONS: Station[] = [
     id: "datenkoffer", label: "Datenkoffer", floor: 0, x: 461, face: 1, state: "act", expr: "think",
     hits: [[440, 516, 40, 34]],
   },
-  { id: "leinen", label: "Jacken & Hundeleinen", floor: 0, x: 640, face: 1, state: "act", expr: "neutral", hits: [[604, 486, 76, 86]] },
+  { id: "leinen", label: "Jacken & Hundeleinen", floor: 0, x: 640, face: 1, state: "act", expr: "neutral", hits: [[604, 486, 66, 58]] },
   {
-    id: "raucherstuhl", label: "Stuhl", floor: 0, x: 708, face: 1, state: "sit", expr: "happy",
-    yOff: -10, hits: [[694, 536, 34, 36]],
+    id: "raucherstuhl", label: "Stuhl", floor: 0, x: ASH_STAND_X, face: 1, state: "sit", expr: "happy",
+    yOff: -10, hits: [[ASH_STAND_X - 14, 526, 25, 46]],
   },
   {
-    id: "aschenbecher", label: "Aschenbecher", floor: 0, x: 726, face: 1, state: "idle",
-    expr: "neutral", hits: [[714, 534, 21, 24]],
+    id: "aschenbecher", label: "Aschenbecher", floor: 0, x: ASH_X, face: 1, state: "idle",
+    expr: "neutral", hits: [[ASH_X - 11, SIDE_TOP - 20, 24, 24]],
+  },
+  {
+    id: "eimer", label: "Eimer", floor: 0, x: BUCKET_X - 17, face: 1, state: "idle",
+    expr: "neutral", hits: [[BUCKET_X - 12, FLOOR_Y[0] - 24, 24, 24]],
   },
   {
     id: "aussentuer", label: "Tür zum Garten", floor: 0, x: 818, face: 1, state: "idle", expr: "neutral",
@@ -967,7 +1039,7 @@ function fridge(c: C, x: number, F: number) {
 }
 
 function kitchenCounter(c: C, x: number, F: number, w: number) {
-  rect(c, x, F - 36, w, 36, "#9b7447");
+  rect(c, x, F - 36, w, 36, "#3f5a6b");
   for (const dx of [0, w * 0.34, w * 0.67, w - 1.5]) rect(c, x + dx, F - 36, 1.5, 36, "rgba(0,0,0,.28)");
   rect(c, x - 1, F - 40, w + 2, 4, "#efe8d8");
   rrect(c, x + 6, F - 41, 24, 4, 2, "#aeb8bb");
@@ -977,7 +1049,7 @@ function kitchenCounter(c: C, x: number, F: number, w: number) {
   rrect(c, x + 50, F - 58, 17, 18, 3, "#2a2f35");
   rect(c, x + 53, F - 46, 11, 6, "#4a2a1a");
   disc(c, x + 62, F - 54, 1.4, "#ff9f43");
-  rrect(c, x + 36, F - 46, 6, 6, 1.5, "#f6f3ea");
+  rrect(c, x + 45, F - 46, 5, 6, 1.2, "#f6f3ea");
 }
 
 function stove(c: C, x: number, F: number) {
@@ -1024,37 +1096,82 @@ function cigCase(c: C, x: number, F: number, n: number, open = false) {
   for (let i = 0; i < dots; i++) disc(c, x - 2.6 + i * 2.6, y - 2.6, 0.7, "#e2b24a");
 }
 
-/** Kleiner Beistelltisch neben dem Raucherstuhl */
+/** Kleiner Beistelltisch neben dem Raucherstuhl (höher für Eimer darunter) */
 function sideTable(c: C, x: number, F: number) {
-  const y = F - 22;
+  const y = F - 30;
   rrect(c, x - 20, y, 40, 5, 2, "#8a5a34");
   rect(c, x - 16, y + 5, 4, F - y - 5, "#6f4a2a");
   rect(c, x + 12, y + 5, 4, F - y - 5, "#6f4a2a");
 }
 
-/** Teekanne mit Tasse auf der Küchenzeile – der Gesundheitstee */
-function teaPot(c: C, x: number, F: number) {
-  const y = F - 40;
-  // Kanne
-  rrect(c, x - 7, y - 11, 14, 11, 4, "#5ea88a");
-  rect(c, x - 5, y - 13, 10, 3, "#4a8d73");
-  disc(c, x, y - 14.5, 1.6, "#e2b24a");
+/** Ascheneimer unter dem Beistelltisch */
+function ashBucket(c: C, x: number, F: number, butts: number) {
+  poly(c, [[x - 6.5, F - 15], [x + 6.5, F - 15], [x + 4.8, F], [x - 4.8, F]], "#59626a");
+  poly(c, [[x - 6.5, F - 15], [x - 2, F - 15], [x - 1.5, F], [x - 4.8, F]], "rgba(255,255,255,.1)");
+  rect(c, x - 7, F - 16, 14, 1.8, "#7f8a93");
+  c.fillStyle = "#2b3036";
+  c.beginPath();
+  c.ellipse(x, F - 14.5, 5.4, 1.2, 0, 0, Math.PI * 2);
+  c.fill();
+  if (butts > 0) {
+    // Asche und Stummel im Eimer
+    c.fillStyle = "#8a857e";
+    c.beginPath();
+    c.ellipse(x, F - 14.2, 4.4, 0.9, 0, 0, Math.PI * 2);
+    c.fill();
+    const n = Math.min(butts, 4);
+    for (let i = 0; i < n; i++) {
+      rect(c, x - 3 + i * 1.8, F - 15.2, 2.2, 1.2, "#e5decb");
+    }
+  }
+  c.strokeStyle = "#434a52";
+  c.lineWidth = 0.9;
+  c.beginPath();
+  c.arc(x, F - 14.5, 5.5, Math.PI * 0.1, Math.PI * 0.9);
+  c.stroke();
+}
+
+/** Teekanne; Ursprung ist die Bodenmitte, `tilt` kippt sie zum Einschenken. */
+function teaKettle(c: C, x: number, y: number, tilt = 0) {
+  c.save();
+  c.translate(x, y);
+  c.rotate(tilt);
+  rrect(c, -7, -11, 14, 11, 4, "#5ea88a");
+  rect(c, -5, -13, 10, 3, "#4a8d73");
+  disc(c, 0, -14.5, 1.6, "#e2b24a");
   // Ausguss und Henkel
-  poly(c, [[x + 6, y - 8], [x + 12, y - 11], [x + 12, y - 9], [x + 7, y - 5]], "#5ea88a");
+  poly(c, [[6, -8], [12, -11], [12, -9], [7, -5]], "#5ea88a");
   c.strokeStyle = "#4a8d73";
   c.lineWidth = 1.8;
   c.beginPath();
-  c.arc(x - 8, y - 6, 3.4, Math.PI * 1.5, Math.PI * 0.5);
+  c.arc(-8, -6, 3.4, Math.PI * 0.5, Math.PI * 1.5);
   c.stroke();
-  // Tasse daneben
-  rrect(c, x + 10, y - 5, 6, 5, 1.2, "#f6f3ea");
-  rect(c, x + 11, y - 4, 4, 1.4, "#9ec98a");
+  c.restore();
 }
 
-/** Handy, das auf dem Tischchen liegt */
-function phoneOnTable(c: C, x: number, y: number) {
-  rrect(c, x - 3.4, y - 1.6, 6.8, 3.2, 1, "#23262e");
-  rect(c, x - 2.6, y - 1, 5.2, 2, "#3b4350");
+/** Teetasse mit Füllstand; Ursprung ist die Bodenmitte. */
+function teaCup(c: C, x: number, y: number, fill: number, tilt = 0) {
+  c.save();
+  c.translate(x, y);
+  c.rotate(tilt);
+  rrect(c, -3, -5, 6, 5, 1.2, "#f6f3ea");
+  const h = clamp(fill, 0, 1) * 3.4;
+  if (h > 0.12) {
+    rect(c, -2.2, -0.9 - h, 4.4, h, "#9ec98a");
+    rect(c, -2.2, -0.9 - h, 4.4, 0.5, "#b9dca6");
+  }
+  c.strokeStyle = "#f6f3ea";
+  c.lineWidth = 0.9;
+  c.beginPath();
+  c.arc(-3.4, -2.8, 1.6, Math.PI - 1.2, Math.PI + 1.2);
+  c.stroke();
+  c.restore();
+}
+
+/** Teekanne mit Tasse auf der Küchenzeile – der Gesundheitstee */
+function teaPot(c: C, kanne = true, tasse = true, fill = 0) {
+  if (kanne) teaKettle(c, TEA_X, TEA_Y);
+  if (tasse) teaCup(c, TEE_TASSE_X, TEA_Y, fill);
 }
 
 /** Gedrehte Zigaretten, die sich neben der Dose stapeln */
@@ -1436,17 +1553,61 @@ function coatBoard(c: C, x: number, F: number) {
   c.moveTo(x + 60, F - 79);
   c.quadraticCurveTo(x + 62, F - 42, x + 57, F - 42);
   c.stroke();
-  // Schuhe
-  rrect(c, x + 4, F - 7, 12, 6, 2, "#202833");
-  rrect(c, x + 19, F - 7, 12, 6, 2, "#a6483c");
-  rrect(c, x + 34, F - 7, 12, 6, 2, "#e8e2d2");
 }
 
-function dogBowls(c: C, x: number, F: number) {
-  rrect(c, x, F - 6, 12, 6, 2, "#c9453a");
-  rrect(c, x + 14, F - 6, 12, 6, 2, "#3f6fb0");
-  rect(c, x + 2, F - 7, 8, 2, "#8a5a34");
-  rect(c, x + 16, F - 7, 8, 2, "#8a5a34");
+/** Offene alte Kellertuer: Die Abstellkammer liegt hinter der Rueckwand. */
+function abstellkammer(c: C, x: number, F: number) {
+  const y = F - 82, w = 57;
+  rect(c, x - 3, y - 3, w + 7, 85, "#51453a");
+  c.save();
+  c.beginPath();
+  c.rect(x, y, w, 82);
+  c.clip();
+  const dunkel = c.createLinearGradient(x, y, x + w, F);
+  dunkel.addColorStop(0, "#242822");
+  dunkel.addColorStop(1, "#48473e");
+  c.fillStyle = dunkel;
+  c.fillRect(x, y, w, 82);
+  poly(c, [[x, F], [x + 11, F - 21], [x + 43, F - 21], [x + w, F]], "#50483b");
+  line(c, x + 11, F - 21, x + 11, y + 3, "#33352c", 1);
+  line(c, x + 11, F - 21, x + 43, F - 21, "#34352d", 1.2);
+  // Schief gestapelte Kartons, Bretter und ein eingerollter Schlauch.
+  shelving(c, x + 14, F - 20, 28, 47, 2);
+  c.save();
+  c.globalAlpha = 0.42;
+  rect(c, x + 14, y + 15, 28, 47, "#252621");
+  c.restore();
+  line(c, x + 14, F - 10, x + 4, F - 43, "#7b644a", 3);
+  line(c, x + 16, F - 12, x + 9, F - 47, "#514438", 2);
+  cardboard(c, x + 13, F - 8, 17, 13);
+  c.save();
+  c.translate(x + 20, F - 22);
+  c.rotate(-0.17);
+  cardboard(c, -7, 0, 13, 9);
+  c.restore();
+  rrect(c, x + 29, F - 17, 17, 12, 2, "#454b46");
+  rect(c, x + 28, F - 17, 19, 2, "#615d51");
+  line(c, x + 38, F - 19, x + 46, F - 39, "#89735a", 1.6);
+  c.strokeStyle = "#92907a";
+  c.lineWidth = 1.1;
+  for (const r of [3.4, 5.1, 6.8]) {
+    c.beginPath();
+    c.ellipse(x + 36, F - 7, r, r * 0.49, -0.19, 0, Math.PI * 2);
+    c.stroke();
+  }
+  c.restore();
+  // Balken, Scharniere und abgenutztes Blatt stehen vor dem dunklen Raum.
+  rect(c, x - 3, y - 3, 4, 82, "#796955");
+  rect(c, x - 3, y - 3, w + 7, 4, "#857463");
+  rect(c, x - 1, F - 2, w + 3, 2, "#746555");
+  poly(c, [[x + w - 2, y + 1], [x + w + 18, y - 5], [x + w + 18, F - 0.5], [x + w - 2, F - 4]], "#655044");
+  poly(c, [[x + w + 1, y + 8], [x + w + 15, y + 4], [x + w + 15, F - 11], [x + w + 1, F - 14]], "#524337");
+  for (const dx of [3, 7, 12]) {
+    line(c, x + w + dx, y + 9 - dx * 0.24, x + w + dx, F - 14 + dx * 0.22, "#76604b", 0.65);
+  }
+  for (const dy of [13, 63]) rect(c, x + w - 3, y + dy, 5, 3, "#33332e");
+  rect(c, x + w + 11, y + 38, 3, 8, "#393832");
+  disc(c, x + w + 12.5, y + 41, 1.8, "#a39571");
 }
 
 /**
@@ -1621,18 +1782,164 @@ function saxStand(c: C, x: number, F: number) {
 }
 
 /** Zigarette in der Hand, mit glimmender Spitze */
-function cigarette(c: C, x: number, y: number, face: 1 | -1, burn: number) {
+function cigarette(c: C, x: number, y: number, face: 1 | -1, burn: number, frac = 1, winkel = -0.42) {
   c.save();
   c.translate(x, y);
   c.scale(face, 1);
-  c.rotate(-0.42);
-  rect(c, -1.2, -1, 10, 2, "#f6f3ea");
+  c.rotate(winkel);
+  // Filter fest am Mundende (5.8..8.8), Papier brennt langsam von der Spitze zurück.
+  const rest = clamp(frac, 0, 1);
+  const len = 2.0 + 5.0 * rest;
+  const tip = 5.8 - len;
+  const unlitFresh = burn <= 0.02 && rest >= 0.99;
+  const ash = unlitFresh ? 0 : (1 - rest) * 2.4;
+  rect(c, tip, -1, len, 2, "#f6f3ea");
   rect(c, 5.8, -1, 3, 2, "#e2b24a");
-  c.fillStyle = burn > 0.02 ? "#ff8c42" : "#c2b8a6";
-  c.beginPath();
-  c.arc(-1.2, 0, 1.3, 0, Math.PI * 2);
-  c.fill();
+  if (ash > 0.15) {
+    rect(c, tip - ash, -0.9, ash + 0.3, 1.8, "#9c958c");
+    rect(c, tip - ash, -0.9, ash + 0.3, 0.6, "#b6afa5");
+  }
+  if (!unlitFresh) {
+    c.fillStyle = burn > 0.02 ? "#ff8c42" : "#9c958c";
+    c.beginPath();
+    c.arc(tip, 0, 1.15, 0, Math.PI * 2);
+    c.fill();
+  }
   c.restore();
+}
+
+const KIPPE_WINKEL = -0.12;
+const KIPPE_GRIFF: Pt = [3.4, 0.7];
+const KIPPE_FILTERENDE = 8.8;
+const FLAMMEN_HOEHE = 6.4;
+
+function kippeAmFilter(c: C, [x, y]: Pt, face: 1 | -1, burn: number, frac: number) {
+  cigarette(c, x + face * KIPPE_FILTERENDE * Math.cos(KIPPE_WINKEL),
+    y - KIPPE_FILTERENDE * Math.sin(KIPPE_WINKEL), face === 1 ? -1 : 1, burn, frac, KIPPE_WINKEL);
+}
+
+type HandyPose = NonNullable<HandyAblauf["pose"]>;
+
+function handyGriff(p: HandyPose): Pt {
+  const fortschritt = clamp((p.oben - HANDY_TASCHE_SICHTBAR) / (1 - HANDY_TASCHE_SICHTBAR), 0, 1);
+  const tipp = p.modus === "write" && p.benutzt ? Math.pow(Math.max(0, Math.sin(p.zeit * 16)), 3) * 0.55 : 0;
+  const scroll = p.modus === "scroll" && p.benutzt ? Math.pow(Math.max(0, Math.sin(p.zeit * 3.7)), 2) * 0.85 : 0;
+  const bild: Pt = [lerp(11, 12.8, p.quer), lerp(-28, -32, p.quer) + tipp - scroll];
+  const schoss: Pt = [9, -21], tasche: Pt = [4.8, -19], ohr: Pt = [8.8, -40.1];
+  return p.sichtbar ? punktMischen(tasche, punktMischen(bild, ohr, p.ohr), weich(fortschritt))
+    : punktMischen(schoss, tasche, weich(p.oben / HANDY_TASCHE_SICHTBAR));
+}
+
+function drawHandy(c: C, [x, y]: Pt, face: 1 | -1, p: HandyPose, t: number) {
+  if (!p.sichtbar) return;
+  const griff: Pt = [lerp(1.9, -1.4, p.ohr), -0.5];
+  const winkel = -0.23 - p.quer * 1.31 + p.ohr * 0.49;
+  const fortschritt = clamp((p.oben - HANDY_TASCHE_SICHTBAR) / 0.24, 0, 1);
+  c.save();
+  c.translate(x, y);
+  c.scale(face, 1);
+  c.rotate(winkel);
+  c.translate(-griff[0], -griff[1]);
+  // An der Hosentasche wird das Geraet vom Stoff verdeckt.
+  c.beginPath();
+  c.rect(-7, -9, 14, 14 * fortschritt);
+  c.clip();
+  const breit = lerp(6.5, 4.4, p.ohr);
+  rrect(c, -breit / 2, -7.1, breit, 11, 1.2, "#1b1e26");
+  if (p.ohr > 0.5) {
+    rect(c, -1.3, -6.15, 2.6, 1.15, "#424b56");
+    disc(c, -0.65, -5.6, 0.47, "#8a9f9f");
+  } else {
+    rect(c, -2.45, -6.25, 4.9, 8.6, "#a0d8fa");
+    if (p.modus === "write") {
+      rect(c, -2.4, -1.3, 4.8, 3.65, "#5c85a0");
+      for (let i = 0; i < 9; i++) rect(c, -2 + (i % 3) * 1.35, -0.9 + Math.floor(i / 3) * 0.95, 0.9, 0.6, "#bbdef1");
+      rect(c, -1.75, -4.9, 1 + (Math.floor(p.zeit * 5) % 4) * 0.8, 1.1, "#eff8ff");
+    } else if (p.modus === "video") {
+      const versatz = (p.zeit * 1.75) % 4.5;
+      rect(c, -2.45, -5.75, 4.9, 7.4, "#536c89");
+      rect(c, -2.45, -5.1 + versatz, 4.9, 2, "#e8ac8b");
+      poly(c, [[-0.9, -2.9], [1.05, -2], [-0.9, -1.05]], "#eef6ff");
+    } else {
+      for (let i = 0; i < 3; i++) {
+        const ly = -5.9 + ((p.zeit * 2.9 + i * 2.6) % 7.75);
+        rect(c, -1.85, ly, 3.7, 0.54, "#507e9b");
+      }
+    }
+  }
+  c.restore();
+  if (p.benutzt && (p.modus === "write" || p.modus === "scroll")) {
+    const taste = p.modus === "write" ? Math.sin(t * 16) : Math.sin(t * 3.7);
+    disc(c, x + face * (-0.9 - Math.max(0, taste) * 1.1), y - 0.4, 0.85, LUNI_COLORS.skinShade);
+  }
+}
+
+function feuerzeug(c: C, [x, y]: Pt, winkel: number, flamme = false, t = 0) {
+  c.save();
+  c.translate(x, y);
+  c.rotate(winkel);
+  rrect(c, -1.4, -3.6, 2.8, 4.4, 0.7, "#d94a38");
+  rect(c, -1.2, -4.7, 2.4, 1.2, "#c6cfd6");
+  if (flamme) {
+    const flackern = Math.sin(t * 26) * 0.35;
+    c.fillStyle = "#ff9628";
+    c.beginPath();
+    c.ellipse(0, -FLAMMEN_HOEHE, 1.2 + flackern * 0.2, 2.1 + flackern * 0.3, 0, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = "#fff199";
+    c.beginPath();
+    c.ellipse(0, -5.9, 0.6, 1.1, 0, 0, Math.PI * 2);
+    c.fill();
+  }
+  c.restore();
+}
+
+function zuendPose(x: number, y: number, face: 1 | -1, t: number, aufTisch: boolean) {
+  const schoss: Pt = [8.5, -23.5];
+  const tasche: Pt = [-1.5, -19];
+  const [mx, my] = SITZ_MUND;
+  const mundGriff: Pt = [mx + KIPPE_GRIFF[0] / LUNI_SCALE, my + KIPPE_GRIFF[1] / LUNI_SCALE];
+  const tisch: Pt = [(FEUERZEUG_TISCH[0] - x) / (face * LUNI_SCALE), (FEUERZEUG_TISCH[1] - y) / LUNI_SCALE - SITZ_HUB];
+  const laenge = KIPPE_FILTERENDE + 1.2; // Filter bis zur Spitze der unbenutzten Zigarette
+  const flammenGriff: Pt = [mx + laenge * Math.cos(KIPPE_WINKEL) / LUNI_SCALE,
+    my + (FLAMMEN_HOEHE - laenge * Math.sin(KIPPE_WINKEL)) / LUNI_SCALE];
+  const bewegung = (a: Pt, b: Pt, anfang: number, ende: number): Pt => {
+    const p = weich((t - anfang) / (ende - anfang));
+    return [lerp(a[0], b[0], p), lerp(a[1], b[1], p)];
+  };
+  let rechts: Pt;
+  let winkel = 0;
+  if (t < ZUENDEN.tischGriff) {
+    rechts = bewegung(schoss, tisch, ZUENDEN.holen, ZUENDEN.tischGriff);
+  } else if (t < ZUENDEN.eingesteckt) {
+    rechts = bewegung(tisch, tasche, ZUENDEN.tischGriff, ZUENDEN.eingesteckt);
+    winkel = FEUERZEUG_LIEGEND * (1 - weich((t - ZUENDEN.tischGriff) / 0.34));
+  } else if (t < 0) {
+    rechts = bewegung(tasche, schoss, ZUENDEN.eingesteckt, 0);
+  } else if (t < ZUENDEN.mund) {
+    rechts = bewegung(schoss, mundGriff, 0, ZUENDEN.mund);
+  } else if (t < ZUENDEN.tasche) {
+    rechts = bewegung(mundGriff, tasche, ZUENDEN.mund, ZUENDEN.tasche);
+  } else if (t < ZUENDEN.flamme) {
+    rechts = bewegung(tasche, flammenGriff, ZUENDEN.tasche, ZUENDEN.flamme);
+  } else if (t < ZUENDEN.flammeAus) {
+    rechts = flammenGriff;
+  } else if (t < ZUENDEN.ablage) {
+    rechts = bewegung(flammenGriff, aufTisch ? tisch : tasche, ZUENDEN.flammeAus, ZUENDEN.ablage);
+    if (aufTisch) winkel = FEUERZEUG_LIEGEND * weich((t - ZUENDEN.flammeAus) / (ZUENDEN.ablage - ZUENDEN.flammeAus));
+  } else if (t < ZUENDEN.mundGriff) {
+    rechts = bewegung(aufTisch ? tisch : tasche, mundGriff, ZUENDEN.ablage, ZUENDEN.mundGriff);
+  } else {
+    rechts = bewegung(mundGriff, schoss, ZUENDEN.mundGriff, ZUENDEN.ende);
+  }
+  return {
+    rechts,
+    mund: [x + mx * face * LUNI_SCALE, y + (my + SITZ_HUB) * LUNI_SCALE] as Pt,
+    kippeImMund: t >= ZUENDEN.mund && t < ZUENDEN.mundGriff,
+    feuerzeugInHand: (t >= ZUENDEN.tischGriff && t < ZUENDEN.eingesteckt) || (t >= ZUENDEN.tasche && t < ZUENDEN.ablage),
+    flamme: t >= ZUENDEN.flamme && t < ZUENDEN.flammeAus,
+    winkel,
+  };
 }
 
 /** Draußen rechts: Garten mit Weg zur Kellertür */
@@ -1830,6 +2137,8 @@ function drawHouse(
   /** Gruselhaus: welche Räume umgestaltet sind (null = normales Haus) */
   gr: GruselRaeume | null = null,
   bettBelegt = false,
+  /** Gesundheitstee: was Luni gerade in der Hand hält, fehlt auf der Zeile */
+  tee: { kanne: boolean; tasse: boolean; fill: number } = { kanne: true, tasse: true, fill: 0 },
 ) {
   drawExterior(c);
   drawRoof(c);
@@ -1877,7 +2186,7 @@ function drawHouse(
   wallBand(c, 560, OG_X1, FO + SLAB, FE, "#dcbc70", "#c9a458", 34);
   // Keller
   wallBand(c, CEL_X0, 590, FE + SLAB, FK, "#6f746f", "#5a5f5a", 26);
-  wallBand(c, 590, HR, FE + SLAB, FK, "#7d8670", "#6b5236", 40);
+  wallBand(c, 590, HR, FE + SLAB, FK, "#6f746f", "#5a5f5a", 26);
 
   /* ---- Böden ---- */
   const WOOD = "#a06f45";
@@ -1940,7 +2249,6 @@ function drawHouse(
   if (gr?.raumstation) drawSpaceWindow(c, RS.fenster.x, RS.fenster.y, RS.fenster.r);
   else windowRect(c, sky, 330, 98, 56, 44, { mull: 2 });
   roundWindow(c, sky, 590, 104, 20);
-  windowRect(c, sky, 704, 472, 36, 20, { mull: 2 });
 
   /* ---- Erdgeschoss ---- */
   haustuer(c, sky, 135, FE);
@@ -1969,7 +2277,7 @@ function drawHouse(
   } else {
     fridge(c, 574, FE);
     kitchenCounter(c, 614, FE, 76);
-    teaPot(c, 630, FE);
+    teaPot(c, tee.kanne, tee.tasse, tee.fill);
     stove(c, 690, FE);
     ceilingLamp(c, 650, FO + SLAB, 14);
     kitchenTable(c, 724, FE, 74);
@@ -2043,9 +2351,9 @@ function drawHouse(
   xmasBox(c, 526, FK);
   bulb(c, 470, FE + SLAB, 14);
   coatBoard(c, 604, FK);
-  dogBowls(c, 668, FK);
-  smokerChair(c, 696, FK);
-  sideTable(c, 732, FK);
+  abstellkammer(c, SIDE_X + 26, FK);
+  smokerChair(c, ASH_STAND_X - 12, FK);
+  sideTable(c, SIDE_X, FK);
   sideDoor(c, HR - 1, FK - 88, 88, door.open);
   bulb(c, 700, FE + SLAB, 14);
 }
@@ -2308,23 +2616,34 @@ export class House {
   private gardenWant = 0;
   /** gewünschter Türzustand; wird erst beim Ankommen an der Tür umgesetzt */
   private gardenTarget: 0 | 1 | null = null;
-  /** Zigarette liegt im Aschenbecher (nach dem Abbrechen des Rauchens) */
+  /** Zigarette liegt auf dem Rand des Aschenbechers (brennend oder ausgegangen) */
   private cigButt = false;
-  /** Armbewegung zum Aschenbecher: "put" legt ab, "take" nimmt auf */
-  private ashMove: "put" | "take" | null = null;
-  /** Was bewegt wird: die Zigarette oder das Handy */
-  private ashItem: "cig" | "phone" = "cig";
-  /** Richtung: nehmen oder weglegen */
-  private ashDir: "take" | "put" = "put";
+  /** Ausgedrückte Stummel im Aschenbecher (kleiner Haufen) */
+  private ashButts = 0;
+  /** Geleerte Stummel im Ascheneimer */
+  private bucketButts = 0;
+  /** Armbewegung zum Aschenbecher: "put" legt ab, "take" nimmt auf, "quench" drückt aus */
+  private ashMove: "put" | "take" | "quench" | null = null;
+  /** kurzer Rauchstoß beim Ausdrücken im Aschenbecher (Sekunden) */
+  private quenchPuff = 0;
+  /** Gesamtbrenndauer der aktuellen Zigarette, für die sichtbare Asche */
+  private burnTotal = 0;
+  /** Negative Zeit: das Feuerzeug vor dem Anzünden vom Tisch einstecken. */
+  private lightT: number | null = null;
+  private lightAufTisch = false;
+  private lightAblegen = false;
+  private lightNext: LuniCommand | null = null;
+  /** Aschenbecher-Leeren-Animation am Eimer (Sekunden) */
+  private emptyT = 0;
   private ashT = 0;
   /** nach dem Ablegen auszuführender Befehl */
   private ashNext: LuniCommand | null = null;
-  /** nach dem Ablegen folgt die Handy-Pause statt eines Befehls */
-  private ashThenPhone = false;
+  /** Beim Handygebrauch bleibt sie nach dem Griff am Aschenbecher sitzen. */
+  private ashAmStuhl = false;
+  /** Der Aschenbecher wird sitzend am Stuhl bedient (true) oder stehend davor (false). */
+  private ashSitzend = false;
   /** true = sie ist zum Rauchen hier (über den Aschenbecher bestellt) */
   private smokeRequested = false;
-  /** Handy-Modus beim Sitzen: scrollen oder telefonieren */
-  private phoneMode: "scroll" | "call" = "scroll";
   /** wie lange sie schon gemütlich auf dem Stuhl sitzt */
   private sitIdleT = 0;
   /** Aufsteh-Animation läuft (vom Stuhl) */
@@ -2357,15 +2676,14 @@ export class House {
   /** 0 = fit, 1 = kräftig angeschlagen (Husten, grünes Gesicht) */
   private sick = 0;
   private teaT = 0;
+  /** Tee-Ablauf: was gerade gezeichnet statt statisch gemalt wird */
+  private teaKanneWeg = false;
+  private teaTasseWeg = false;
+  private teaFuellung = 0;
 
-  // Handy-Pause während des Rauchens
-  /** sie geht gerade zum Stuhl zurück, um dort das Handy herauszuholen */
-  private phoneQueued = false;
-  private onPhone = false;
-  private phoneT = 0;
-  private phoneReact: "look" | "laugh" | "shake" = "look";
-  private phoneReactT = 0;
-  /** wie lange sie schon ununterbrochen raucht (für die Pause) */
+  private handy: HandyAblauf | null = null;
+  private handyDanach: LuniCommand | null = null;
+  /** Zeit seit dem Anzünden oder Wiederaufnehmen; treibt den Rauchzyklus. */
   private smokeIdleT = 0;
 
   // Zigarettenschachtel
@@ -2402,6 +2720,23 @@ export class House {
   private golPhase: "reach" | "carry" | "insert" | "watch" | "rise" | "toButton" | "press" | "back" | null = null;
   private golAnimT = 0;
   private golFullscreen = false;
+
+  // Adventskalender (Zielbild aus dem Spielkonzept; Prototyp: alle Türchen frei)
+  private adventFullscreen = false;
+  /** 0 = an der Wand, 1 = voll herangezoomt */
+  private adventZoomT = 0;
+  private adventSchliessen = false;
+  /** Eigene Uhr für Funkeln, Lichterkette und Schnee im Overlay. */
+  private adventT = 0;
+  private adventFokus = 0;
+  private adventHover = -1;
+  /** Öffnungsanimation je Türchen-Index (0..1). */
+  private adventAnims = new Map<number, number>();
+  private adventStand: AdventStand = { jahr: 0, offen: [], reihenfolge: [] };
+  private adventTuerenCache: ReturnType<typeof adventTueren> | null = null;
+  private adventWarteT = 0;
+  /** Kurzer Goldstern-Moment, wenn die geheime Reihenfolge gelingt. */
+  private adventSternT = 0;
 
   /* --- Datenkoffer (Osterei): Deckel, Antenne und der Update-Hinweis --- */
   private kofferPhase: "oeffnen" | "offen" | "schliessen" | null = null;
@@ -2519,8 +2854,6 @@ export class House {
   private rollT = 0;
   /** Restbrennzeit der aktuellen Zigarette in Sekunden (3,5–5 Minuten) */
   private burnLeft = 0;
-  /** wurde die Zigarette beim "Nehmen" aus dem Aschenbecher geholt? */
-  private takeLit = false;
   private doorT = 0;
   /** Einmal pro Tuerszene schalten (Schleusentuer, Verbindungstuer). */
   private doorActed = false;
@@ -2545,7 +2878,7 @@ export class House {
   /** Wetter in beiden Häusern: Echtwetter gespeichert, Testwetter flüchtig. */
   private wetter: WetterState = ladeWetter();
   private wetterAdd: "plus" | "minus" | null = null;
-  private wetterOffen = true;
+  private wetterOffen = false;
   private wetterHover: WetterTreffer | null = null;
   private wetterT = 0;
   /** Ofentür im Gruselhaus: 0 zu, 1 offen. */
@@ -2737,6 +3070,11 @@ export class House {
       smoke: this.smoke,
       vampir: this.vampirStil,
       vampirLetzt: this.vampirLetzt,
+      burnLeft: this.burnLeft,
+      burnTotal: this.burnTotal,
+      ashButts: this.ashButts,
+      bucketButts: this.bucketButts,
+      lighterOnTable: this.lightAufTisch,
     };
   }
 
@@ -2769,6 +3107,11 @@ export class House {
     this.golInserted = s.golInserted;
     this.golOnShelf = s.golOnShelf || !s.golInserted;
     this.smoke = clamp(s.smoke, 0, 1);
+    this.burnLeft = typeof s.burnLeft === "number" ? Math.max(0, s.burnLeft) : 0;
+    this.burnTotal = typeof s.burnTotal === "number" ? Math.max(0, s.burnTotal) : (this.burnLeft > 0 ? Math.max(this.burnLeft, 240) : 0);
+    this.ashButts = typeof s.ashButts === "number" ? Math.max(0, Math.round(s.ashButts)) : 0;
+    this.bucketButts = typeof s.bucketButts === "number" ? Math.max(0, Math.round(s.bucketButts)) : 0;
+    this.lightAufTisch = s.lighterOnTable === true;
     const vi = s.vampir;
     this.vampirStil = typeof vi === "number" && vi >= 0 && vi < VAMPIR_OUTFITS.length ? vi : null;
     this.vampirLetzt = typeof s.vampirLetzt === "number" ? s.vampirLetzt : -1;
@@ -2842,6 +3185,10 @@ export class House {
       this.onGolFullscreenClick(x, y);
       return;
     }
+    if (this.adventFullscreen) {
+      this.adventKlick(x, y);
+      return;
+    }
     // Nur der Fernseher im Zockerzimmer, und nur wenn das Modul steckt.
     if (this.golInserted && this.hitAtticTv(x, y)) {
       this.startTvZoom();
@@ -2869,6 +3216,17 @@ export class House {
   private onMove = (e: PointerEvent) => {
     if (e.pointerType === "touch") return;
     const [x, y] = this.toWorld(e);
+    if (this.adventFullscreen) {
+      this.hover = null;
+      if (this.adventZoomT >= 0.9) {
+        this.adventHover = adventTuerBei(this.adventTuerLayout(), x, y);
+        if (this.adventHover >= 0) this.adventFokus = this.adventHover;
+        const b = ADVENT_ZURUECK;
+        const aufKnopf = x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+        this.canvas.style.cursor = this.adventHover >= 0 || aufKnopf ? "pointer" : "default";
+      }
+      return;
+    }
     if (this.golFullscreen) {
       this.hover = null;
       const b = GOL_BTN;
@@ -2901,6 +3259,17 @@ export class House {
     const id = typeof request === "string" ? request : request.id;
     const find = (k: string) => this.stations.find((s) => s.id === k) ?? null;
     if (id === "laufziel" && (this.bedPhase || this.sleepPhase)) return;
+    if (id === "adventskalender" && this.welt !== "normal") return;
+    if (this.handy) {
+      if (id === "raucherstuhl") return;
+      this.handyDanach = request;
+      this.handy.vorBefehlEinstecken();
+      return;
+    }
+    if (this.lightT !== null) {
+      if (id !== "aschenbecher") this.lightNext = request;
+      return;
+    }
     // Jeder andere Befehl beendet einen laufenden oder wartenden Zauber.
     if (id !== "kessel") {
       this.zauberWunsch = false;
@@ -3039,8 +3408,6 @@ export class House {
       this.standing = true;
       this.standT = 0;
       this.standNext = request;
-      this.onPhone = false;
-      this.phoneQueued = false;
       return;
     }
 
@@ -3048,10 +3415,7 @@ export class House {
     // danach ausgeführt – sonst würde die Hand mitten in der Luft abbrechen.
     if (this.ashMove) {
       if (id === "aussentuer") this.gardenTarget = this.gardenWant > 0.5 ? 0 : 1;
-      if (this.ashMove === "put") {
-        // War die Ablage nur für die Handy-Pause gedacht, übernimmt jetzt
-        // der neue Befehl – sie soll ja z. B. zur Tür statt ans Handy.
-        this.ashThenPhone = false;
+      if (this.ashMove === "put" || this.ashMove === "quench") {
         this.ashNext = request;
         return;
       }
@@ -3070,6 +3434,40 @@ export class House {
         this.ashNext = request;
         return;
       }
+    }
+
+    if (this.emptyT > 0 && id !== "eimer") {
+      this.emptyT = 0;
+    }
+
+    // Liegt eine Zigarette (brennend ODER ausgegangen) auf dem Rand des
+    // Aschenbechers und Luni verlässt den Raucherraum, drückt sie sie erst aus.
+    // Bloßes Öffnen einer Tür zählt nicht als Verlassen.
+    if (
+      this.cigButt && !this.smoking && !this.ashMove &&
+      id !== "aschenbecher" && id !== "raucherstuhl" && id !== "eimer" &&
+      this.verlaesstRaucherraum(request)
+    ) {
+      this.smokeRequested = false;
+      this.chain = [];
+      this.ashNext = request;
+      this.startAsh("quench");
+      return;
+    }
+
+    // Ascheneimer: erst Zigarette auf dem Rand / in der Hand ausdrücken, dann leeren.
+    if (id === "eimer") {
+      if (this.activity?.id === "eimer" && this.emptyT > 0) return;
+      this.chain = [];
+      this.smokeRequested = false;
+      if (this.cigButt || this.smoking || this.holding) {
+        this.ashNext = "eimer";
+        this.startAsh("quench");
+        return;
+      }
+      const st = find("eimer");
+      if (st) this.goTo(st);
+      return;
     }
 
     // Gartentür: jederzeit bedienbar, auch mitten in einer anderen Aktion.
@@ -3187,14 +3585,12 @@ export class House {
       // Sie raucht gerade? Zigarette erst weglegen, dann gemütlich sitzen.
       if (this.smoking || this.holding) {
         this.smokeRequested = false;
-        this.ashThenPhone = false;
         this.ashNext = "raucherstuhl";
         this.startAsh("put");
         return;
       }
       this.smokeRequested = false;
       this.sitIdleT = 0;
-      this.onPhone = false;
       this.chain = [];
       this.pending = seat;
       return;
@@ -3203,28 +3599,25 @@ export class House {
     // ---- Aschenbecher: jetzt wird geraucht ----
     if (id === "aschenbecher") {
       this.smokeRequested = true;
-      // Handy wegstecken, wenn sie vom Sitzen direkt zum Rauchen wechselt
-      this.onPhone = false;
-      this.phoneQueued = false;
-      this.phoneT = 0;
-      this.phoneReactT = 0;
       if (this.holding || this.smoking) {
-        // Sie hat schon eine in der Hand (stehend oder sitzend): im
-        // Aschenbecher ausdrücken – danach setzt sie sich hin.
+        // Sie hat schon eine in der Hand (stehend oder sitzend): in den
+        // Aschenbecher legen – danach setzt sie sich hin.
         this.smokeRequested = false;
-        this.ashThenPhone = false;
         this.ashNext = "raucherstuhl";
         this.startAsh("put");
         return;
       }
-      // 1. Liegt ein noch brennender Stummel im Aschenbecher, nimmt sie
-      //    zuerst diesen – egal was auf dem Tisch oder in der Schachtel liegt.
+      // 1. Liegt noch eine brennende Zigarette auf dem Rand, nimmt sie diese.
       if (this.cigButt && this.burnLeft > 0) {
         this.startAsh("take");
         return;
       }
-      // abgebrannter Stummel: wegwerfen
-      if (this.cigButt) this.cigButt = false;
+      // Ausgegangene Zigarette auf dem Rand: erst ausdrücken (Haufen wächst), dann neu rauchen.
+      if (this.cigButt) {
+        this.ashNext = "aschenbecher";
+        this.startAsh("quench");
+        return;
+      }
       if (this.pack <= 0 && this.cigs <= 0) {
         // gar nichts da: erst stopfen gehen
         this.tabakMode = "roll";
@@ -3242,12 +3635,8 @@ export class House {
         if (tin) this.pending = tin;
         return;
       }
-      // Die Zigarette liegt auf dem Tischchen direkt neben dem Stuhl –
-      // sie nimmt sie einfach, ohne dorthin laufen zu müssen.
       if (this.pack > 0) {
-        this.pack -= 1;
-        this.holding = true;
-        this.burnLeft = this.newBurn();
+        // Erst am Stuhl nimmt sie sich eine neue Zigarette.
         const seat = find("raucherstuhl");
         if (seat) this.pending = seat;
         return;
@@ -3295,10 +3684,12 @@ export class House {
     this.smokeRequested = false;
     const st = typeof request === "string" ? find(id) : request;
     if (st) {
+      if (id === "gol_tv") {
+        this.golPhase = "toButton";
+        this.golAnimT = 0;
+      }
       if (id === "laufziel") {
         this.chain = [];
-        this.onPhone = false;
-        this.phoneQueued = false;
         this.packMove = false;
         this.takeMove = false;
         this.doorIntent = null;
@@ -3330,6 +3721,47 @@ export class House {
     return 210 + Math.random() * 90;
   }
 
+  /** Frische Zigarette: Gesamtbrenndauer merken, damit die Asche wachsen kann. */
+  private freshBurn() {
+    this.burnTotal = this.newBurn();
+    return this.burnTotal;
+  }
+
+  private neueZigarette() {
+    this.pack -= 1;
+    this.holding = true;
+    this.burnLeft = 0;
+    this.burnTotal = 0;
+  }
+
+  private updateAnzuenden(vorher: number, dt: number) {
+    const t = vorher + dt;
+    this.lightT = t;
+    if (vorher < ZUENDEN.tischGriff && t >= ZUENDEN.tischGriff) this.lightAufTisch = false;
+    if (vorher < 0 && t >= 0) this.neueZigarette();
+    if (vorher < ZUENDEN.glimmt && t >= ZUENDEN.glimmt) {
+      this.burnLeft = this.freshBurn();
+      this.lightAblegen = Math.random() < FEUERZEUG_TISCH_CHANCE;
+      sfx.ui();
+    }
+    if (vorher < ZUENDEN.ablage && t >= ZUENDEN.ablage) this.lightAufTisch = this.lightAblegen;
+    if (t >= ZUENDEN.ende) {
+      this.lightT = null;
+      this.smoking = true;
+      this.smokeIdleT = 0;
+      this.sitIdleT = Math.min(0, this.sitIdleT);
+      const next = this.lightNext;
+      this.lightNext = null;
+      if (next) this.command(next);
+    }
+  }
+
+  /** 1 = frisch angezündet, 0 = abgebrannt. */
+  private burnFrac() {
+    if (this.burnLeft > 0 && this.burnTotal <= 0) this.burnTotal = Math.max(this.burnLeft, 240);
+    return this.burnTotal > 0 ? clamp(this.burnLeft / this.burnTotal, 0, 1) : 0;
+  }
+
   /** Befehl ohne Prüfung (Kette) */
   private assign(id: string) {
     const st = this.stations.find((s) => s.id === id);
@@ -3340,8 +3772,6 @@ export class House {
   private goTo(id: string | Station) {
     const st = typeof id === "string" ? this.stations.find((s) => s.id === id) : id;
     if (!st) return;
-    this.onPhone = false;
-    this.phoneQueued = false;
     this.target = st;
     this.activity = null;
     this.cur = null;
@@ -3361,19 +3791,40 @@ export class House {
     this.startAsh("put");
   }
 
-  /**
-   * Startet eine Aschenbecher-Handlung. Luni geht zuerst sichtbar zum
-   * Tischchen und führt die Armbewegung erst dort aus.
-   */
-  private startAsh(kind: "put" | "take", item: "cig" | "phone" = "cig") {
-    if (kind === "take") this.takeLit = item === "cig" ? this.cigButt : false;
+  /** Dauer der Armbewegung; Ausdrücken braucht etwas mehr Zeit. */
+  private ashDur() {
+    return this.ashMove === "quench" ? 1.7 : 0.95;
+  }
+
+  /** 0..1: wie weit der Arm am Aschenbecher ist (Griff, Druck, Ablage). */
+  private ashReichweite(): number {
+    const p = clamp(this.ashT / this.ashDur(), 0, 1);
+    if (this.ashMove === "quench") return weich(p / 0.45) * (1 - weich((p - 0.78) / 0.22));
+    const wechsel = this.ashMove === "take" ? 0.25 : 0.8;
+    return p < wechsel ? weich(p / wechsel) : 1 - weich((p - wechsel) / (1 - wechsel));
+  }
+
+  /** Verlässt Luni mit diesem Befehl wirklich den Raucherraum? */
+  private verlaesstRaucherraum(request: LuniCommand): boolean {
+    if (this.lf !== 0 || this.lx < 590) return false;
+    const id = typeof request === "string" ? request : request.id;
+    // Türen öffnen/schließen heißt nicht, den Raum zu verlassen.
+    if (id === "zimmertuer" || id === "aussentuer") return false;
+    const st = typeof request === "string" ? this.stations.find((s) => s.id === request) : request;
+    return !!st && (st.floor !== 0 || st.x < 590);
+  }
+
+  private startAsh(kind: "put" | "take" | "quench", amStuhl = false) {
+    // Sitzt sie schon am Stuhl, bleibt die Haltung sitzend; sonst greift sie stehend.
+    this.ashSitzend = amStuhl || (this.activity?.id === "raucherstuhl" && !this.standing);
     this.ashMove = kind;
-    this.ashItem = item;
-    this.ashDir = kind;
+    this.ashAmStuhl = amStuhl;
     this.ashT = 0;
     this.smoking = false;
-    this.onPhone = false;
-    this.phoneQueued = false;
+    if (amStuhl) {
+      this.ashWalking = false;
+      return;
+    }
     this.pending = null;
     this.activity = null;
     this.target = null;
@@ -3435,13 +3886,12 @@ export class House {
   setPack(n: number) {
     this.pack = n;
   }
-  /** Scrollt sie gerade am Handy? */
+  /** Hat sie das Handy sichtbar in der Hand? */
   getOnPhone() {
-    return this.onPhone;
+    return this.handy?.pose?.sichtbar === true;
   }
-  /** "scroll" oder "call" */
   getPhoneMode() {
-    return this.phoneMode;
+    return this.handy?.pose?.modus ?? "scroll";
   }
   /** Zuletzt gezeichnete Pose (für Diagnose/Tests) */
   lastPose = "";
@@ -3707,8 +4157,8 @@ export class House {
         this.doorHandT = -1;
         this.doorHandOpen = null;
         this.doorIntent = null;
-        this.onPhone = false;
-        this.phoneQueued = false;
+        this.handy = null;
+        this.handyDanach = null;
         this.packMove = false;
         this.takeMove = false;
         const kx: number = OFEN.kessel.x;
@@ -3771,6 +4221,20 @@ export class House {
   /** Raucherecke, Zigaretten drehen, Tür aufmachen, Befehlskette */
   private updateActions(dt: number) {
     const act = this.activity;
+    // Andere direkte Wege (z. B. zum Fernseher) können den Stuhl verlassen.
+    if (this.lightT !== null && act?.id !== "raucherstuhl") {
+      this.lightT = null;
+      this.lightNext = null;
+      if (this.holding && this.burnLeft <= 0) {
+        this.holding = false;
+        this.pack = Math.min(PACK_MAX, this.pack + 1);
+      }
+    }
+    if (act?.id !== "raucherstuhl") {
+      this.handy = null;
+      this.handyDanach = null;
+      this.sitIdleT = 0;
+    }
 
     // --- Datenkoffer (Osterei): Deckel auf, Antenne aus, dann melden ---
     if (this.kofferPhase) {
@@ -3815,25 +4279,28 @@ export class House {
 
     // Rauch: füllt den Raum langsam, aber stetig. Die Zigarette qualmt auch
     // im Aschenbecher weiter – nur langsamer. Offene Außentür lüftet.
-    const glowing = this.smoking || (this.cigButt && this.burnLeft > 0);
+    const glowing = (this.holding || this.cigButt) && this.burnLeft > 0;
     if (this.gardenDoor > 0.5) {
       this.smoke = clamp(this.smoke - dt * 0.4, 0, 1);
     } else if (glowing) {
       // Kräftig genug, um sichtbar zu füllen: ununterbrochenes Rauchen
       // braucht rund 45 Sekunden bis zur vollen Dichte (mit Pausen länger);
-      // der Aschenbecher qualmt deutlich langsamer.
-      this.smoke = clamp(this.smoke + dt * (this.smoking ? 0.022 : 0.007), 0, 1);
+      // die abgelegte Zigarette qualmt mit gut der Hälfte weiter und füllt
+      // den Raum in etwa 77 Sekunden, solange sie glüht.
+      this.smoke = clamp(this.smoke + dt * (this.smoking ? 0.022 : 0.013), 0, 1);
     } else {
       this.smoke = clamp(this.smoke - dt * 0.02, 0, 1);
     }
+
+    if (this.quenchPuff > 0) this.quenchPuff = Math.max(0, this.quenchPuff - dt);
 
     // --- Zigarette brennt ab (auch im Aschenbecher) ---
     if ((this.holding || this.cigButt) && this.burnLeft > 0) {
       this.burnLeft = Math.max(0, this.burnLeft - dt);
       if (this.burnLeft === 0 && this.holding && !this.ashMove) {
-        // fertig geraucht: den kalten Stummel im Aschenbecher ausdrücken
+        // fertig geraucht: den Stummel im Aschenbecher ausdrücken
         this.smoking = false;
-        this.putCigarette(null);
+        this.startAsh("quench", act?.id === "raucherstuhl" && this.handy !== null);
       }
     }
 
@@ -3844,7 +4311,7 @@ export class House {
       // kommt im anderen an. Dadurch kann der linke Raum den rechten nicht
       // mehr überholen; beide nähern sich derselben Dichte.
       const diff = this.smoke - this.smokeSpill;
-      const exchange = diff * 0.075 * doorAjar * dt;
+      const exchange = diff * 0.16 * doorAjar * dt;
       this.smoke = clamp(this.smoke - exchange, 0, 1);
       this.smokeSpill = clamp(this.smokeSpill + exchange, 0, 1);
       // Ohne aktive Rauchquelle verflüchtigt sich der Dunst in beiden
@@ -3883,7 +4350,7 @@ export class House {
       this.sick = clamp(this.sick + dt * 0.075 * (exposure - 0.5) * 2, 0, 1);
     } else if (this.lf === 0 && this.gardenDoor > 0.5) {
       this.sick = clamp(this.sick - dt * 0.03, 0, 1);
-    } else {
+    } else if (act?.id !== "tee") {
       this.sick = clamp(this.sick - dt * 0.01, 0, 1);
     }
 
@@ -3941,12 +4408,44 @@ export class House {
       return;
     }
 
-    // Gesundheitstee in der Küche
+    // Gesundheitstee in der Küche: Kanne holen, einschenken, trinken.
+    if (act?.id !== "tee" && this.teaT > 0) {
+      // Abgebrochen: Kanne und Tasse stehen sofort wieder auf der Zeile.
+      this.teaT = 0;
+      this.teaSetzeZeile(false, false, 0);
+    }
     if (act?.id === "tee") {
+      const vorher = teeSchluck(this.teaT).getrunken;
       this.teaT += dt;
-      this.sick = clamp(this.sick - dt * 0.22, 0, 1);
-      if (this.teaT >= 7) {
+      const t = this.teaT;
+      const teeX = teeStandX(t);
+      this.walkP += Math.abs(teeX - this.lx) * 0.31;
+      this.lx = teeX;
+      const getrunken = teeSchluck(t).getrunken;
+      this.teaSetzeZeile(t >= 1.1 && t < 4.4, t >= 0.4 && t < TEE_ABGESETZT, teeFuellstand(t, getrunken));
+      if (getrunken > vorher) this.sick = clamp(this.sick - 1.1 * (getrunken - vorher), 0, 1);
+      if (t >= TEA_DAUER) {
         this.teaT = 0;
+        this.teaSetzeZeile(false, false, 0);
+        this.finishActivity();
+      }
+      return;
+    }
+
+    // Aschenbecher in den Eimer unter dem Tisch leeren
+    if (act?.id !== "eimer" && this.emptyT > 0) this.emptyT = 0;
+    if (act?.id === "eimer") {
+      const before = this.emptyT;
+      this.emptyT += dt;
+      if (before < 1.25 && this.emptyT >= 1.25) {
+        if (this.ashButts > 0) {
+          this.bucketButts += this.ashButts;
+          this.ashButts = 0;
+        }
+        sfx.ui();
+      }
+      if (this.emptyT >= 2.6) {
+        this.emptyT = 0;
         this.finishActivity();
       }
       return;
@@ -3956,7 +4455,7 @@ export class House {
     // Die Schleusentür bleibt in ihrem Zustand, bis der Spieler sie bedient.
     this.cellarDoorV += (this.cellarDoorWant - this.cellarDoorV) * (1 - Math.exp(-9 * dt));
 
-    // WC: Tür auf, hineingehen, Tür zu, eine Weile drin bleiben
+    this.handy?.tick(dt);
     // Armbewegung zum Aschenbecher (ablegen / aufnehmen)
     if (this.ashMove) {
       // erst zum Tischchen laufen, dann erst die Armbewegung
@@ -3968,31 +4467,35 @@ export class House {
         }
         return;
       }
-      const DUR = 0.95;
+      const DUR = this.ashDur();
       this.ashT += dt;
 
-      // Handy nehmen oder zurücklegen: nur der Arm bewegt sich
-      if (this.ashItem === "phone") {
+      // Ausdrücken: vom Rand nehmen (falls dort) und fest in den Aschenbecher drücken.
+      if (this.ashMove === "quench") {
+        if (this.ashT >= DUR * 0.45 && this.cigButt) {
+          this.cigButt = false;
+          this.holding = true;
+        }
+        if (this.ashT >= DUR * 0.78 && this.holding) {
+          const warAn = this.burnLeft > 0;
+          this.holding = false;
+          this.cigButt = false;
+          this.burnLeft = 0;
+          this.burnTotal = 0;
+          this.smoking = false;
+          this.ashButts += 1;
+          if (warAn) this.quenchPuff = 1.1;
+          sfx.ui();
+        }
         if (this.ashT >= DUR) {
           this.ashMove = null;
           this.ashT = 0;
-          if (this.ashDir === "take") {
-            this.onPhone = true;
-            this.phoneT = 0;
-            this.phoneReact = "look";
-            this.phoneReactT = 0;
-          } else {
-            this.onPhone = false;
+          if (this.ashAmStuhl) {
+            this.ashAmStuhl = false;
+            return;
           }
-          // Wieder auf dem Stuhl sitzen – sonst würde der Idle-Zyklus hängen.
-          const seat = STATIONS.find((s) => s.id === "raucherstuhl");
-          if (seat && this.lf === seat.floor) {
-            this.activity = seat;
-            this.target = seat;
-            this.lface = seat.face;
-          } else if (seat) {
-            this.pending = seat;
-          }
+          this.activity = null;
+          this.target = null;
           const next = this.ashNext;
           this.ashNext = null;
           if (next) this.command(next);
@@ -4009,12 +4512,8 @@ export class House {
         if (this.ashT >= DUR) {
           this.ashMove = null;
           this.ashT = 0;
-          if (this.ashThenPhone) {
-            // Sie geht zum Stuhl zurück und holt dort das Handy heraus
-            this.ashThenPhone = false;
-            this.phoneQueued = true;
-            const seat = STATIONS.find((s) => s.id === "raucherstuhl");
-            if (seat) this.pending = seat;
+          if (this.ashAmStuhl) {
+            this.ashAmStuhl = false;
             return;
           }
           this.activity = null;
@@ -4025,25 +4524,33 @@ export class House {
         }
       } else {
         // aufnehmen: Stummel verschwindet, sobald die Hand zugreift
-        if (this.ashT >= DUR * 0.25) this.cigButt = false;
+        if (this.ashT >= DUR * 0.25 && this.cigButt) {
+          this.cigButt = false;
+          this.holding = true;
+        }
         if (this.ashT >= DUR) {
           this.ashMove = null;
           this.ashT = 0;
-          this.holding = true;
-          if (!this.takeLit || this.burnLeft <= 0) {
-            // frische Zigarette aus der Schachtel
-            if (this.pack > 0) this.pack -= 1;
-            this.burnLeft = this.newBurn();
+          if (this.ashAmStuhl) {
+            this.ashAmStuhl = false;
+            if (this.holding && this.burnLeft <= 0) this.startAsh("quench", true);
+            else this.smokeIdleT = 0;
+            return;
           }
-          this.takeLit = false;
           // zurück auf den Stuhl zum Weiterrauchen
           this.smokeRequested = true;
           const next = this.ashNext;
           this.ashNext = null;
+          if (this.holding && this.burnLeft <= 0) {
+            this.ashNext = next ?? "aschenbecher";
+            this.startAsh("quench");
+            return;
+          }
           if (next && next !== "raucherstuhl") {
             // Während des Aufnehmens kam ein anderer Befehl: gleich wieder
             // ablegen und dann dorthin.
-            this.putCigarette(next);
+            if (this.holding) this.putCigarette(next);
+            else this.command(next);
             return;
           }
           // Sie sitzt bereits am Stuhl: Aktivität direkt setzen. Kein neuer
@@ -4141,6 +4648,19 @@ export class House {
       return;
     }
 
+    this.adventAktualisieren(dt);
+    if (act?.id !== "adventskalender") this.adventWarteT = 0;
+    if (act?.id === "adventskalender") {
+      // Der Kalender hängt nur im normalen Haus an der Wohnzimmerwand.
+      if (this.welt !== "normal") {
+        this.finishActivity();
+        return;
+      }
+      this.adventWarteT += dt;
+      if (this.adventWarteT >= 0.45 && !this.adventFullscreen && !this.adventSchliessen) this.adventAuf();
+      return;
+    }
+
     if (act?.id === "tabak") {
       // Eine einzelne Zigarette vom Tisch mitnehmen (Schachtel ist leer)
       if (this.takeMove) {
@@ -4217,116 +4737,8 @@ export class House {
       return;
     }
 
-    // ---- Stuhl: gemütlich sitzen, Handy raus ----
-    if (act?.id === "raucherstuhl" && !this.smokeRequested) {
-      this.smoking = false;
-      this.smokeIdleT = 0;
-      if (this.phoneQueued) {
-        this.phoneQueued = false;
-        this.onPhone = true;
-        this.phoneT = 0;
-        this.phoneReact = "look";
-        this.phoneReactT = 0;
-      }
-      // Beim Hinsetzen das Handy aus der Tasche holen
-      this.sitIdleT += dt;
-      // Ihr Ruheverhalten auf dem Stuhl: Handy aus der Tasche holen, benutzen,
-      // wieder weglegen – in wechselnder Reihenfolge.
-      if (!this.onPhone && !this.ashMove && this.sitIdleT > 0.9) {
-        this.sitIdleT = 0;
-        this.phoneMode = Math.random() < 0.62 ? "scroll" : "call";
-        this.startAsh("take", "phone");
-      }
-      if (this.onPhone) {
-        this.phoneT += dt;
-        this.phoneReactT += dt;
-        if (this.phoneReactT >= (this.phoneMode === "call" ? 3.4 : 2.6)) {
-          this.phoneReactT = 0;
-          const r = Math.random();
-          this.phoneReact = r < 0.4 ? "laugh" : r < 0.7 ? "shake" : "look";
-        }
-        if (this.phoneT >= 13) {
-          // Handy zurück auf den Tisch – damit schließt sich der Idle-Zyklus
-          this.phoneT = 0;
-          this.onPhone = false;
-          if (this.smokeRequested) this.startAsh("take", "cig");
-          else this.startAsh("put", "phone");
-        }
-      }
-      return;
-    }
-
     if (act?.id === "raucherstuhl") {
-      // Am Stuhl angekommen und das Handy war angekündigt
-      if (this.phoneQueued) {
-        this.phoneQueued = false;
-        this.onPhone = true;
-        this.phoneT = 0;
-        this.phoneReact = "look";
-        this.phoneReactT = 0;
-      }
-      // Handy-Pause: Zigarette liegt im Becher, sie scrollt und reagiert
-      if (this.onPhone) {
-        this.smoking = false;
-        this.phoneT += dt;
-        this.phoneReactT += dt;
-        if (this.phoneReactT >= 2.6) {
-          this.phoneReactT = 0;
-          const r = Math.random();
-          this.phoneReact = r < 0.4 ? "laugh" : r < 0.7 ? "shake" : "look";
-        }
-        if (this.phoneT >= 13) {
-          this.phoneT = 0;
-          this.onPhone = false;
-          if (this.smokeRequested) {
-            // Zigarette nehmen und weiter rauchen
-            this.startAsh("take", "cig");
-          } else {
-            // Ruhepause: Handy zurück auf den Tisch
-            this.startAsh("put", "phone");
-          }
-        }
-        return;
-      }
-
-      // Im Aschenbecher liegt eine Zigarette: ist sie noch an, wird sie
-      // weiter geraucht; ist sie abgebrannt, kommt sie weg.
-      if (this.cigButt && !this.holding) {
-        if (this.burnLeft > 0) {
-          this.startAsh("take");
-          return;
-        }
-        this.cigButt = false; // kalter Stummel -> wegwerfen
-      }
-      // Keine Zigarette in der Hand: eine neue aus der Schachtel nehmen
-      if (!this.holding) {
-        if (this.pack > 0) {
-          this.pack -= 1;
-          this.holding = true;
-          this.burnLeft = this.newBurn();
-        } else if (this.cigs > 0) {
-          // am Tisch liegt Nachschub -> den holen
-          this.chain = [{ id: "aschenbecher", force: false }];
-          this.tabakMode = "take";
-          this.pending = STATIONS.find((s) => s.id === "tabak") ?? null;
-          return;
-        } else {
-          this.finishActivity();
-          return;
-        }
-      }
-      this.cigButt = false;
-      this.smoking = true;
-      this.smokeIdleT += dt;
-
-      // Nach einer Weile legt sie die Zigarette von selbst ab und scrollt
-      if (this.smokeIdleT >= 20) {
-        this.smokeIdleT = 0;
-        this.ashThenPhone = true;
-        this.startAsh("put");
-        return;
-      }
-
+      this.updateRaucherstuhl(dt);
       return;
     }
     this.smoking = false;
@@ -4363,12 +4775,77 @@ export class House {
     if (this.golInserted && this.golState?.running) this.updateGOL(dt);
   }
 
+  private updateRaucherstuhl(dt: number) {
+    if (this.lightT !== null) {
+      this.updateAnzuenden(this.lightT, dt);
+      return;
+    }
+
+    const hand = this.handy;
+    if (hand?.fertig) {
+      this.handy = null;
+      const next = this.handyDanach;
+      this.handyDanach = null;
+      this.sitIdleT = -6;
+      if (next) this.command(next);
+      return;
+    }
+
+    if (hand) {
+      this.smoking = this.smokeRequested && this.holding && this.burnLeft > 0;
+      if (this.smoking) this.smokeIdleT += dt;
+      if (hand.kippeAblegen && this.smoking && smokeCycle(this.smokeIdleT).lift < 0.1) {
+        hand.kippeAbgelegt(7 + 18 * Math.random());
+        this.startAsh("put", true);
+      } else if (hand.kippeNehmen) {
+        hand.kippeGenommen();
+        if (this.smokeRequested && this.cigButt && this.burnLeft > 0) this.startAsh("take", true);
+      }
+      return;
+    }
+
+    this.sitIdleT += dt;
+    if (this.smokeRequested) {
+      // Eine noch glimmende Zigarette wird weitergeraucht, eine kalte erst ausgedrueckt.
+      if (!this.holding && this.cigButt) {
+        if (this.burnLeft > 0) this.startAsh("take", true);
+        else this.startAsh("quench", true);
+        return;
+      }
+      if (!this.holding) {
+        if (this.pack > 0) {
+          this.smoking = false;
+          this.lightT = this.lightAufTisch ? ZUENDEN.holen : 0;
+          if (this.lightT === 0) this.neueZigarette();
+        } else if (this.cigs > 0) {
+          this.chain = [{ id: "aschenbecher", force: false }];
+          this.tabakMode = "take";
+          this.assign("tabak");
+        } else {
+          this.finishActivity();
+        }
+        return;
+      }
+      this.smoking = this.burnLeft > 0;
+      this.smokeIdleT += dt;
+    } else {
+      this.smoking = false;
+      this.smokeIdleT = 0;
+    }
+
+    if (this.sitIdleT >= (this.smokeRequested ? 20 : 1.2)) {
+      this.sitIdleT = 0;
+      this.handy = new HandyAblauf();
+    }
+  }
+
   /** Aktuelle Aktion beenden und den nächsten Befehl der Kette starten */
   private finishActivity() {
     this.activity = null;
     this.target = null;
     this.smokeRequested = false;
-    this.onPhone = false;
+    this.handy = null;
+    this.handyDanach = null;
     this.sitIdleT = 0;
     this.rollT = 0;
     this.doorT = 0;
@@ -4696,6 +5173,7 @@ export class House {
       this.golOnShelf,
       this.welt === "gruesel" ? GRUSELRAEUME : null,
       this.bettRendered,
+      { kanne: !this.teaKanneWeg, tasse: !this.teaTasseWeg, fill: this.teaFuellung },
     );
     // Raum 02 wird als eigene Canvas-Szene über die frühere Musikzimmerfläche
     // gemalt. Der Bereich beginnt hinter der Trennwand; kein Nachbarraum ändert sich.
@@ -4896,6 +5374,11 @@ export class House {
     if (this.gruselBad) drawBioBadBefore(ctx, this.bioFx());
     this.drawSax(ctx);
     this.drawCigPile(ctx);
+    ashBucket(ctx, BUCKET_X, FK, this.bucketButts);
+    if (this.welt === "normal") {
+      this.adventStandPruefen();
+      adventWand(ctx, this.adventStand.offen, this.adventStand.jahr || new Date().getFullYear());
+    }
     this.drawAshtrayTray(ctx);
     // Zigarette im Aschenbecher liegt AUF der Platte: Luni geht davor vorbei
     // und verdeckt sie wie jedes andere Objekt auf dem Tisch.
@@ -4949,6 +5432,7 @@ export class House {
     drawWetterStation(ctx, this.wetter, this.wetterAdd, this.wetterHover, this.wetterOffen, this.welt === "normal");
     this.drawHoverLabel(ctx);
     if (this.golFullscreen) this.drawGolFullscreen(ctx);
+    if (this.adventFullscreen || this.adventZoomT > 0) this.drawAdventskalender(ctx);
   }
 
   private wetterBefehl(b: WetterBefehl) {
@@ -5261,54 +5745,234 @@ export class House {
 
   /** Aschenbecher auf dem Tisch im Raucherraum; ein weggelegter Stummel glimmt weiter. */
   /** Aschenbecher und Handy auf dem Tischchen (Hintergrund) */
-  private drawAshtrayTray(c: C) {
-    // Direkt neben Lunis Hand: Aschenbecher bei 726, Handy bei 742.
-    const x = ASH_X;
-    const y = SIDE_TOP - 2;
+  /** Aschenbecher mit optionaler Kippung und kleinem Kippenhaufen. */
+  private drawAshtrayAt(c: C, x: number, y: number, tilt: number, butts: number) {
+    c.save();
+    c.translate(x, y);
+    c.rotate(tilt);
     c.fillStyle = "#51585c";
     c.beginPath();
-    c.ellipse(x, y, 7, 2.6, 0, 0, Math.PI * 2);
+    c.ellipse(0, 0, 7, 2.6, 0, 0, Math.PI * 2);
     c.fill();
     c.fillStyle = "#aeb7b9";
     c.beginPath();
-    c.ellipse(x, y - 0.5, 5.2, 1.35, 0, 0, Math.PI * 2);
+    c.ellipse(0, -0.5, 5.2, 1.35, 0, 0, Math.PI * 2);
     c.fill();
-    // Handy liegt auf dem Tischchen, solange sie nicht scrollt UND nicht
-    // gerade dorthin unterwegs ist (dann trägt sie es in der Tasche).
-    // Handy liegt daneben – es verschwindet, sobald sie es in die Hand nimmt
-    if (!this.onPhone && !(this.ashMove && this.ashItem === "phone")) {
-      phoneOnTable(c, PHONE_X, SIDE_TOP);
+    if (butts > 0) {
+      // Kleiner Aschehaufen + ausgedrückte Stummel in der Mulde
+      const n = Math.min(butts, 8);
+      c.fillStyle = "rgba(116,112,106,.85)";
+      c.beginPath();
+      c.ellipse(0, -0.7, Math.min(4.6, 1.8 + n * 0.4), Math.min(1.6, 0.7 + n * 0.14), 0, 0, Math.PI * 2);
+      c.fill();
+      for (let i = 0; i < n; i++) {
+        c.save();
+        c.translate(((i * 1.7) % 5.4) - 2.7, -0.9 - (i % 3) * 0.45);
+        c.rotate(((i % 5) - 2) * 0.34);
+        rect(c, -1.6, -0.55, 2.2, 1.1, "#dfd8c5");
+        rect(c, 0.6, -0.55, 1.1, 1.1, "#d9a44a");
+        c.restore();
+      }
     }
+    c.restore();
+  }
+
+  private drawAshtrayTray(c: C) {
+    // Solange sie den Aschenbecher in den Eimer kippt, hält sie ihn in der Hand.
+    const inHand = this.activity?.id === "eimer" && this.emptyT >= 0.55 && this.emptyT < 2.0;
+    if (!inHand) {
+      this.drawAshtrayAt(c, ASH_X, SIDE_TOP - 2, 0, this.ashButts);
+    }
+    if (this.lightAufTisch) feuerzeug(c, FEUERZEUG_TISCH, FEUERZEUG_LIEGEND);
   }
 
   /**
    * Die Zigarette im Aschenbecher – immer im Vordergrund, damit sie auch im
    * verqualmten Raum zu sehen ist.
    */
+  /**
+   * Hält die statische Küchenzeile und die Tee-Handlung auseinander:
+   * was Luni in der Hand hat, darf nicht gleichzeitig auf der Zeile stehen.
+   */
+  private teaSetzeZeile(kanneWeg: boolean, tasseWeg: boolean, fuellung: number) {
+    const f = Math.round(clamp(fuellung, 0, 1) * 8) / 8;
+    if (kanneWeg !== this.teaKanneWeg || tasseWeg !== this.teaTasseWeg || f !== this.teaFuellung) {
+      this.teaKanneWeg = kanneWeg;
+      this.teaTasseWeg = tasseWeg;
+      this.teaFuellung = f;
+      this.dirty = true;
+    }
+  }
+
+  /**
+   * Gesundheitstee mit beiden Händen:
+   * Links nimmt die Tasse, rechts die Kanne, gießt ein, stellt die Kanne
+   * zurück, dann hebt links zum Trinken (3 Schlucke) und setzt wieder ab.
+   */
+  private teeZiele(x: number, y: number): {
+    rechts: Pt;
+    links: Pt;
+    kanneTilt: number;
+    tasseTilt: number;
+    giesst: boolean;
+    fuellung: number;
+  } {
+    const t = this.teaT;
+    const ruhR: Pt = [x - 7.6 * LUNI_SCALE, y - 21.5 * LUNI_SCALE];
+    const ruhL: Pt = [x + 7.6 * LUNI_SCALE, y - 21.5 * LUNI_SCALE];
+    const tasseZeile: Pt = [TEE_TASSE_X, TEA_Y];
+    const tasseTief: Pt = [x + 16, y - 20];
+    const tasseBereit: Pt = [x + 7, y - 31];
+    const tasseMund: Pt = [x + 3.8, y - 39.6];
+    const kanneZeile: Pt = [TEA_X, TEA_Y];
+    const kanneFrei: Pt = [TEA_X - 1, TEA_Y - 2];
+    const kanneGiess: Pt = [x + 1, y - 28.5];
+    const schluck = teeSchluck(t);
+    const griff = ([bx, by]: Pt, delta: Pt, winkel = 0): Pt => {
+      const [dx, dy] = drehen(delta, winkel);
+      return [bx + dx, by + dy];
+    };
+    const bewegung = (a: Pt, b: Pt, start: number, ende: number) => punktMischen(a, b, weich((t - start) / (ende - start)));
+
+    let tasseTilt = 0;
+    let links: Pt;
+    if (t < 0.4) {
+      links = bewegung(ruhL, griff(tasseZeile, TASSENGRIFF), 0, 0.4);
+    } else if (t < 0.9) {
+      links = griff(bewegung(tasseZeile, tasseTief, 0.4, 0.9), TASSENGRIFF);
+    } else if (t < 4.6) {
+      links = griff(tasseTief, TASSENGRIFF);
+    } else if (t < TEE_SCHLUCK.start) {
+      links = griff(bewegung(tasseTief, tasseBereit, 4.6, TEE_SCHLUCK.start), TASSENGRIFF);
+    } else if (t < TEE_TRINKEN_ENDE) {
+      tasseTilt = -0.55 * schluck.hub;
+      links = griff(punktMischen(tasseBereit, tasseMund, schluck.hub), TASSENGRIFF, tasseTilt);
+    } else if (t < TEE_ABGESETZT) {
+      links = griff(bewegung(tasseBereit, tasseZeile, TEE_TRINKEN_ENDE, TEE_ABGESETZT), TASSENGRIFF);
+    } else {
+      links = bewegung(griff(tasseZeile, TASSENGRIFF), ruhL, TEE_ABGESETZT, TEA_DAUER);
+    }
+
+    // Am Henkel greifen, kurz von der Platte abheben und vor der Brust senken.
+    let rechts: Pt = ruhR;
+    let kanneTilt = 0;
+    if (t >= 0.8 && t < 1.1) {
+      rechts = bewegung(ruhR, griff(kanneZeile, KANNENGRIFF), 0.8, 1.1);
+    } else if (t >= 1.1 && t < 1.6) {
+      kanneTilt = 0.72 * weich((t - 1.26) / 0.34);
+      const boden = t < 1.26 ? bewegung(kanneZeile, kanneFrei, 1.1, 1.26) : bewegung(kanneFrei, kanneGiess, 1.26, 1.6);
+      rechts = griff(boden, KANNENGRIFF, kanneTilt);
+    } else if (t >= 1.6 && t < 3.8) {
+      kanneTilt = 0.72;
+      rechts = griff(kanneGiess, KANNENGRIFF, kanneTilt);
+    } else if (t >= 3.8 && t < 4.4) {
+      kanneTilt = 0.72 * (1 - weich((t - 3.8) / 0.42));
+      const boden = t < 4.22 ? bewegung(kanneGiess, kanneFrei, 3.8, 4.22) : bewegung(kanneFrei, kanneZeile, 4.22, 4.4);
+      rechts = griff(boden, KANNENGRIFF, kanneTilt);
+    } else if (t >= 4.4 && t < 4.9) {
+      rechts = bewegung(griff(kanneZeile, KANNENGRIFF), ruhR, 4.4, 4.9);
+    }
+
+    const giesst = t >= 1.6 && t < 3.8;
+    const fuellung = teeFuellstand(t, schluck.getrunken);
+    return { rechts, links, kanneTilt, tasseTilt, giesst, fuellung };
+  }
+
+  private drawTee(c: C, z: ReturnType<House["teeZiele"]>, frontHand: Pt, rearHand: Pt) {
+    const t = this.teaT;
+    const [cupX, cupY] = drehen(TASSENGRIFF, z.tasseTilt);
+    const cx = rearHand[0] - cupX;
+    const cy = rearHand[1] - cupY;
+
+    if (t >= 0.4 && t < TEE_ABGESETZT) {
+      teaCup(c, cx, cy, z.fuellung, z.tasseTilt);
+    }
+    if (t >= 1.1 && t < 4.4) {
+      const [griffX, griffY] = drehen(KANNENGRIFF, z.kanneTilt);
+      const kx = frontHand[0] - griffX;
+      const ky = frontHand[1] - griffY;
+      teaKettle(c, kx, ky, z.kanneTilt);
+      if (z.giesst) {
+        const [ausgussX, ausgussY] = drehen(AUSGUSS, z.kanneTilt);
+        const sx = kx + ausgussX;
+        const sy = ky + ausgussY;
+        c.strokeStyle = "rgba(158,201,138,.85)";
+        c.lineWidth = 1.1;
+        c.beginPath();
+        c.moveTo(sx, sy);
+        c.quadraticCurveTo(sx + 1.2, (sy + cy - 5) / 2, cx, cy - 5);
+        c.stroke();
+        const pl = 0.5 + Math.sin(this.elapsed * 18) * 0.5;
+        disc(c, cx + Math.sin(this.elapsed * 9) * 1.2, cy - 5.4, 0.5 + pl * 0.4, "rgba(185,220,166,.8)");
+      }
+    }
+    if (z.fuellung > 0.15 && t >= 0.4 && t < TEE_ABGESETZT) {
+      for (let i = 0; i < 3; i++) {
+        const p = (this.elapsed * 0.35 + i * 0.33) % 1;
+        const a = (1 - p) * 0.3 * z.fuellung;
+        const dx = cx + Math.sin(this.elapsed * 1.1 + i * 2) * (1 + p * 2);
+        const dy = cy - 6 - p * 12;
+        c.strokeStyle = `rgba(226,236,230,${a})`;
+        c.lineWidth = 0.9;
+        c.beginPath();
+        c.moveTo(dx, dy + 3);
+        c.quadraticCurveTo(dx + 1.8, dy + 1, dx - 1.2, dy - 2);
+        c.stroke();
+      }
+    }
+  }
+
   private drawAshtrayButt(c: C) {
-    if (!this.cigButt) return;
-    const lit = this.burnLeft > 0;
+    const puff = this.quenchPuff;
+    if (!this.cigButt && puff <= 0) return;
+    const lit = this.cigButt && this.burnLeft > 0;
     const x = ASH_X;
     const y = SIDE_TOP - 2;
-    c.save();
-    c.translate(x - 3.4, y - 2.1);
-    c.rotate(-0.16);
-    // ragt rechts aus der Mulde heraus, damit man sie gut erkennt
-    rect(c, -5, -1.3, 11, 2.6, lit ? "#f6f0dc" : "#cfc8bb");
-    rect(c, -5, -1.3, 2.6, 2.6, "#c9453a");
-    if (lit) {
-      const ember = 0.7 + Math.sin(this.elapsed * 3.2) * 0.2;
-      disc(c, -4.2, 0, 1.3, `rgba(255,115,45,${ember})`);
-      disc(c, -4.9, -0.2, 0.6, `rgba(255,222,155,${ember})`);
+    // Auf dem Rand liegende Zigarette: Filter fest rechts (+3.4..+6), brennt langsam von links ab.
+    const rest = this.burnFrac();
+    const paper = 2.0 + 6.4 * rest;
+    const burnTip = 3.4 - paper;
+    const ash = (1 - rest) * 3.8;
+    if (this.cigButt) {
+      c.save();
+      c.translate(x - 1.5, y - 2.1);
+      c.rotate(-0.16);
+      // ragt rechts aus der Mulde heraus, Filter bleibt am Rand liegen
+      rect(c, burnTip, -1.3, paper, 2.6, lit ? "#f6f0dc" : "#cfc8bb");
+      rect(c, 3.4, -1.3, 2.6, 2.6, "#e2b24a");
+      if (ash > 0.12) {
+        rect(c, burnTip - ash, -1.15, ash + 0.3, 2.3, "#8e887f");
+        rect(c, burnTip - ash, -1.15, ash + 0.3, 0.75, "#a9a29a");
+      }
+      if (lit) {
+        const ember = 0.7 + Math.sin(this.elapsed * 3.2) * 0.2;
+        disc(c, burnTip, 0, 1.2, `rgba(255,115,45,${ember})`);
+        disc(c, burnTip - 0.4, -0.2, 0.55, `rgba(255,222,155,${ember})`);
+      }
+      c.restore();
     }
-    c.restore();
+    // Beim Ausdrücken steigt ein letzter kräftiger Schwall auf.
+    if (puff > 0) {
+      const k = 1 - puff / 1.1;
+      for (let i = 0; i < 5; i++) {
+        const p = (k * 1.4 + i * 0.2) % 1;
+        const alpha = (1 - p) * 0.42 * (puff / 1.1);
+        const sx = x - 3 + Math.sin(i * 2.1 + k * 3) * (2 + p * 5);
+        c.strokeStyle = `rgba(226,233,238,${alpha})`;
+        c.lineWidth = 1.2 + p * 1.4;
+        c.beginPath();
+        c.moveTo(sx, y - 3 - p * 26 + 4);
+        c.quadraticCurveTo(sx + 3, y - 3 - p * 26, sx - 2.5, y - 3 - p * 26 - 5);
+        c.stroke();
+      }
+    }
     // Rauch aus dem Aschenbecher – nur solange die Zigarette noch brennt
     if (!lit) return;
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
       const p = (this.elapsed * 0.13 + i * 0.27) % 1;
-      const alpha = (1 - p) * 0.3;
+      const alpha = (1 - p) * 0.38;
       const sx = x - 3 + Math.sin(this.elapsed * 0.7 + i * 1.9) * (1.2 + p * 2.4);
-      const sy = y - 3 - p * 21;
+      const sy = y - 3 - p * 26;
       c.strokeStyle = `rgba(220,228,234,${alpha})`;
       c.lineWidth = 1 + p * 0.9;
       c.beginPath();
@@ -5428,17 +6092,17 @@ export class House {
 
     // Grundnebel im Krempelraum – zieht von der Tür nach links
     if (spill > 0.012) {
-      const n = 7;
+      const n = 10;
       for (let i = 0; i < n; i++) {
         const ph = (this.elapsed * 0.1 + i * 0.17) % 1;
         const cx = x0 + w * (0.86 - (i / n) * 0.8) + Math.sin(this.elapsed * 0.3 + i * 1.3) * 16;
         const cy = y0 + h * (1 - ph * 0.5) + 18;
-        const r = 34 + (i % 3) * 20;
-        const a = spill * (0.3 + 0.18 * Math.sin(this.elapsed * 0.45 + i)) * (1 - ph * 0.35);
+        const r = 36 + (i % 4) * 17;
+        const a = spill * (0.4 + 0.28 * Math.sin(this.elapsed * 0.45 + i)) * (1 - ph * 0.35);
         if (a <= 0.004) continue;
         const g = c.createRadialGradient(cx, cy, 2, cx, cy, r);
-        g.addColorStop(0, `rgba(212,220,226,${Math.min(0.8, a)})`);
-        g.addColorStop(0.6, `rgba(204,213,220,${Math.min(0.55, a * 0.65)})`);
+        g.addColorStop(0, `rgba(212,220,226,${Math.min(0.9, a)})`);
+        g.addColorStop(0.6, `rgba(204,213,220,${Math.min(0.68, a * 0.7)})`);
         g.addColorStop(1, "rgba(204,213,220,0)");
         c.fillStyle = g;
         c.beginPath();
@@ -5852,6 +6516,19 @@ export class House {
 
   private onKey = (e: KeyboardEvent) => {
     if (e.code === "KeyM") this.musikzimmer?.unlock();
+    if (this.adventFullscreen) {
+      // Jeder Adventskalender lässt sich komplett ohne Maus bedienen.
+      const spalten = 6;
+      if (e.code === "Escape") this.adventZu();
+      else if (e.code === "ArrowRight") this.adventFokus = (this.adventFokus + 1) % ADVENT_TAGE;
+      else if (e.code === "ArrowLeft") this.adventFokus = (this.adventFokus + ADVENT_TAGE - 1) % ADVENT_TAGE;
+      else if (e.code === "ArrowDown") this.adventFokus = (this.adventFokus + spalten) % ADVENT_TAGE;
+      else if (e.code === "ArrowUp") this.adventFokus = (this.adventFokus + ADVENT_TAGE - spalten) % ADVENT_TAGE;
+      else if (e.code === "Enter" || e.code === "Space") this.adventOeffne(this.adventFokus);
+      else return;
+      e.preventDefault();
+      return;
+    }
     if (e.code === "Escape" && this.golFullscreen) this.golFullscreen = false;
   };
 
@@ -5914,6 +6591,10 @@ export class House {
       this.golPhase === "back"
     ) return;
     if (this.golFullscreen) return;
+    if (this.handy || this.lightT !== null || this.standing || this.ashMove) {
+      this.command(this.golTvStand());
+      return;
+    }
     this.golAnimT = 0;
     const sitting = this.activity?.id === "gaming" && !this.cur && this.path.length === 0;
     if (sitting) {
@@ -7066,6 +7747,163 @@ export class House {
    * Glättung auf die Bühne gezogen wird. Neu gemalt wird nur bei neuer
    * Generation oder neuer Zellenzahl.
    */
+  /* --------------------------- Adventskalender --------------------------- */
+
+  /** Stand zum aktuellen (Echtzeit-)Jahr laden; bei Jahreswechsel frisch. */
+  private adventStandPruefen() {
+    const jahr = this.clock.year || new Date().getFullYear();
+    if (this.adventStand.jahr !== jahr) {
+      this.adventStand = ladeAdvent(jahr);
+      this.adventTuerenCache = null;
+      this.adventAnims.clear();
+    }
+  }
+
+  private adventTuerLayout() {
+    if (!this.adventTuerenCache) this.adventTuerenCache = adventTueren(adventMischung(this.adventStand.jahr));
+    return this.adventTuerenCache;
+  }
+
+  private adventAuf() {
+    this.adventStandPruefen();
+    this.adventFullscreen = true;
+    this.adventSchliessen = false;
+    // Fokus auf das erste noch geschlossene Türchen
+    const tueren = this.adventTuerLayout();
+    const idx = tueren.findIndex((tue) => !this.adventStand.offen.includes(tue.tag));
+    this.adventFokus = idx >= 0 ? idx : 0;
+    this.adventHover = -1;
+    sfx.ui();
+  }
+
+  private adventZu() {
+    if (!this.adventFullscreen || this.adventSchliessen) return;
+    this.adventSchliessen = true;
+    sfx.ui();
+  }
+
+  /** Türchen öffnen (Maus, Touch oder Tastatur). */
+  private adventOeffne(index: number) {
+    const tueren = this.adventTuerLayout();
+    const tue = tueren[index];
+    if (!tue) return;
+    this.adventFokus = index;
+    if (this.adventStand.offen.includes(tue.tag)) return;
+    const frei = adventFrei(tue.tag, this.clock.month, this.clock.day, ADVENT_NACH_DATUM);
+    if (!frei) return; // Finalmodus: Türchen ist noch zugefroren
+    if (adventOeffnen(this.adventStand, tue.tag, true)) {
+      this.adventAnims.set(index, 0.001);
+      if (adventSternVerdient(this.adventStand)) this.adventSternT = 4;
+      sfx.ui();
+    }
+  }
+
+  private adventKlick(x: number, y: number) {
+    if (this.adventZoomT < 0.9) return;
+    const b = ADVENT_ZURUECK;
+    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+      this.adventZu();
+      return;
+    }
+    const index = adventTuerBei(this.adventTuerLayout(), x, y);
+    if (index >= 0) this.adventOeffne(index);
+  }
+
+  /** Zoom, Türchen-Animationen und Goldstern weiterticken. */
+  private adventAktualisieren(dt: number) {
+    if (this.adventFullscreen) {
+      this.adventT += dt;
+      if (!this.adventSchliessen && this.adventZoomT < 1) this.adventZoomT = Math.min(1, this.adventZoomT + dt / 0.5);
+      for (const [i, v] of this.adventAnims) {
+        if (v < 1) this.adventAnims.set(i, Math.min(1, v + dt / 0.5));
+      }
+      if (this.adventSternT > 0) this.adventSternT = Math.max(0, this.adventSternT - dt);
+    }
+    if (this.adventSchliessen) {
+      this.adventZoomT = Math.max(0, this.adventZoomT - dt / 0.32);
+      if (this.adventZoomT === 0) {
+        this.adventFullscreen = false;
+        this.adventSchliessen = false;
+        if (this.activity?.id === "adventskalender") this.finishActivity();
+      }
+    }
+  }
+
+  /** Vollbild-Ansicht: von der Wandtafel hereinzoomen, 24 Türchen, Nachthimmel. */
+  private drawAdventskalender(c: C) {
+    const z = this.adventZoomT;
+    if (z <= 0) return;
+    const weichZ = z * z * (3 - 2 * z);
+    c.fillStyle = `rgba(24,10,6,${0.8 * weichZ})`;
+    c.fillRect(0, 0, W, H);
+    const wand = ADVENT_WAND;
+    c.save();
+    c.globalAlpha = weichZ;
+    // Zentrum wandert beim Zoomen von der Wandtafel zur Bildschirmmitte,
+    // damit der Kalender am Ende (sk = 1) die ganze Bühne füllt.
+    const zx = lerp(wand.x + wand.w / 2, W / 2, weichZ);
+    const zy = lerp(wand.y + wand.h / 2, H / 2, weichZ);
+    const sk = 0.08 + 0.92 * weichZ;
+    c.translate(zx, zy);
+    c.scale(sk, sk);
+    c.translate(-W / 2, -H / 2);
+
+    adventRahmen(c, this.adventT);
+    const tueren = this.adventTuerLayout();
+    for (let i = 0; i < tueren.length; i++) {
+      const tue = tueren[i];
+      const offen = this.adventStand.offen.includes(tue.tag);
+      // Laufende Öffnungsanimation hat Vorrang; sonst den gespeicherten Zustand zeigen.
+      const anim = this.adventAnims.has(i) ? this.adventAnims.get(i) ?? 0 : offen ? 1 : 0;
+      const frei = adventFrei(tue.tag, this.clock.month, this.clock.day, ADVENT_NACH_DATUM);
+      adventTuer(c, tue.r, tue.tag, { offen, anim },
+        { fokus: this.adventFokus === i, hover: this.adventHover === i, gesperrt: !frei }, this.adventT);
+    }
+
+    // Geheime Belohnung: alle 24 in der Reihenfolge 1–24 (Konzept 3.1)
+    if (this.adventSternT > 0) {
+      const k = Math.min(1, (4 - this.adventSternT) / 0.6) * Math.min(1, this.adventSternT / 0.8);
+      c.save();
+      c.translate(W / 2, H / 2);
+      c.rotate(Math.sin(this.adventT * 1.4) * 0.06);
+      c.scale(0.6 + 0.4 * k, 0.6 + 0.4 * k);
+      c.fillStyle = `rgba(232,194,90,${0.95 * k})`;
+      c.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        const r = i % 2 === 0 ? 46 : 19;
+        const px = Math.cos(a) * r;
+        const py = Math.sin(a) * r;
+        if (i === 0) c.moveTo(px, py);
+        else c.lineTo(px, py);
+      }
+      c.closePath();
+      c.fill();
+      c.restore();
+      c.fillStyle = `rgba(255,241,196,${k})`;
+      c.font = '700 13px "Silkscreen", monospace';
+      c.textAlign = "center";
+      c.fillText("ALLE 24 IN REIHENFOLGE!", W / 2, H / 2 + 74);
+      c.textAlign = "left";
+    }
+
+    // Zurück-Knopf im warmen Holz-Gold-Stil
+    rrect(c, ADVENT_ZURUECK.x, ADVENT_ZURUECK.y, ADVENT_ZURUECK.w, ADVENT_ZURUECK.h, 6, "#3c2413");
+    c.strokeStyle = "#c49a35";
+    c.lineWidth = 1.3;
+    c.strokeRect(ADVENT_ZURUECK.x + 0.8, ADVENT_ZURUECK.y + 0.8, ADVENT_ZURUECK.w - 1.6, ADVENT_ZURUECK.h - 1.6);
+    c.fillStyle = "#e8c25a";
+    c.font = '700 13px "Space Grotesk", sans-serif';
+    c.textAlign = "center";
+    c.textBaseline = "middle";
+    c.fillText("zurueck", ADVENT_ZURUECK.x + ADVENT_ZURUECK.w / 2, ADVENT_ZURUECK.y + ADVENT_ZURUECK.h / 2 + 0.5);
+    c.textAlign = "left";
+    c.textBaseline = "alphabetic";
+
+    adventHinweis(c, ADVENT_NACH_DATUM, this.clock.month === 12);
+    c.restore();
+  }
+
   private drawGolFullscreen(c: C) {
     rect(c, 0, 0, W, H, "#061018");
     if (!this.golState) return;
@@ -7245,15 +8083,17 @@ export class House {
       expr = st.expr;
       face = st.face;
       yOff = st.yOff ?? 0;
-      // Mit Zigarette in der Hand raucht sie wirklich: Arm zum Mund,
-      // Zug, Ausatmen – nicht die stille Sitzpose.
-      if (st.id === "raucherstuhl" && (this.smoking || this.holding) && !this.onPhone) {
+      // Mit Zigarette in der Hand raucht sie wirklich (erst nach dem Anzünden).
+      if (st.id === "raucherstuhl" && this.lightT !== null) {
+        state = "sit";
+        expr = "focus";
+      } else if (st.id === "raucherstuhl" && this.holding && this.burnLeft > 0) {
         state = "smoke";
         expr = "happy";
       }
     }
 
-    // Pose-Phase für Aschenbecher, Handy und Einpacken
+    // Pose-Phase für Aschenbecher und Einpacken
     let posePhase = 0;
 
     // Am Aschenbecher steht sie auf und tritt neben den Tisch, damit der
@@ -7274,7 +8114,7 @@ export class House {
       state = "standup";
       expr = "neutral";
       posePhase = sp;
-    } else if (this.ashMove && !this.ashWalking) {
+    } else if (this.ashMove && !this.ashWalking && this.ashSitzend) {
       // Sie bleibt sitzen und greift daneben – kein Ortswechsel, kein Stretch.
       const seat = STATIONS.find((s) => s.id === "raucherstuhl");
       if (seat) {
@@ -7286,22 +8126,10 @@ export class House {
       }
       expr = "neutral";
       state = "ashtray";
-      const p = clamp(this.ashT / 0.95, 0, 1);
-      posePhase = this.ashMove === "put" ? p : 1 - p;
-    } else if (this.onPhone && !a && !this.ashMove) {
-      // Handy-Pause auf dem Stuhl – nur solange sie wirklich dort sitzt
-      const seat = STATIONS.find((s) => s.id === "raucherstuhl");
-      if (seat) {
-        st = seat;
-        x = seat.x;
-        y = FLOOR_Y[seat.floor];
-        yOff = seat.yOff ?? 0;
-        face = seat.face;
-      }
-      state = this.phoneMode === "call" ? "call" : "phone";
-      expr =
-        this.phoneReact === "laugh" ? "grin" : this.phoneReact === "shake" ? "annoyed" : this.phoneMode === "call" ? "neutral" : "focus";
-      posePhase = this.phoneReact === "shake" ? 1 : 0;
+    } else if (this.ashMove && !this.ashWalking) {
+      // Stehend am Aschenbecher: sie setzt sich nicht, nur der Arm greift.
+      expr = "neutral";
+      state = "idle";
     } else if (this.packMove || this.takeMove) {
       // Am Küchentisch: einpacken bzw. eine Zigarette mitnehmen
       state = "pack";
@@ -7548,6 +8376,9 @@ export class House {
       if (rollen < 2.2) eyeRoll = rollen / 2.2;
     }
 
+    const handy = !a && !back && !this.standing && st?.id === "raucherstuhl" ? this.handy?.pose : null;
+    if (handy?.benutzt) expr = handy.ohr > 0.8 && Math.sin(handy.zeit * 2.1) > 0.27 ? "talk" : "focus";
+
     c.save();
     if (clip) {
       c.beginPath();
@@ -7571,13 +8402,73 @@ export class House {
       this.wcInside && st?.id === "wctuer" && this.wcOpen < 0.55;
     c.globalAlpha = hiddenInWc ? 0 : this.alpha;
     this.lastPose = state;
+    const zuendZeit = !a && !this.standing && !this.ashMove && st?.id === "raucherstuhl" && state === "sit" ? this.lightT : null;
+    const zuenden = zuendZeit === null ? null : zuendPose(x, y + yOff, face, zuendZeit, this.lightAblegen);
+    const tee = !a && st?.id === "tee" && this.teaT > 0 ? this.teeZiele(x, y + yOff) : null;
+    const hustet = this.sick > 0.3 && !zuenden && !tee && !handy;
+    const teeGeht = !!tee && Math.abs(teeStandX(this.teaT + 0.01) - teeStandX(this.teaT - 0.01)) > 0.2;
+    // Aschenbecher: sitzend am Stuhl oder stehend davor – der Arm greift in beiden Fällen.
+    let aschgriff: Pt | null = null; // sitzend, im lokalen Koordinatensystem
+    let aschziel: Pt | null = null; // stehend, in Weltkoordinaten
+    if (this.ashMove && !this.ashWalking && !this.standing) {
+      const p = clamp(this.ashT / this.ashDur(), 0, 1);
+      const reich = this.ashReichweite();
+      // Beim Ausdruecken vom Rand greifen, kurz anheben und in die Mulde druecken.
+      const hub = this.ashMove === "quench" && p > 0.45 && p < 0.78 ? 3 * Math.sin((Math.PI * (p - 0.45)) / 0.33) : 0;
+      if (this.ashSitzend) {
+        const griff: Pt = [(ASH_X - x) / (face * LUNI_SCALE), (SIDE_TOP - 3.4 - y - yOff) / LUNI_SCALE - SITZ_HUB];
+        aschgriff = punktMischen([8.5, -23.5], griff, reich);
+        aschgriff[1] -= hub;
+      } else {
+        const ruh: Pt = [x - 7.6 * LUNI_SCALE, y - 21.5 * LUNI_SCALE];
+        aschziel = punktMischen(ruh, [ASH_X, SIDE_TOP - 3.4 - hub], reich);
+      }
+    }
+    // Rechte/linke Handziele für Gesundheitstee und Eimer-Leeren
+    let handElbow: 1 | -1 = -1;
+    let handElbow2: 1 | -1 = 1;
+    if (!a && !this.standing && !this.ashMove) {
+      if (tee) {
+        saxHand = tee.rechts;
+        saxHand2 = tee.links;
+        handElbow = 1;
+        handElbow2 = 1;
+      } else if (st?.id === "eimer" && this.emptyT > 0) {
+        const et = this.emptyT;
+        const gl = (k: number) => { const q = clamp(k, 0, 1); return q * q * (3 - 2 * q); };
+        const ruh: [number, number] = [x - 7.6 * LUNI_SCALE, y - 21.5 * LUNI_SCALE];
+        const tisch: [number, number] = [ASH_X - 4, SIDE_TOP - 2];
+        const eimer: [number, number] = [BUCKET_X - 11, FK - 23];
+        if (et < 0.6) {
+          const k = gl(et / 0.6);
+          saxHand = [lerp(ruh[0], tisch[0], k), lerp(ruh[1], tisch[1], k)];
+        } else if (et < 1.1) {
+          const k = gl((et - 0.6) / 0.5);
+          saxHand = [lerp(tisch[0], eimer[0], k), lerp(tisch[1], eimer[1], k)];
+        } else if (et < 1.55) {
+          saxHand = eimer;
+        } else if (et < 2.0) {
+          const k = gl((et - 1.55) / 0.45);
+          saxHand = [lerp(eimer[0], tisch[0], k), lerp(eimer[1], tisch[1], k)];
+        } else {
+          const k = gl((et - 2.0) / 0.6);
+          saxHand = [lerp(tisch[0], ruh[0], k), lerp(tisch[1], ruh[1], k)];
+        }
+        handElbow = 1;
+      }
+    }
+
+    if (aschziel) {
+      saxHand = aschziel;
+      handElbow = 1;
+    }
     // Wird von drawLuni gefüllt: beide Handpositionen in Weltkoordinaten.
     const saxHands = { front: [0, 0] as [number, number], rear: [0, 0] as [number, number] };
     const kleidung = this.bedKleidung();
     const hand = drawLuni(c, x, y + yOff, {
       t: this.elapsed,
       face,
-      state,
+      state: teeGeht ? "walk" : state,
       expr,
       walk: walkPhase,
       phase: posePhase,
@@ -7585,7 +8476,7 @@ export class House {
       scale: LUNI_SCALE,
       shadow: !onStair && yOff === 0,
       // Husten setzt ab mittlerer Übelkeit ein
-      cough: this.sick > 0.3 ? clamp((this.sick - 0.3) / 0.4, 0, 1) : 0,
+      cough: hustet ? clamp((this.sick - 0.3) / 0.4, 0, 1) : 0,
       sick: this.sick,
       outfit: this.outfit,
       kleidung,
@@ -7603,7 +8494,15 @@ export class House {
       footTap: saxFootTap,
       sway: saxSway,
       handTarget: saxHand,
+      handElbow,
       handTarget2: saxHand2,
+      handElbow2,
+      sitzgriff: zuenden?.rechts ?? aschgriff,
+      sitzgriffLinks: handy ? handyGriff(handy) : null,
+      handKontakt: !!tee || st?.id === "eimer" || !!aschziel,
+      handVorRumpf: !!handy,
+      armeVorne: !!tee,
+      rauchzeit: this.smokeIdleT,
       handOut: saxHands,
       betweenBodyAndArms: this.saxPhase ? () => this.drawSaxCarried(c) : null,
       armsInFront: !!this.saxPhase,
@@ -7614,7 +8513,7 @@ export class House {
     this.luniHaende = { front: [saxHands.front[0], saxHands.front[1]], rear: [saxHands.rear[0], saxHands.rear[1]] };
     this.luniKopf = { x, y: y + yOff, face, sichtbar: !hiddenInWc && this.alpha > 0.5 };
     // Hustenstöße: kleine Wolken vor dem Mund
-    if (this.sick > 0.3) {
+    if (hustet) {
       const burst = coughPulse(this.elapsed) * clamp((this.sick - 0.3) / 0.4, 0, 1);
       if (burst > 0.08) {
         const mx = x + face * 4 * LUNI_SCALE;
@@ -7642,76 +8541,44 @@ export class House {
       c.restore();
     }
 
-    // Aufstehen: Blendung zwischen Sitz- und Stehpose, Füße bleiben am Boden
-    if (this.standing) {
-      const seat = STATIONS.find((s) => s.id === "raucherstuhl");
-      const sp = clamp(this.standT, 0, 1);
-      if (seat) {
-        st = seat;
-        x = seat.x;
-        y = FLOOR_Y[seat.floor];
-        face = seat.face;
-      }
-      yOff = -10 * (1 - sp);
-      state = "standup";
-      expr = "neutral";
-      posePhase = sp;
-    } else if (this.ashMove && !this.ashWalking && this.ashItem === "cig") {
-      const inHand = this.ashMove === "put" ? posePhase < 0.8 : posePhase < 0.75;
-      if (inHand) cigarette(c, hand[0], hand[1], face, 0.6);
-    } else if (this.ashMove && !this.ashWalking && this.ashItem === "phone") {
-      // Handy wandert zwischen Tisch und Hand – beide Punkte bleiben sichtbar
-      const t = this.ashMove === "take" ? posePhase : 1 - posePhase;
-      const px = lerp(PHONE_X, hand[0], t);
-      const py = lerp(SIDE_TOP, hand[1] - 1, t);
-      phoneOnTable(c, px, py);
-    } else if (this.holding && st?.id !== "raucherstuhl") {
-      cigarette(c, hand[0], hand[1], face, 0.4);
+    if (this.holding && this.ashMove && !this.ashWalking) {
+      const rechts = saxHands.front;
+      kippeAmFilter(c, [rechts[0] - face * KIPPE_GRIFF[0], rechts[1] - KIPPE_GRIFF[1]], face,
+        this.burnLeft > 0 ? 0.6 : 0, this.burnFrac());
+    } else if (this.holding && (st?.id !== "raucherstuhl" || this.standing)) {
+      cigarette(c, hand[0], hand[1], face, this.burnLeft > 0 ? 0.4 : 0, this.burnFrac());
     }
-    // Beide Hände liegen auf dem Klappenschacht – sie werden über das
-    // Instrument gesetzt, sonst verschwinden sie hinter dem Korpus.
     this.drawSaxHands(c, saxHands);
-    if (this.onPhone && !this.standing && !this.ashMove && !a) {
-      c.save();
-      c.translate(hand[0], hand[1] - 1);
-      if (this.phoneMode === "call") {
-        // Telefon am Ohr: schmale Kante neben dem Kopf, kein Bildschirm
-        c.rotate(-0.12);
-        rrect(c, -2.2, -5.8, 4.4, 11.6, 1.2, "#1b1e26");
-        rect(c, -1.5, -4.9, 3, 2.2, "#3b4350");
-        rect(c, -1.5, 2.8, 3, 0.8, "#3b4350");
-        // kleine Sprechwellen
-        for (let i = 0; i < 2; i++) {
-          const p = (this.elapsed * 0.9 + i * 0.5) % 1;
-          c.strokeStyle = `rgba(170,205,235,${(1 - p) * 0.5})`;
-          c.lineWidth = 0.8;
-          c.beginPath();
-          c.arc(3.6, 0, 2 + p * 6, -0.9, 0.9);
-          c.stroke();
-        }
-      } else {
-        // Scrollen: Bildschirm leuchtet, Zeilen wandern
-        c.rotate(-0.3);
-        rrect(c, -3.4, -5.4, 6.8, 10.8, 1.4, "#1b1e26");
-        rect(c, -2.5, -4.6, 5, 9.2, "#8fcbff");
-        c.fillStyle = "rgba(30,60,96,.5)";
-        for (let i = 0; i < 3; i++) {
-          const ly = -3.8 + ((i * 3 + this.elapsed * 4) % 8.4);
-          c.fillRect(-2, ly, 4, 1);
+    if (handy) drawHandy(c, saxHands.rear, face, handy, this.elapsed);
+    if (zuenden) {
+      const rechts = saxHands.front;
+      if (this.holding) {
+        const filter: Pt = zuenden.kippeImMund ? zuenden.mund : [rechts[0] - face * KIPPE_GRIFF[0], rechts[1] - KIPPE_GRIFF[1]];
+        const glimmt = this.burnLeft > 0;
+        kippeAmFilter(c, filter, face, glimmt ? 0.6 : 0, glimmt ? this.burnFrac() : 1);
+      }
+      if (zuenden.feuerzeugInHand) feuerzeug(c, rechts, zuenden.winkel, zuenden.flamme, this.elapsed);
+    }
+    if (st?.id === "eimer" && this.emptyT >= 0.55 && this.emptyT < 2.0) {
+      const et = this.emptyT;
+      const gl = (k: number) => { const q = clamp(k, 0, 1); return q * q * (3 - 2 * q); };
+      const tilt = et < 0.75 ? 0 : et < 1.15 ? 0.9 * gl((et - 0.75) / 0.4) : et < 1.55 ? 0.9 : 0.9 * (1 - gl((et - 1.55) / 0.35));
+      const inBecher = et < 1.25 ? this.ashButts : 0;
+      this.drawAshtrayAt(c, saxHands.front[0], saxHands.front[1], tilt, inBecher);
+      // Fallende Asche und Stummel in den Eimer
+      if (et >= 0.95 && et < 1.55) {
+        const k = (et - 0.95) / 0.6;
+        for (let i = 0; i < 5; i++) {
+          const px = lerp(saxHands.front[0] + 2, BUCKET_X + (i - 2) * 1.1, k);
+          const py = lerp(saxHands.front[1] + 2, FK - 14, clamp(k * 1.15 - i * 0.08, 0, 1));
+          disc(c, px, py, i % 2 ? 0.85 : 0.6, i % 2 ? "#dfd8c5" : "#8e887f");
         }
       }
-      c.restore();
-      const gl = c.createRadialGradient(hand[0], hand[1] - 4, 1, hand[0], hand[1] - 4, 16);
-      gl.addColorStop(0, "rgba(150,205,255,.26)");
-      gl.addColorStop(1, "rgba(150,205,255,0)");
-      c.fillStyle = gl;
-      c.beginPath();
-      c.arc(hand[0], hand[1] - 4, 16, 0, Math.PI * 2);
-      c.fill();
     }
-    if (st?.id === "raucherstuhl" && (this.smoking || this.holding)) {
-      const { lift, puff } = smokeCycle(this.elapsed);
-      cigarette(c, hand[0], hand[1], face, 0.2 + lift);
+    if (!this.ashMove && !this.standing && state === "smoke" && this.burnLeft > 0) {
+      const { lift, puff } = smokeCycle(this.smokeIdleT);
+      const rechts = saxHands.front;
+      kippeAmFilter(c, [rechts[0] - face * KIPPE_GRIFF[0], rechts[1] - KIPPE_GRIFF[1]], face, 0.2 + lift, this.burnFrac());
       // Rauchfahne von der Spitze (beim Ziehen glimmt sie stärker)
       for (let i = 0; i < 4; i++) {
         const ph = (this.elapsed * 0.42 + i * 0.24) % 1;
@@ -7720,8 +8587,8 @@ export class House {
         c.fillStyle = `rgba(224,231,238,${a})`;
         c.beginPath();
         c.arc(
-          hand[0] + face * (10 + ph * 16) + Math.sin(this.elapsed * 1.6 + i) * 4,
-          hand[1] - 2 - ph * 26,
+          rechts[0] + face * (7 + ph * 16) + Math.sin(this.elapsed * 1.6 + i) * 4,
+          rechts[1] - 2 - ph * 26,
           1.6 + ph * 4.2,
           0,
           Math.PI * 2,
@@ -7731,7 +8598,7 @@ export class House {
       // Ausatmen: ein zarter Hauch vor dem Mund, gerade eben sichtbar
       if (puff > 0.05) {
         const mx = x + face * 2 * LUNI_SCALE;
-        const my = y + yOff - 41 * LUNI_SCALE;
+        const my = y + yOff + (SITZ_MUND[1] + SITZ_HUB) * LUNI_SCALE;
         for (let i = 0; i < 3; i++) {
           const ph = clamp(puff * 1.1 - i * 0.22, 0, 1);
           if (ph <= 0) continue;
@@ -7759,7 +8626,8 @@ export class House {
       disc(c, -1, 0, 1.1, "#7c4a26");
       c.restore();
     }
-    if (st?.prop) drawProp(c, st.prop, hand[0], hand[1], face);
+    if (tee) this.drawTee(c, tee, saxHands.front, saxHands.rear);
+    else if (st?.prop) drawProp(c, st.prop, hand[0], hand[1], face);
     if (st?.blanket) {
       const inSarg = this.welt === "gruesel" && GRUSELRAEUME.schlafzimmer;
       const bx = st.x - 8;

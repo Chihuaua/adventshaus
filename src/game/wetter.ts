@@ -142,7 +142,7 @@ export function beschreibung(w: WetterState): string {
 
 const WINDOWS: readonly [number, number, number, number][] = [
   [330, 358, 64, 38], [624, 364, 50, 36], [740, 236, 44, 78],
-  [334, 244, 62, 46], [330, 98, 56, 44], [704, 472, 36, 20],
+  [334, 244, 62, 46], [330, 98, 56, 44],
 ];
 const PALETTE: Record<Jahreszeit, [string, string]> = {
   fruehling: ["rgba(190,230,160,.20)", "rgba(255,236,170,.16)"],

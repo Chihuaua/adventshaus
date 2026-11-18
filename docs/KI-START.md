@@ -57,6 +57,7 @@ Verbesserungen nur als Frage im Chat, nicht als Tat. Nichts löschen oder umbene
 ## Prüfen und zeigen
 - `./node_modules/.bin/tsc --noEmit && npm run build` fehlerfrei. **Niemals `npx tsc`.**
 - Dev-Server in der Sandbox-Wurzel starten; `curl -s http://localhost:5173 | grep -o '<title>[^<]*</title>'` erwartet `Little Computer Luni · Das Adventshaus`, nicht `Ready to build`.
+- Bei jeder aktualisierten Vorschau das UFO-ZIP aus genau diesem Stand neu erzeugen. Dateiname: `LCL-<kurzer Inhalt>-<laufende Nummer, zweistellig>.zip`, z. B. `LCL-weste-05.zip`; darin `aktuell.patch` und `aktuell.json`. Das UFO selbst bleibt außerhalb des Spielpatches.
 - Laufende Szene zeigen und Klicks im Browser prüfen. Arbeite klein: ein Schritt, eine Prüfung; Antworten/Ausgaben kurz (tail/head), keine kompletten Protokolle.
 - Keine Dateiinhalte zum Abtippen, sondern einen Patch. Bilder aus dem Chat sind Anhänge, keine Projektdateien; nichts davon ins Repository legen.
 
