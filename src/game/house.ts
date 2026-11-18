@@ -17,6 +17,7 @@ import {
   adventOeffnen, adventRahmen, adventSternVerdient, adventTuer, adventTuerBei, adventTueren, adventWand,
   ladeAdvent, type AdventStand,
 } from "./advent";
+import { dekoSichtbar, drawDeko, drawDekoLicht } from "./deko";
 import { HandyAblauf, HANDY_TASCHE_SICHTBAR } from "./handy";
 import {
   GOL_BTN,
@@ -5378,6 +5379,8 @@ export class House {
     if (this.welt === "normal") {
       this.adventStandPruefen();
       adventWand(ctx, this.adventStand.offen, this.adventStand.jahr || new Date().getFullYear());
+      // Weihnachtsdeko hinter Luni: sie geht davor vorbei wie vor jedem Möbel.
+      drawDeko(ctx, dekoSichtbar(this.adventStand.offen), this.elapsed);
     }
     this.drawAshtrayTray(ctx);
     // Zigarette im Aschenbecher liegt AUF der Platte: Luni geht davor vorbei
@@ -5429,6 +5432,10 @@ export class House {
 
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) this.drawKesselEffekte(ctx);
 
+    // Warme Lichtscheine der Deko erst nach der Nachtabdunkelung, damit sie leuchten.
+    if (this.welt === "normal") {
+      drawDekoLicht(ctx, dekoSichtbar(this.adventStand.offen), this.elapsed);
+    }
     drawWetterStation(ctx, this.wetter, this.wetterAdd, this.wetterHover, this.wetterOffen, this.welt === "normal");
     this.drawHoverLabel(ctx);
     if (this.golFullscreen) this.drawGolFullscreen(ctx);
@@ -7815,7 +7822,7 @@ export class House {
       this.adventT += dt;
       if (!this.adventSchliessen && this.adventZoomT < 1) this.adventZoomT = Math.min(1, this.adventZoomT + dt / 0.5);
       for (const [i, v] of this.adventAnims) {
-        if (v < 1) this.adventAnims.set(i, Math.min(1, v + dt / 0.5));
+        if (v < 1) this.adventAnims.set(i, Math.min(1, v + dt / 0.78));
       }
       if (this.adventSternT > 0) this.adventSternT = Math.max(0, this.adventSternT - dt);
     }
