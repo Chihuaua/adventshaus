@@ -83,6 +83,19 @@ test("Jahreswechsel: alter Stand zählt nicht mehr", () => {
   assert.equal(stand.jahr, 2027);
 });
 
+test("Offene Türchen verdecken das Nachbartürchen nicht", () => {
+  // Eine aufgeklappte Tür ragt höchstens 16 Einheiten nach links (tuerFluegel).
+  const tueren = A.adventTueren(A.adventMischung(2026));
+  let kleinsteLuecke = Infinity;
+  for (let i = 0; i < tueren.length; i++) {
+    if (i % 6 === 0) continue;
+    const links = tueren[i - 1].r;
+    const rechts = tueren[i].r;
+    kleinsteLuecke = Math.min(kleinsteLuecke, rechts.x - (links.x + links.w));
+  }
+  assert.ok(kleinsteLuecke > 16 + 2, `Lücke ${kleinsteLuecke.toFixed(1)} muss die offene Tür (16) plus Rand fassen`);
+});
+
 test("Geheime Belohnung: nur die Reihenfolge 1–24 zählt", () => {
   const gut = { jahr: 2026, offen: [], reihenfolge: [] };
   for (let tag = 1; tag <= 24; tag++) {

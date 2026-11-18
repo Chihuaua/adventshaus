@@ -835,72 +835,68 @@ function tuerKlappe(c: C, x: number, y: number, wK: number, h: number, tag: numb
 }
 
 /**
- * Die Klappe, die links am Scharnier hängt und nach außen (nach links)
- * aufschwenkt. Die freie Kante wandert mit fortschreitender Drehung nach links
- * und wird dabei perspektivisch schmaler; bei 1 steht sie flach offen.
+ * Eine einzige Klappe am linken Scharnier. Beim Öffnen schwenkt die freie
+ * Kante nach links aus der Wand; die Vorderseite wird perspektivisch schmaler
+ * und verschwindet, die helle Rückseite tritt links hervor. Bei 90° steht
+ * die Tür als schmales Blatt in der Lücke zwischen den Türchen – sie
+ * verdeckt das Nachbartürchen nicht.
  */
-function tuerAufgeklappt(c: C, x: number, y: number, wK: number, h: number, tag: number, auf: number) {
+function tuerFluegel(c: C, x: number, y: number, w: number, h: number, tag: number, auf: number) {
   const winkel = (auf * Math.PI) / 2;
-  const scharnierX = x;                       // Scharnier bleibt am Ort
-  const spitze = scharnierX - wK * Math.sin(winkel); // freie Kante geht nach links
-  const dicke = Math.max(2.6, wK * (0.11 + 0.2 * Math.cos(winkel))); // Kante im Licht
-  const x0 = Math.min(spitze, scharnierX);
-  const breite = Math.abs(spitze - scharnierX);
+  const cosK = Math.cos(winkel);
+  const sinK = Math.sin(winkel);
+  // Vorderseite: schrumpft nach rechts hin zum Scharnier
+  const vorne = w * cosK;
+  // Rückseite: ragt nach links, perspektivisch begrenzt auf die Lücke (~16)
+  const hinten = Math.min(16, w * sinK * 0.36);
 
-  // Schatten der Klappe auf dem Filz
-  c.save();
-  c.fillStyle = `rgba(20,6,4,${0.32 * auf})`;
-  c.beginPath();
-  c.moveTo(spitze + 2, y + 3);
-  c.lineTo(scharnierX + 3, y + 3);
-  c.lineTo(scharnierX + 3, y + h + 3);
-  c.lineTo(spitze + 2, y + h + 3);
-  c.closePath();
-  c.fill();
+  // Schatten der Tür auf dem Filz links neben dem Fach
+  if (hinten > 0.6) {
+    c.fillStyle = `rgba(20,6,4,${0.38 * auf})`;
+    c.fillRect(x - hinten - 1.5, y + 2.5, hinten + 2.5, h);
+  }
 
-  if (breite > 0.5) {
-    // Optische Vorderseite der nach links aufgeklappten Tür
-    const g = c.createLinearGradient(x0, y, scharnierX, y);
-    g.addColorStop(0, "#a5794d");
-    g.addColorStop(0.55, "#8a5f38");
-    g.addColorStop(1, "#714729");
+  if (vorne > 0.8) {
+    // Vorderseite mit Holz, Paneel und goldener Zahl
+    tuerKlappe(c, x, y, vorne, h, tag, Math.max(0, (cosK - 0.25) / 0.75));
+  }
+
+  if (hinten > 0.8) {
+    // Rückseite im Licht: helles Holz, Querlatten, Beschlag
+    const g = c.createLinearGradient(x - hinten, y, x, y);
+    g.addColorStop(0, "#c29a66");
+    g.addColorStop(0.6, "#a87b4d");
+    g.addColorStop(1, "#8c6239");
     c.fillStyle = g;
-    c.fillRect(x0, y, breite, h);
-    holzMaser(c, x0, y, breite, h, "#5a3a1e", 0.18);
-    // Dicke Kante an der freien Seite -> klare 3D-Tiefe
-    c.fillStyle = "#5b3920";
-    c.fillRect(spitze, y, dicke, h);
-    c.fillStyle = "rgba(255,222,170,.32)";
-    c.fillRect(spitze + 0.7, y + 2, Math.min(1.6, dicke - 1), h - 4);
+    c.fillRect(x - hinten, y, hinten, h);
+    holzMaser(c, x - hinten, y, hinten, h, "#5a3a1e", 0.16);
+    c.fillStyle = "rgba(255,236,190,.4)";
+    c.fillRect(x - hinten, y, 1.4, h);
+    c.strokeStyle = "rgba(84,50,24,.5)";
+    c.lineWidth = 1;
+    for (const f of [0.22, 0.66]) {
+      c.beginPath();
+      c.moveTo(x - hinten + 1, y + h * f);
+      c.lineTo(x - 1, y + h * f);
+      c.stroke();
+    }
     c.strokeStyle = HOLZ_TIEF;
     c.lineWidth = 1;
-    c.strokeRect(x0 + 0.5, y + 0.5, Math.max(0, breite - 1), h - 1);
-    // Paneel und goldene Ziffer wandern mit der Klappe
-    if (breite > 10) {
-      const px = x0 + breite * 0.2;
-      const pw = breite * 0.6;
-      c.strokeStyle = "rgba(45,25,10,.5)";
-      c.lineWidth = 1.2;
-      c.strokeRect(px, y + h * 0.14, pw, h * 0.72);
-      c.strokeStyle = "rgba(255,225,170,.16)";
-      c.lineWidth = 1;
-      c.strokeRect(px + 1.2, y + h * 0.14 + 1.2, Math.max(0, pw - 2.4), h * 0.72 - 2.4);
-      if (breite > 16) goldZahl(c, String(tag), x0 + breite / 2, y + h / 2, Math.min(19, breite * 0.35), Math.max(0.35, Math.cos(winkel)));
-    }
+    c.strokeRect(x - hinten + 0.5, y + 0.5, hinten - 1, h - 1);
   }
-  // Scharnier links
+
+  // Scharnier links bleibt immer sichtbar
   c.fillStyle = GOLD_TIEF;
-  c.fillRect(scharnierX - 1, y + h * 0.2, 3, 7);
-  c.fillRect(scharnierX - 1, y + h * 0.72, 3, 7);
+  c.fillRect(x - 1, y + h * 0.2, 3, 7);
+  c.fillRect(x - 1, y + h * 0.72, 3, 7);
   c.fillStyle = GOLD_HELL;
-  c.fillRect(scharnierX - 0.4, y + h * 0.2 + 0.8, 1.2, 5.4);
-  c.fillRect(scharnierX - 0.4, y + h * 0.72 + 0.8, 1.2, 5.4);
-  c.restore();
+  c.fillRect(x - 0.4, y + h * 0.2 + 0.8, 1.2, 5.4);
+  c.fillRect(x - 0.4, y + h * 0.72 + 0.8, 1.2, 5.4);
 }
 
 /**
- * Ein einzelnes Türchen: goldbezifferte Holzklappe, die nach außen
- * aufklappt und offen stehen bleibt. `stand.anim` läuft 0 (zu) → 1 (offen).
+ * Ein einzelnes Türchen: goldbezifferte Holzklappe, die nach außen (links)
+ * aufklappt und bei 90° offen stehen bleibt. `stand.anim` läuft 0 (zu) → 1 (offen).
  */
 export function adventTuer(
   c: C,
@@ -918,10 +914,12 @@ export function adventTuer(
     adventBild(c, tag, x + 2, y + 2, w - 4, h - 4, t);
     // Schatten der aufgeklappten Tür fällt von links auf das Motiv
     const sch = c.createLinearGradient(x, y, x + w * 0.55, y);
-    sch.addColorStop(0, `rgba(25,9,5,${0.5 * (1 - auf)})`);
+    sch.addColorStop(0, `rgba(25,9,5,${0.5 * (1 - auf * 0.6)})`);
     sch.addColorStop(1, "rgba(25,9,5,0)");
     c.fillStyle = sch;
     c.fillRect(x + 2, y + 2, w - 4, h - 4);
+  } else {
+    balken(c, x + 1, y + 1, w - 2, h - 2, "#2b1109", 2);
   }
 
   // Vertiefte Öffnung
@@ -929,21 +927,8 @@ export function adventTuer(
   c.lineWidth = 2;
   c.strokeRect(x + 1, y + 1, w - 2, h - 2);
 
-  if (auf < 0.999) {
-    // Geschlossene Klappe: wird beim Öffnen perspektivisch schmaler
-    const breite = w * Math.cos((auf * Math.PI) / 2);
-    if (breite > 0.5) {
-      tuerKlappe(c, x + w - breite, y, breite, h, tag, Math.max(0, (breite / w - 0.25) / 0.75));
-      // rechtes Scharnier bleibt sichtbar
-      c.fillStyle = GOLD_TIEF;
-      c.fillRect(x + w - 3, y + h * 0.2, 3, 7);
-      c.fillRect(x + w - 3, y + h * 0.72, 3, 7);
-    }
-  }
-  if (auf > 0.001) {
-    // Die Tür bleibt draußen links offen stehen
-    tuerAufgeklappt(c, x, y, w, h, tag, auf);
-  }
+  // Die eine Klappe: schwenkt nach links auf und bleibt dort stehen
+  tuerFluegel(c, x, y, w, h, tag, auf);
 
   if (zustand.gesperrt && auf < 0.01) {
     c.fillStyle = "rgba(200,222,240,.14)";
