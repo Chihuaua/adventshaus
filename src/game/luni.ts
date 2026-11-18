@@ -25,9 +25,11 @@ export const LUNI_COLORS = {
   skinShade: "#e3b288",
   hair: "#191920",
   hairSheen: "#3b3b48",
-  cardigan: "#b58b63",
-  cardiganDark: "#95704a",
-  cardiganLight: "#c9a079",
+  cardigan: "#dcc9a5",
+  cardiganDark: "#c4ad84",
+  cardiganLight: "#eee3cc",
+  /** Holzfäller-Karo auf der hellen Weste: leicht dunklere Linien */
+  karo: "rgba(128,88,52,.30)",
   tee: "#f6f3ea",
   teeShade: "#dcd7c9",
   leggings: "#272b34",
@@ -97,6 +99,7 @@ export type LuniExpr =
   | "sad"
   | "annoyed"
   | "love"
+  | "talk"
   | "focus";
 
 export interface LuniOpts {
@@ -125,8 +128,23 @@ export interface LuniOpts {
   sway?: number;
   /** Weltkoordinate: dorthin streckt sich die vordere Hand (Greifen). */
   handTarget?: [number, number] | null;
+  /** Ellbogenrichtung der vorderen Hand (Standard -1; 1 knickt nach unten). */
+  handElbow?: 1 | -1;
   /** Weltkoordinate für die zweite Hand (zweiter Griff am Instrument). */
   handTarget2?: [number, number] | null;
+  /** Ellbogenrichtung der hinteren Hand (Standard 1). */
+  handElbow2?: 1 | -1;
+  /** Greifpunkt der rechten Hand beim Sitzen, im lokalen Koordinatensystem. */
+  sitzgriff?: V | null;
+  /** Die linke Hand kann unabhaengig davon das Handy halten. */
+  sitzgriffLinks?: V | null;
+  /** Kontaktpunkte bleiben trotz Atembewegung an derselben Weltposition. */
+  handKontakt?: boolean;
+  /** Hintere Hand sichtbar vor dem Rumpf, ohne die Schulter zu verlagern. */
+  handVorRumpf?: boolean;
+  /** Beide Arme vor dem Rumpf zeichnen (z. B. Tasse und Kanne beim Tee). */
+  armeVorne?: boolean;
+  rauchzeit?: number;
   /** Wird nach dem Zeichnen mit beiden Handpositionen in Weltkoordinaten gefüllt. */
   handOut?: { front: [number, number]; rear: [number, number] } | null;
   /** Wird zwischen Rumpf und Armen aufgerufen – dort hängt das Saxophon.
@@ -199,6 +217,15 @@ const HIP_Y = -19;
 const SHOULDER_Y = -36;
 const HEAD_Y = -46.5;
 const HEAD_R = 9.2;
+const MUND_X = 0.8;
+const MUND_Y = 0.4 + 5.2;
+const SITZ_NEIGUNG = 0.03;
+export const SITZ_HUB = 9;
+/** Ansatz am geschlossenen Mund der Sitzpose, noch ohne Sitzhub. */
+export const SITZ_MUND: readonly [number, number] = [
+  (MUND_X + 0.8) * Math.cos(SITZ_NEIGUNG) - (MUND_Y - 0.4) * Math.sin(SITZ_NEIGUNG),
+  HEAD_Y + (MUND_X + 0.8) * Math.sin(SITZ_NEIGUNG) + (MUND_Y - 0.4) * Math.cos(SITZ_NEIGUNG),
+];
 /** Länge der Rückenhaare ab Kopfmitte – Spitze endet etwas unter den Schultern. */
 const HAIR_LEN = 18;
 
@@ -736,13 +763,13 @@ function buildRig(state: LuniState, t: number, walkP: number, phase: number, rea
     }
 
     case "sit": {
-      r.rootY = 9;
+      r.rootY = SITZ_HUB;
       r.hipY = HIP_Y;
       r.armNear = { elbow: [7, -28], hand: [9, -21] };
       r.armFar = { elbow: [-6, -28], hand: [-7, -21] };
       r.legFar = leg([8, -19], [10, -9.5]);
       r.legNear = leg([9.5, -19], [12, -9.5]);
-      r.headTilt = 0.03;
+      r.headTilt = SITZ_NEIGUNG;
       break;
     }
 
@@ -802,17 +829,18 @@ function buildRig(state: LuniState, t: number, walkP: number, phase: number, rea
     }
 
     case "ashtray": {
-      // SITZEND am Beistelltisch: der Arm reicht daneben, ohne zu strecken.
-      // `phase` 0..1 führt die Hand vom Schoß zum Tisch und zurück.
+      // SITZEND am Beistelltisch: die linke Hand ruht auf dem Schoß, die rechte
+      // greift mit natürlicher Ellbogenbeuge nach vorn zum Aschenbecher.
       const p = phase * phase * (3 - 2 * phase);
       r.rootY = 9;
       r.hipY = HIP_Y;
       r.headTilt = 0.05 + p * 0.16;
-      r.armNear = { elbow: [-6, -28], hand: [-7, -21] };
-      r.armFar = {
-        elbow: [lerp(7, 10.5, p), lerp(-28, -26.5, p)],
-        hand: [lerp(9, 16, p), lerp(-21, -23.5, p)],
-      };
+      r.armNear = { elbow: [6.5, -28], hand: [8.5, -21] };
+      r.armFar = armIK(
+        [-3.4, r.shoulderY + 2],
+        [lerp(-6, 15, p), lerp(-21, -30, p)],
+        1,
+      );
       r.legFar = leg([8, -19], [10, -9.5]);
       r.legNear = leg([9.5, -19], [12, -9.5]);
       r.hairFlow = 0.3 + p * 0.5;
@@ -1143,9 +1171,11 @@ function drawEyeRoll(ctx: C, p: number) {
 
 /* ------------------------------ Gesicht -------------------------------- */
 
-function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = true, gaze = 0) {
+function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = true, gaze = 0, queasy = 0) {
+  // Krank (grünes Gesicht): kein fröhliches Augenkneifen mehr.
   const closed =
-    blink > 0.5 || expr === "happy" || expr === "grin" || expr === "sleep" || expr === "love";
+    blink > 0.5 || expr === "sleep" ||
+    (queasy < 0.5 && (expr === "happy" || expr === "grin" || expr === "love"));
   const farX = -2.6;
   const nearX = 3.6;
   const eyeY = 0.4;
@@ -1319,12 +1349,19 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
   ctx.fill();
 
   // ---- Mund ----
-  const mY = eyeY + 5.2;
-  const mx = 0.8;
+  const mY = MUND_Y;
+  const mx = MUND_X;
   ctx.strokeStyle = LUNI_COLORS.mouth;
   ctx.fillStyle = LUNI_COLORS.mouth;
   ctx.lineWidth = 1.05;
-  switch (expr) {
+  // Krank darf sie nicht lächeln: aus jedem Lächeln wird ein flauer Mund.
+  if (queasy >= 0.5 && (expr === "happy" || expr === "grin" || expr === "love" || expr === "wink")) {
+    ctx.beginPath();
+    ctx.moveTo(mx - 2.6, mY + 0.5);
+    ctx.quadraticCurveTo(mx - 1.3, mY - 0.8, mx, mY + 0.2);
+    ctx.quadraticCurveTo(mx + 1.3, mY + 1.2, mx + 2.6, mY - 0.2);
+    ctx.stroke();
+  } else switch (expr) {
     case "happy":
     case "love":
       ctx.beginPath();
@@ -1357,6 +1394,11 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
       ctx.fill();
       break;
     }
+    case "talk":
+      ctx.beginPath();
+      ctx.ellipse(mx, mY - 0.25, 1.35, 0.52 + Math.abs(Math.sin(t * 7)) * 0.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      break;
     case "surprised":
       ctx.beginPath();
       ctx.ellipse(mx, mY, 1.2, 1.6, 0, 0, Math.PI * 2);
@@ -1444,6 +1486,75 @@ function drawLabTorso(ctx: C, r: Rig, outfit: "dressed" | "towel" | "none", K: t
   }
 }
 
+/** Pfad eines Vorderteils der offenen Jacke (ohne beginPath; links oder rechts der weißen Mitte). */
+function vorderteilPfad(ctx: C, sgn: -1 | 1, topY: number, botY: number) {
+  ctx.moveTo(sgn * 2.4, topY + 0.4);
+  ctx.quadraticCurveTo(sgn * 7.6, topY - 0.4, sgn * 7.8, topY + 5);
+  ctx.lineTo(sgn * 7.4, botY + 1.6);
+  ctx.quadraticCurveTo(sgn * 4.6, botY + 2.4, sgn * 3.4, botY + 0.6);
+  ctx.quadraticCurveTo(sgn * 2.2, topY + 8, sgn * 2.4, topY + 0.4);
+  ctx.closePath();
+}
+
+/** Holzfäller-Karo: breite Streifen und feine Zwischenlinien, leicht dunkler als die Weste. */
+function karoRaster(ctx: C, x0: number, x1: number, y0: number, y1: number) {
+  ctx.save();
+  ctx.strokeStyle = LUNI_COLORS.karo;
+  const lagen = [
+    { abstand: 6.5, breite: 1.2, deckkraft: 1, versatz: 0 },
+    { abstand: 6.5, breite: 0.5, deckkraft: 0.7, versatz: 3.25 },
+  ];
+  for (const { abstand, breite, deckkraft, versatz } of lagen) {
+    ctx.lineWidth = breite;
+    ctx.globalAlpha = deckkraft;
+    for (let x = x0 + versatz; x <= x1; x += abstand) {
+      ctx.beginPath();
+      ctx.moveTo(x, y0);
+      ctx.lineTo(x, y1);
+      ctx.stroke();
+    }
+    for (let y = y0 + versatz; y <= y1; y += abstand) {
+      ctx.beginPath();
+      ctx.moveTo(x0, y);
+      ctx.lineTo(x1, y);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+/** Holzfäller-Karo auf dem Ärmel: Querstriche im Abstand und eine Mittellinie. */
+function armKaro(ctx: C, pts: V[]) {
+  ctx.save();
+  ctx.strokeStyle = LUNI_COLORS.karo;
+  ctx.lineCap = "butt";
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [ax, ay] = pts[i];
+    const [bx, by] = pts[i + 1];
+    const len = Math.hypot(bx - ax, by - ay);
+    if (len < 0.01) continue;
+    const ux = (bx - ax) / len;
+    const uy = (by - ay) / len;
+    const nx = -uy * 2;
+    const ny = ux * 2;
+    ctx.lineWidth = 0.55;
+    for (let s = 1.2; s < len; s += 3.25) {
+      const px = ax + ux * s;
+      const py = ay + uy * s;
+      ctx.beginPath();
+      ctx.moveTo(px + nx, py + ny);
+      ctx.lineTo(px - nx, py - ny);
+      ctx.stroke();
+    }
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawTorso(ctx: C, r: Rig, K = LUNI_COLORS) {
   const topY = r.shoulderY;
   const botY = r.hipY;
@@ -1465,14 +1576,19 @@ function drawTorso(ctx: C, r: Rig, K = LUNI_COLORS) {
   // offene Strickjacke: zwei Vorderteile, Mitte bleibt weiß
   for (const sgn of [-1, 1] as const) {
     ctx.beginPath();
-    ctx.moveTo(sgn * 2.4, topY + 0.4);
-    ctx.quadraticCurveTo(sgn * 7.6, topY - 0.4, sgn * 7.8, topY + 5);
-    ctx.lineTo(sgn * 7.4, botY + 1.6);
-    ctx.quadraticCurveTo(sgn * 4.6, botY + 2.4, sgn * 3.4, botY + 0.6);
-    ctx.quadraticCurveTo(sgn * 2.2, topY + 8, sgn * 2.4, topY + 0.4);
-    ctx.closePath();
+    vorderteilPfad(ctx, sgn, topY, botY);
     ctx.fillStyle = sgn > 0 ? K.cardigan : K.cardiganDark;
     ctx.fill();
+  }
+  // Holzfäller-Karo nur auf der hellen Standardweste, nicht im Pyjama- oder Vampir-Look
+  if (K.cardigan === LUNI_COLORS.cardigan) {
+    ctx.save();
+    ctx.beginPath();
+    vorderteilPfad(ctx, -1, topY, botY);
+    vorderteilPfad(ctx, 1, topY, botY);
+    ctx.clip();
+    karoRaster(ctx, -8, 8, topY - 1, botY + 3);
+    ctx.restore();
   }
 
   // Kragen
@@ -1926,7 +2042,15 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     footTap = 0,
     sway = 0,
     handTarget = null,
+    handElbow = -1,
     handTarget2 = null,
+    handElbow2 = 1,
+    sitzgriff = null,
+    sitzgriffLinks = null,
+    handKontakt = false,
+    handVorRumpf = false,
+    armeVorne = false,
+    rauchzeit,
     handOut = null,
     betweenBodyAndArms = null,
     armsInFront = false,
@@ -1998,7 +2122,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   const K = vampir && oberteil === "dressed"
     ? { ...KP, cardiganLight: vampir.spitze ?? vampir.trim ?? KP.cardiganLight }
     : KP;
-  const r = buildRig(state, t, walk, phase, armReach);
+  const r = buildRig(state, state === "smoke" ? rauchzeit ?? t : t, walk, phase, armReach);
   if (state === "lie" && lieDown !== undefined) {
     const p = clamp01(lieDown);
     const sit = buildRig("sleepBend", t, walk, 1, armReach);
@@ -2046,19 +2170,26 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     // Ziel in den lokalen Raum umrechnen (Spiegelung beachten) und mit der
     // vorhandenen Zweigelenk-IK anvisieren. armIK kürzt zu weite Ziele auf die
     // feste Armlänge – der Arm kann sich dadurch nicht verlängern.
-    const tx = (handTarget[0] - x) / (scale * face) - (backIK ? r.rootX : 0);
-    const ty = (handTarget[1] - y) / scale - (backIK ? r.rootY : 0);
+    const tx = (handTarget[0] - x) / (scale * face) - (backIK || handKontakt ? r.rootX : 0);
+    const ty = (handTarget[1] - y) / scale - (backIK || handKontakt ? r.rootY : 0);
     const sh: V = backIK ? [-6.2, r.shoulderY + 2.2] : [-3.4, r.shoulderY + 2];
-    const limb = armIK(sh, [tx, ty], -1);
+    const limb = armIK(sh, [tx, ty], handElbow);
     r.armFar = { elbow: limb.elbow, hand: [limb.hand[0], limb.hand[1]] };
   }
   if (handTarget2) {
     // Zweite Hand: ebenfalls echte Zweigelenk-IK mit fester Armlänge.
-    const tx = (handTarget2[0] - x) / (scale * face) - (backIK ? r.rootX : 0);
-    const ty = (handTarget2[1] - y) / scale - (backIK ? r.rootY : 0);
+    const tx = (handTarget2[0] - x) / (scale * face) - (backIK || handKontakt ? r.rootX : 0);
+    const ty = (handTarget2[1] - y) / scale - (backIK || handKontakt ? r.rootY : 0);
     const sh: V = backIK ? [6.2, r.shoulderY + 2.2] : [3.4, r.shoulderY + 2];
-    const limb = armIK(sh, [tx, ty], 1);
+    const limb = armIK(sh, [tx, ty], handElbow2);
     r.armNear = { elbow: limb.elbow, hand: limb.hand };
+  }
+  const sitzPose = state === "sit" || state === "smoke" || state === "ashtray";
+  if (sitzgriff && sitzPose) {
+    r.armFar = armIK([-3.4, r.shoulderY + 2], sitzgriff, 1);
+  }
+  if (sitzgriffLinks && sitzPose) {
+    r.armNear = armIK([3.4, r.shoulderY + 2], sitzgriffLinks, 1);
   }
 
   // Saxophon: rechter Fuß (legNear, sockR) wippt im Takt, der Oberkörper
@@ -2161,16 +2292,19 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   const armFront = r.armFar;
 
   /* --- hinterer Arm (früher der vordere) --- */
-  const drawBackArm = () =>
+  const drawBackArm = (nurHand = false) =>
     upperLean(() => {
-      stroke3(ctx, [3.4, r.shoulderY + 2], armBehind.elbow, armBehind.hand, K.cardiganDark, 4.4);
+      if (!nurHand) {
+        stroke3(ctx, [3.4, r.shoulderY + 2], armBehind.elbow, armBehind.hand, K.cardiganDark, 4.4);
+        if (K.cardigan === LUNI_COLORS.cardigan) armKaro(ctx, [[3.4, r.shoulderY + 2], armBehind.elbow, armBehind.hand]);
+      }
       ctx.fillStyle = K.skinShade;
       ctx.beginPath();
       ctx.arc(armBehind.hand[0], armBehind.hand[1], 1.9, 0, Math.PI * 2);
       ctx.fill();
     });
   // Beim Tragen eines Instruments liegt der Arm vor dem Korpus, nicht dahinter.
-  if (!back && !armsInFront) drawBackArm();
+  if (!back && !armsInFront && !armeVorne) drawBackArm();
 
   /* --- vorderes Bein (unverdreht) --- */
   stroke3(
@@ -2186,6 +2320,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   const drawFrontArm = () =>
     upperLean(() => {
       stroke3(ctx, [-3.4, r.shoulderY + 2], armFront.elbow, armFront.hand, K.cardigan, 4.6);
+      if (K.cardigan === LUNI_COLORS.cardigan) armKaro(ctx, [[-3.4, r.shoulderY + 2], armFront.elbow, armFront.hand]);
       // Ärmelbündchen
       ctx.save();
       const ha = Math.atan2(armFront.hand[1] - armFront.elbow[1], armFront.hand[0] - armFront.elbow[0]);
@@ -2254,7 +2389,8 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     // Ohne diese Reihenfolge verdeckt der Saxophon-Korpus beide Arme, und das
     // Instrument hängt scheinbar frei in der Luft.
     betweenBodyAndArms?.();
-    if (armsInFront) drawBackArm();
+    if (armsInFront || armeVorne) drawBackArm();
+    else if (handVorRumpf) drawBackArm(true);
 
     /* --- vorderer Arm (früher der hintere) --- */
     // Beim Vorbeugen erst nach dem Kopf, damit die Bürstenhand vor den Haaren liegt.
@@ -2315,7 +2451,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   } else if (r.bend >= 0.7) {
     // Vorgebeugt: Gesicht zeigt zum Boden. Haare bedecken den Hinterkopf und
     // hängen senkrecht herunter, bis knapp über den Boden.
-    drawFace(ctx, expr, blink, t, glasses, gaze);
+    drawFace(ctx, expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0);
     ctx.fillStyle = LUNI_COLORS.hair;
     ctx.beginPath();
     ctx.arc(-1.4, HEAD_Y - 1.6, HEAD_R + 0.6, 0, Math.PI * 2);
@@ -2355,7 +2491,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   } else {
     if (hairAside > 0.01) drawHairAside(ctx, hairAside);
     else drawHairFront(ctx, r.hairFlow, r.hairUp, r.hairLen);
-    drawFace(ctx, eyeRoll > 0.01 ? "annoyed" : expr, blink, t, glasses, gaze);
+    drawFace(ctx, eyeRoll > 0.01 ? "annoyed" : expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0);
     if (eyeRoll > 0.01) drawEyeRoll(ctx, eyeRoll);
   }
   if (wet > 0.02 && r.bend < 0.7) {

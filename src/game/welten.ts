@@ -71,6 +71,12 @@ export interface HausSnapshot {
   /** Gruselhaus: getragenes und zuletzt gewähltes Vampir-Outfit (Index). */
   vampir?: number | null;
   vampirLetzt?: number;
+  /** Restbrennzeit, Gesamtdauer und Kippen im Aschenbecher / Eimer. */
+  burnLeft?: number;
+  burnTotal?: number;
+  ashButts?: number;
+  bucketButts?: number;
+  lighterOnTable?: boolean;
 }
 
 const schluessel = (welt: WeltId) => `lcp1.welt.${welt}.v1`;
