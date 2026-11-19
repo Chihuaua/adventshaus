@@ -773,130 +773,361 @@ export function adventBild(c: C, tag: number, x: number, y: number, w: number, h
 
 /* ------------------------------ Türchen -------------------------------- */
 
-/** Vordere Holzklappe mit Maserung, Paneel, goldenen Scharnieren und Zahl. */
-function tuerKlappe(c: C, x: number, y: number, wK: number, h: number, tag: number, zahlAlpha: number) {
-  c.save();
+/** Endwinkel (~96°) und sanfter Federscheitel (~98.4°) der offenen Klappe. */
+const TUER_OFFEN_WINKEL = 1.678;
+const TUER_FEDER_WINKEL = 1.718;
+/** Materialstärke des Holztürchens in Bühneneinheiten. */
+const TUER_DICKE = 2.2;
+
+/**
+ * Natürlicher Öffnungswinkel (Radiant) für `auf` in 0..1:
+ * sanftes Anlösen aus dem Falz, flüssiger Schwung über 90° hinaus
+ * und weiches Ausfedern in die offene Ruhelage (~96°).
+ */
+export function adventTuerWinkel(auf: number): number {
+  const p = Math.max(0, Math.min(1, auf));
+  if (p <= 0) return 0;
+  if (p >= 1) return TUER_OFFEN_WINKEL;
+  if (p < 0.84) {
+    const u = p / 0.84;
+    const e = u * u * (3 - 2 * u);
+    return e * TUER_FEDER_WINKEL;
+  }
+  const v = (p - 0.84) / 0.16;
+  const e = v * v * (3 - 2 * v);
+  return TUER_FEDER_WINKEL + (TUER_OFFEN_WINKEL - TUER_FEDER_WINKEL) * e;
+}
+
+interface TuerKante {
+  x: number;
+  oben: number;
+  unten: number;
+}
+
+/** 3D-Punkt (lx seitlich ab Scharnier, lz nach vorn zum Betrachter) projizieren. */
+function projiziereKante(x: number, y: number, w: number, h: number, lx: number, lz: number): TuerKante {
+  const zn = Math.max(0, lz) / w;
+  const vergr = 1 + zn * 0.13;
+  return {
+    x: x + lx * vergr,
+    oben: y - zn * 5.6,
+    unten: y + h + zn * 6.8,
+  };
+}
+
+/** Wie weit die geöffnete Klappe (inkl. Seitenknauf) links über `r.x` hinausragt. */
+export function adventTuerUeberstand(w: number, auf = 1): number {
+  const wkl = adventTuerWinkel(auf);
+  const cosK = Math.cos(wkl);
+  const sinK = Math.sin(wkl);
+  const f1 = projiziereKante(0, 0, w, 76, w * cosK, w * sinK);
+  const knauf = cosK < -0.03 ? 1.8 : 0;
+  return Math.max(0, -f1.x + knauf);
+}
+
+/** Viereck zwischen zwei senkrechten Kanten als Pfad anlegen. */
+function trapezPfad(c: C, a: TuerKante, b: TuerKante) {
   c.beginPath();
-  c.rect(x, y, wK, h);
+  c.moveTo(a.x, a.oben);
+  c.lineTo(b.x, b.oben);
+  c.lineTo(b.x, b.unten);
+  c.lineTo(a.x, a.unten);
+  c.closePath();
+}
+
+/** Punkt (u, v in 0..1) innerhalb eines perspektivischen Tür-Trapezes. */
+function trapezPunkt(a: TuerKante, b: TuerKante, u: number, v: number): Pt {
+  const px = a.x + (b.x - a.x) * u;
+  const oy = a.oben + (b.oben - a.oben) * u;
+  const uy = a.unten + (b.unten - a.unten) * u;
+  return [px, oy + (uy - oy) * v];
+}
+
+/** Trapez-Linienzug für eingelassene Kassetten auf Vorder- und Innenseite. */
+function trapezRahmen(c: C, a: TuerKante, b: TuerKante, u0: number, u1: number, v0: number, v1: number) {
+  const p00 = trapezPunkt(a, b, u0, v0);
+  const p10 = trapezPunkt(a, b, u1, v0);
+  const p11 = trapezPunkt(a, b, u1, v1);
+  const p01 = trapezPunkt(a, b, u0, v1);
+  c.beginPath();
+  c.moveTo(p00[0], p00[1]);
+  c.lineTo(p10[0], p10[1]);
+  c.lineTo(p11[0], p11[1]);
+  c.lineTo(p01[0], p01[1]);
+  c.closePath();
+}
+
+/** Vorderseite der Holzklappe in echter 3D-Trapezperspektive (0° bis < 90°). */
+function tuerVorderseite(c: C, f0: TuerKante, f1: TuerKante, w: number, h: number, tag: number, cosK: number, sinK: number) {
+  const breite = f1.x - f0.x;
+  if (breite <= 0.4) return;
+
+  c.save();
+  trapezPfad(c, f0, f1);
+  c.save();
   c.clip();
-  balken(c, x, y, wK, h, HOLZ, 3);
-  holzMaser(c, x, y, wK, h, "#5a3a1e", 0.2);
-  balken(c, x, y, wK, 3, "rgba(255,230,180,.25)");
-  balken(c, x, y + h - 3, wK, 3, "rgba(40,20,8,.3)");
-  // eingelassenes Paneel
-  const px = x + wK * 0.16, pw = wK * 0.68, py = y + h * 0.14, ph = h * 0.72;
-  c.fillStyle = "rgba(60,34,16,.16)";
-  c.fillRect(px + 1.4, py + 1.4, pw - 2.8, ph - 2.8);
-  c.strokeStyle = "rgba(45,25,10,.55)";
-  c.lineWidth = 1.4;
-  c.strokeRect(px, py, pw, ph);
-  c.strokeStyle = "rgba(255,225,170,.18)";
-  c.lineWidth = 1;
-  c.strokeRect(px + 1.4, py + 1.4, pw - 2.8, ph - 2.8);
-  // feine Gold-Ecken im Paneel
-  c.strokeStyle = `rgba(232,194,90,${0.5 * Math.max(zahlAlpha, 0.4)})`;
-  c.lineWidth = 1;
-  const e = 5;
-  for (const [ex, ey, dx, dy] of [[px + 3, py + 3, 1, 1], [px + pw - 3, py + 3, -1, 1], [px + 3, py + ph - 3, 1, -1], [px + pw - 3, py + ph - 3, -1, -1]] as [number, number, number, number][]) {
+
+  // Warmes Nussbaumholz: die nach vorn schwingende Kante fängt das Raumlicht ein
+  const g = c.createLinearGradient(f0.x, 0, f1.x, 0);
+  const schatten = sinK * 0.14;
+  g.addColorStop(0, sinK > 0.04 ? "#784e2a" : HOLZ);
+  g.addColorStop(0.55, HOLZ);
+  g.addColorStop(1, sinK > 0.04 ? "#a07142" : HOLZ);
+  c.fillStyle = g;
+  c.fillRect(f0.x - 1, f1.oben - 2, breite + 2, f1.unten - f1.oben + 4);
+  if (breite > 3) {
+    holzMaser(c, f0.x, f1.oben, breite, f1.unten - f1.oben, "#5a3a1e", 0.2);
+  }
+  if (schatten > 0.02 && cosK < 0.55) {
+    // Streiflicht-Abdunkelung kurz vor 90°, damit der Umschlag natürlich wirkt
+    c.fillStyle = `rgba(36,16,6,${(0.55 - cosK) * 0.34})`;
+    c.fillRect(f0.x - 1, f1.oben - 2, breite + 2, f1.unten - f1.oben + 4);
+  }
+
+  // Obere Lichtfase und untere Schattenfase folgen der Trapez-Schräge
+  strich(c, f0.x + 1, f0.oben + 1.5, f1.x - 1, f1.oben + 1.5, "rgba(255,230,180,.28)", 2.6);
+  strich(c, f0.x + 1, f0.unten - 1.5, f1.x - 1, f1.unten - 1.5, "rgba(40,20,8,.34)", 2.6);
+
+  // Eingelassenes Kassetten-Paneel
+  if (breite > 7) {
+    trapezRahmen(c, f0, f1, 0.16, 0.84, 0.14, 0.86);
+    c.fillStyle = "rgba(60,34,16,.16)";
+    c.fill();
+    c.strokeStyle = "rgba(45,25,10,.55)";
+    c.lineWidth = Math.min(1.4, 0.8 + cosK * 0.6);
+    c.stroke();
+
+    trapezRahmen(c, f0, f1, 0.18, 0.82, 0.16, 0.84);
+    c.strokeStyle = "rgba(255,225,170,.18)";
+    c.lineWidth = 0.9;
+    c.stroke();
+
+    // Feine Gold-Ecken im Paneel
+    if (cosK > 0.25) {
+      c.strokeStyle = `rgba(232,194,90,${0.5 * Math.min(1, cosK + 0.15)})`;
+      c.lineWidth = 1;
+      const du = 0.06;
+      const dv = 0.065;
+      for (const [eu, ev, su, sv] of [
+        [0.195, 0.18, du, dv],
+        [0.805, 0.18, -du, dv],
+        [0.195, 0.82, du, -dv],
+        [0.805, 0.82, -du, -dv],
+      ] as [number, number, number, number][]) {
+        const pa = trapezPunkt(f0, f1, eu + su, ev);
+        const pm = trapezPunkt(f0, f1, eu, ev);
+        const pb = trapezPunkt(f0, f1, eu, ev + sv);
+        c.beginPath();
+        c.moveTo(pa[0], pa[1]);
+        c.lineTo(pm[0], pm[1]);
+        c.lineTo(pb[0], pb[1]);
+        c.stroke();
+      }
+    }
+  }
+
+  // Goldene Zahl und Rauten in echter Perspektiv-Stauchung und -Neigung
+  const zahlAlpha = Math.max(0, Math.min(1, (cosK - 0.14) / 0.35));
+  if (zahlAlpha > 0.02 && breite > 8) {
+    // Perspektivische Mitte liegt leicht näher an der vorderen Kante
+    const uMitte = 0.5 + sinK * 0.03;
+    const [mx, my] = trapezPunkt(f0, f1, uMitte, 0.5);
+    const hoeheMitte = (f0.unten - f0.oben) + ((f1.unten - f1.oben) - (f0.unten - f0.oben)) * uMitte;
+    const skX = Math.max(0.12, breite / w);
+    const skY = hoeheMitte / h;
+    const neigY = (((f1.oben + f1.unten) - (f0.oben + f0.unten)) * 0.5) / Math.max(12, w);
+    c.save();
+    c.translate(mx, my);
+    c.transform(skX, neigY, 0, skY, 0, 0);
+    goldZahl(c, String(tag), 0, 0, Math.min(24, w * 0.3), zahlAlpha);
+    if (cosK > 0.3) {
+      c.fillStyle = `rgba(232,194,90,${zahlAlpha * 0.9})`;
+      const dy = h * 0.21;
+      for (const oy of [-dy, dy]) {
+        c.save();
+        c.translate(0, oy);
+        c.rotate(Math.PI / 4);
+        c.fillRect(-2.2, -2.2, 4.4, 4.4);
+        c.restore();
+      }
+    }
+    c.restore();
+  }
+
+  // Kleiner Messingknauf rechts: wandert und verkürzt sich mit der Tür
+  if (breite > 5) {
+    const [kx, ky] = trapezPunkt(f0, f1, 0.93, 0.5);
+    const rx = Math.max(0.9, 2 * Math.max(0.45, cosK));
+    const ry = 2 * (1 + sinK * 0.1);
+    c.fillStyle = GOLD_TIEF;
     c.beginPath();
-    c.moveTo(ex + dx * e, ey);
-    c.lineTo(ex, ey);
-    c.lineTo(ex, ey + dy * e);
+    c.ellipse(kx + sinK * 0.6, ky, rx, ry, 0, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = GOLD_HELL;
+    c.beginPath();
+    c.ellipse(kx + sinK * 0.4 - rx * 0.28, ky - 0.6, rx * 0.42, ry * 0.42, 0, 0, Math.PI * 2);
+    c.fill();
+  }
+
+  c.restore();
+  trapezPfad(c, f0, f1);
+  c.strokeStyle = HOLZ_TIEF;
+  c.lineWidth = 1.3;
+  c.stroke();
+  c.restore();
+}
+
+/** Innenseite der über 90° nach vorn aufgeklappten Tür (schlankes Perspektiv-Trapez). */
+function tuerInnenseite(c: C, b1: TuerKante, b0: TuerKante) {
+  const breite = b0.x - b1.x;
+  if (breite <= 0.35) return;
+
+  c.save();
+  trapezPfad(c, b1, b0);
+  c.save();
+  c.clip();
+
+  // Vorne (links, b1) warm beleuchtetes helles Holz, am Scharnier (b0) im Falzschatten
+  const g = c.createLinearGradient(b1.x, 0, b0.x, 0);
+  g.addColorStop(0, "#cca06e");
+  g.addColorStop(0.55, "#ab7d4e");
+  g.addColorStop(1, "#744927");
+  c.fillStyle = g;
+  c.fillRect(b1.x - 1, b1.oben - 2, breite + 2, b1.unten - b1.oben + 4);
+
+  // Feine mitlaufende Holzfasern
+  c.strokeStyle = "rgba(74,42,18,.2)";
+  c.lineWidth = 0.7;
+  for (const u of [0.32, 0.66]) {
+    const po = trapezPunkt(b1, b0, u, 0.03);
+    const pu = trapezPunkt(b1, b0, u, 0.97);
+    c.beginPath();
+    c.moveTo(po[0], po[1]);
+    c.lineTo(pu[0], pu[1]);
     c.stroke();
   }
-  // Scharniere links
-  c.fillStyle = GOLD_TIEF;
-  c.fillRect(x + 1, y + h * 0.2, 3, 7);
-  c.fillRect(x + 1, y + h * 0.72, 3, 7);
-  c.fillStyle = GOLD_HELL;
-  c.fillRect(x + 1.4, y + h * 0.2 + 0.8, 1.2, 5.4);
-  c.fillRect(x + 1.4, y + h * 0.72 + 0.8, 1.2, 5.4);
-  // Griff rechts
-  kreis(c, x + wK - 6, y + h / 2, 2, GOLD_TIEF);
-  kreis(c, x + wK - 6.6, y + h / 2 - 0.6, 0.8, GOLD_HELL);
-  // Zahl + Gold-Rauten
-  const zs = Math.min(24, wK * 0.3);
-  goldZahl(c, String(tag), x + wK / 2, y + h / 2, zs, zahlAlpha);
-  if (zahlAlpha > 0.4) {
-    c.fillStyle = `rgba(232,194,90,${zahlAlpha * 0.9})`;
-    const dy = h * 0.21;
-    for (const oy of [-dy, dy]) {
-      c.save();
-      c.translate(x + wK / 2, y + h / 2 + oy);
-      c.rotate(Math.PI / 4);
-      c.fillRect(-2.2, -2.2, 4.4, 4.4);
-      c.restore();
-    }
+
+  // Eingelassene Innenkassette – folgt der Trapez-Perspektive wie ein echtes Türchen
+  if (breite > 3.2) {
+    trapezRahmen(c, b1, b0, 0.2, 0.8, 0.13, 0.87);
+    c.fillStyle = "rgba(62,34,15,.14)";
+    c.fill();
+    c.strokeStyle = "rgba(68,38,16,.5)";
+    c.lineWidth = 0.9;
+    c.stroke();
+    const liO = trapezPunkt(b1, b0, 0.23, 0.145);
+    const liU = trapezPunkt(b1, b0, 0.23, 0.855);
+    strich(c, liO[0], liO[1], liU[0], liU[1], "rgba(255,235,190,.3)", 0.75);
   }
+
+  // Lichtkante oben, Schattenkante unten
+  strich(c, b1.x, b1.oben + 0.9, b0.x, b0.oben + 0.9, "rgba(255,236,192,.36)", 1.3);
+  strich(c, b1.x, b1.unten - 0.9, b0.x, b0.unten - 0.9, "rgba(34,14,6,.42)", 1.4);
+
   c.restore();
+  trapezPfad(c, b1, b0);
   c.strokeStyle = HOLZ_TIEF;
-  c.lineWidth = 1.4;
-  c.strokeRect(x + 0.7, y + 0.7, wK - 1.4, h - 1.4);
+  c.lineWidth = 1.05;
+  c.stroke();
+  c.restore();
 }
 
 /**
- * Eine einzige Klappe am linken Scharnier. Beim Öffnen schwenkt die freie
- * Kante nach links aus der Wand; die Vorderseite wird perspektivisch schmaler
- * und verschwindet, die helle Rückseite tritt links hervor. Bei 90° steht
- * die Tür als schmales Blatt in der Lücke zwischen den Türchen – sie
- * verdeckt das Nachbartürchen nicht.
+ * Ein einziger 3D-Türflügel am linken Scharnier:
+ * - 0°..90°: Vorderseite schwenkt als Trapez nach vorn auf den Betrachter zu
+ *   (links vom Scharnier erscheint noch nichts).
+ * - ab 90°: die freie Kante gleitet leicht nach links (~96°), sodass eine
+ *   schlanke, klar erkennbare offene Tür mit Stirnkante, Innenkassette,
+ *   Scharnieren und kleinem Seitenknauf stehen bleibt, ohne Nachbarn zu verdecken.
  */
 function tuerFluegel(c: C, x: number, y: number, w: number, h: number, tag: number, auf: number) {
-  const winkel = (auf * Math.PI) / 2;
+  const winkel = adventTuerWinkel(auf);
   const cosK = Math.cos(winkel);
   const sinK = Math.sin(winkel);
-  // Vorderseite: schrumpft nach rechts hin zum Scharnier
-  const vorne = w * cosK;
-  // Rückseite: ragt nach links, perspektivisch begrenzt auf die Lücke (~16)
-  const hinten = Math.min(16, w * sinK * 0.36);
 
-  // Schatten der Tür auf dem Filz links neben dem Fach
-  if (hinten > 0.6) {
-    c.fillStyle = `rgba(20,6,4,${0.38 * auf})`;
-    c.fillRect(x - hinten - 1.5, y + 2.5, hinten + 2.5, h);
+  // Vier 3D-Kanten des Türblattes (F = Vorderseite, B = Innenseite; 0 = Scharnier, 1 = frei)
+  const f0 = projiziereKante(x, y, w, h, 0, 0);
+  const f1 = projiziereKante(x, y, w, h, w * cosK, w * sinK);
+  const b0 = projiziereKante(x, y, w, h, TUER_DICKE * sinK * 0.75, Math.max(0, -TUER_DICKE * cosK));
+  const b1 = projiziereKante(x, y, w, h, w * cosK + TUER_DICKE * sinK, w * sinK - TUER_DICKE * cosK * 0.5);
+
+  // Weicher perspektivischer Schlagschatten unter der nach vorn ragenden Tür
+  if (sinK > 0.08) {
+    c.save();
+    c.fillStyle = `rgba(18,5,3,${0.28 * sinK})`;
+    c.beginPath();
+    c.moveTo(x + 0.5, y + h);
+    c.lineTo(f1.x + 1.8, f1.unten + 3.4 * sinK);
+    c.lineTo(b1.x + 3.4, b1.unten + 2.4 * sinK);
+    c.lineTo(x + Math.max(4, (f1.x - x) + 4), y + h + 1.5);
+    c.closePath();
+    c.fill();
+    c.restore();
   }
 
-  if (vorne > 0.8) {
-    // Vorderseite mit Holz, Paneel und goldener Zahl
-    tuerKlappe(c, x, y, vorne, h, tag, Math.max(0, (cosK - 0.25) / 0.75));
+  // Bei > 90° sitzt der kleine Messingknauf bündig im Seitenprofil an der Vorderkante
+  if (cosK < -0.03) {
+    const sichtbar = Math.min(1, (-cosK - 0.03) / 0.07);
+    const ky = (f1.oben + f1.unten) * 0.5;
+    const aus = 1.1 * sichtbar;
+    c.fillStyle = "#9e7726";
+    c.fillRect(f1.x - aus * 0.7, ky - 0.85, aus * 0.9 + 0.4, 1.7);
+    c.fillStyle = GOLD_TIEF;
+    c.beginPath();
+    c.ellipse(f1.x - aus, ky, 0.85 * sichtbar, 1.65 * sichtbar, 0, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = GOLD_HELL;
+    c.beginPath();
+    c.ellipse(f1.x - aus - 0.15, ky - 0.45, 0.4 * sichtbar, 0.7 * sichtbar, 0, 0, Math.PI * 2);
+    c.fill();
   }
 
-  if (hinten > 0.8) {
-    // Rückseite im Licht: helles Holz, Querlatten, Beschlag
-    const g = c.createLinearGradient(x - hinten, y, x, y);
-    g.addColorStop(0, "#c29a66");
-    g.addColorStop(0.6, "#a87b4d");
-    g.addColorStop(1, "#8c6239");
-    c.fillStyle = g;
-    c.fillRect(x - hinten, y, hinten, h);
-    holzMaser(c, x - hinten, y, hinten, h, "#5a3a1e", 0.16);
-    c.fillStyle = "rgba(255,236,190,.4)";
-    c.fillRect(x - hinten, y, 1.4, h);
-    c.strokeStyle = "rgba(84,50,24,.5)";
-    c.lineWidth = 1;
-    for (const f of [0.22, 0.66]) {
-      c.beginPath();
-      c.moveTo(x - hinten + 1, y + h * f);
-      c.lineTo(x - 1, y + h * f);
-      c.stroke();
-    }
+  // Innenseite (nur sichtbar wenn über 90° geöffnet, also b0.x > b1.x)
+  if (b0.x > b1.x + 0.35) {
+    tuerInnenseite(c, b1, b0);
+  }
+
+  // Vorderseite (nur sichtbar unter 90°, also f1.x > f0.x)
+  if (f1.x > f0.x + 0.4) {
+    tuerVorderseite(c, f0, f1, w, h, tag, cosK, sinK);
+  }
+
+  // Schmalseite / Holzdicke an der freien Kante (verbindet Vorder- und Innenseite nahtlos)
+  if (sinK > 0.06 && b1.x > f1.x + 0.3) {
+    c.save();
+    trapezPfad(c, f1, b1);
+    const kg = c.createLinearGradient(f1.x, 0, b1.x, 0);
+    kg.addColorStop(0, "#6e4422");
+    kg.addColorStop(0.65, "#9c6c3e");
+    kg.addColorStop(1, "#cfa270");
+    c.fillStyle = kg;
+    c.fill();
     c.strokeStyle = HOLZ_TIEF;
-    c.lineWidth = 1;
-    c.strokeRect(x - hinten + 0.5, y + 0.5, hinten - 1, h - 1);
+    c.lineWidth = 0.85;
+    c.stroke();
+    strich(c, b1.x - 0.35, b1.oben + 1, b1.x - 0.35, b1.unten - 1, "rgba(255,238,196,.45)", 0.7);
+    c.restore();
   }
 
-  // Scharnier links bleibt immer sichtbar
-  c.fillStyle = GOLD_TIEF;
-  c.fillRect(x - 1, y + h * 0.2, 3, 7);
-  c.fillRect(x - 1, y + h * 0.72, 3, 7);
-  c.fillStyle = GOLD_HELL;
-  c.fillRect(x - 0.4, y + h * 0.2 + 0.8, 1.2, 5.4);
-  c.fillRect(x - 0.4, y + h * 0.72 + 0.8, 1.2, 5.4);
+  // Zwei feine Messingscharniere links an der Falz
+  const sx = cosK >= 0 ? x + 0.6 : x + 0.2;
+  for (const fv of [0.2, 0.72]) {
+    const sy = y + h * fv;
+    c.fillStyle = GOLD_TIEF;
+    c.fillRect(sx, sy, 2.6, 6.8);
+    if (cosK < -0.02) {
+      // kleiner Scharnierflügel auf der aufgeklappten Innenseite
+      const fl = Math.min(2.6, (b0.x - b1.x) * 0.28);
+      c.fillRect(sx - fl, sy + 0.9, fl + 0.5, 5);
+    }
+    c.fillStyle = GOLD_HELL;
+    c.fillRect(sx + 0.55, sy + 0.8, 1.05, 5.2);
+  }
 }
 
 /**
- * Ein einzelnes Türchen: goldbezifferte Holzklappe, die nach außen (links)
- * aufklappt und bei 90° offen stehen bleibt. `stand.anim` läuft 0 (zu) → 1 (offen).
+ * Ein einzelnes Türchen: goldbezifferte Holzklappe, die in echter Perspektive
+ * nach vorn-links aufschwingt und schlank offen stehen bleibt (`anim` 0 → 1).
  */
 export function adventTuer(
   c: C,
@@ -908,34 +1139,35 @@ export function adventTuer(
 ) {
   const { x, y, w, h } = r;
   const auf = Math.max(0, Math.min(1, stand.anim));
+  const winkel = adventTuerWinkel(auf);
+  const sinK = Math.sin(winkel);
+  const cosK = Math.cos(winkel);
 
-  // Motiv wird sichtbar, sobald die Tür aufgeht
-  if (auf > 0.01) {
+  // Motiv im vertieften Kästchen, sobald sich ein Spalt öffnet
+  if (auf > 0.005) {
     adventBild(c, tag, x + 2, y + 2, w - 4, h - 4, t);
-    // Schatten der aufgeklappten Tür fällt von links auf das Motiv
-    const sch = c.createLinearGradient(x, y, x + w * 0.55, y);
-    sch.addColorStop(0, `rgba(25,9,5,${0.5 * (1 - auf * 0.6)})`);
-    sch.addColorStop(1, "rgba(25,9,5,0)");
+    // Feine Innenlaibung des Kästchens: oben Schatten, unten warmer Lichtsaum
+    c.fillStyle = "rgba(18,6,3,.45)";
+    c.fillRect(x + 2, y + 2, w - 4, 2.2);
+    c.fillStyle = "rgba(255,205,130,.16)";
+    c.fillRect(x + 2, y + h - 3.6, w - 4, 1.6);
+    // Weicher Türschatten im Fach: wandert mit der schwingenden Klappe mit
+    const schBreite = cosK > 0 ? Math.min(w - 4, w * cosK + 14 * sinK) : 11;
+    const sch = c.createLinearGradient(x + 2, y, x + 2 + schBreite, y);
+    sch.addColorStop(0, `rgba(22,8,4,${cosK > 0 ? 0.42 : 0.28})`);
+    sch.addColorStop(1, "rgba(22,8,4,0)");
     c.fillStyle = sch;
-    c.fillRect(x + 2, y + 2, w - 4, h - 4);
+    c.fillRect(x + 2, y + 2, schBreite, h - 4);
   } else {
     balken(c, x + 1, y + 1, w - 2, h - 2, "#2b1109", 2);
   }
 
-  // Vertiefte Öffnung
+  // Vertiefte Rahmenkante der Öffnung
   c.strokeStyle = "rgba(30,12,8,.9)";
   c.lineWidth = 2;
   c.strokeRect(x + 1, y + 1, w - 2, h - 2);
 
-  // Die eine Klappe: schwenkt nach links auf und bleibt dort stehen
-  tuerFluegel(c, x, y, w, h, tag, auf);
-
-  if (zustand.gesperrt && auf < 0.01) {
-    c.fillStyle = "rgba(200,222,240,.14)";
-    c.fillRect(x, y, w, h);
-    strich(c, x + 6, y + h - 8, x + 12, y + h - 14, "rgba(235,245,252,.6)", 1.1);
-  }
-
+  // Fokus-/Hover-Ring liegt auf der Kalendertafel, die offene Tür ragt räumlich davor
   if (zustand.fokus || zustand.hover) {
     c.strokeStyle = zustand.fokus ? "#ffd166" : "rgba(255,209,102,.55)";
     c.lineWidth = zustand.fokus ? 2.2 : 1.4;
@@ -945,6 +1177,15 @@ export function adventTuer(
       c.lineWidth = 1;
       c.strokeRect(x - 6, y - 6, w + 12, h + 12);
     }
+  }
+
+  // Der 3D-Türflügel: schwingt nach vorn aus dem Rahmen und bleibt schlank offen
+  tuerFluegel(c, x, y, w, h, tag, auf);
+
+  if (zustand.gesperrt && auf < 0.01) {
+    c.fillStyle = "rgba(200,222,240,.14)";
+    c.fillRect(x, y, w, h);
+    strich(c, x + 6, y + h - 8, x + 12, y + h - 14, "rgba(235,245,252,.6)", 1.1);
   }
 }
 
@@ -1008,14 +1249,7 @@ export function adventRahmen(c: C, t: number) {
   c.strokeStyle = "rgba(232,194,90,.4)";
   c.lineWidth = 1.2;
   c.strokeRect(W / 2 - 185, 18, 370, 44);
-  goldText(c, "ADVENTSKALENDER", W / 2, 36, 23);
-  c.font = '600 9px "Space Grotesk", sans-serif';
-  c.textAlign = "center";
-  c.textBaseline = "middle";
-  c.fillStyle = "rgba(240,220,180,.7)";
-  c.fillText("24 TUERCHEN · LUNIS HAUS", W / 2, 53);
-  c.textAlign = "left";
-  c.textBaseline = "alphabetic";
+  goldText(c, "ADVENTSKALENDER", W / 2, 40, 23);
 
   // Tannengirlande über dem oberen Rahmen, Schleife in der Mitte
   girlande(c, fx - 26, fx + fw + 26, fy - 18, t);

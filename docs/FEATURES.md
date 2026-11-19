@@ -197,3 +197,4 @@ adventskalender-zoom | src/game/house.ts | drawAdventskalender
 adventskalender-station | src/game/house.ts | "adventskalender"
 adventskalender-tastatur | src/game/house.ts | adventOeffne
 adventskalender-tests | tools/test-adventskalender.mjs | Türchen
+adventskalender-deko | src/game/deko.ts | drawDeko
