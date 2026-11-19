@@ -77,6 +77,11 @@ export interface HausSnapshot {
   ashButts?: number;
   bucketButts?: number;
   lighterOnTable?: boolean;
+  /** Positionen von Odin und Apollo im normalen Haus. */
+  hunde?: {
+    odin?: { x: number; floor: 0 | 1 | 2; face: 1 | -1 };
+    apollo?: { x: number; floor: 0 | 1 | 2; face: 1 | -1 };
+  };
 }
 
 const schluessel = (welt: WeltId) => `lcp1.welt.${welt}.v1`;

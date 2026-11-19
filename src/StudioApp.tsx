@@ -189,6 +189,26 @@ export default function StudioApp() {
             <Chip active={paused} onClick={() => setPaused((v) => !v)}>
               {paused ? "Weiter" : "Standbild"}
             </Chip>
+            <div className="flex gap-1 rounded-lg bg-[#08151a]/70 p-1 ring-1 ring-white/10">
+              <a
+                href="#studio-odin"
+                className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-mint-200 ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
+              >
+                Odin-Studio
+              </a>
+              <a
+                href="#studio-apollo"
+                className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-mint-200 ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
+              >
+                Apollo-Studio
+              </a>
+              <a
+                href="#studio-mons"
+                className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-amber-glow ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
+              >
+                Luni-Mon-Studio
+              </a>
+            </div>
           </div>
         </header>
 
@@ -391,7 +411,17 @@ export default function StudioApp() {
         </div>
 
         <p className="mt-3 pb-2 text-center text-[11px] text-mint-400/60">
-          Nach deiner Freigabe: Feinschliff an Haaren/Outfit, dann Odin &amp; Apollo im selben Stil.
+          <a href="#studio-odin" className="underline decoration-dotted hover:text-mint-200">
+            Odin-Studio
+          </a>
+          {" · "}
+          <a href="#studio-apollo" className="underline decoration-dotted hover:text-mint-200">
+            Apollo-Studio
+          </a>
+          {" · "}
+          <a href="#studio-mons" className="underline decoration-dotted hover:text-mint-200">
+            Luni-Mon-Studio
+          </a>
         </p>
       </div>
     </div>

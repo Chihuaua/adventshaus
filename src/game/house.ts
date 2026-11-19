@@ -18,6 +18,7 @@ import {
   ladeAdvent, type AdventStand,
 } from "./advent";
 import { dekoSichtbar, drawDeko, drawDekoLicht } from "./deko";
+import { HundeWelt, type HundId } from "./hunde";
 import { HandyAblauf, HANDY_TASCHE_SICHTBAR } from "./handy";
 import {
   GOL_BTN,
@@ -480,6 +481,8 @@ export const STATIONS: Station[] = [
     id: "adventskalender", label: "Adventskalender", floor: 1, x: 465, face: 1, state: "idle", expr: "happy",
     hits: [[438, 336, 54, 56]],
   },
+  { id: "odin", label: "Odin", floor: 1, x: 314, face: 1, state: "pet", expr: "happy", hits: [[317, 418, 38, 31]] },
+  { id: "apollo", label: "Apollo", floor: 1, x: 442, face: 1, state: "pet", expr: "happy", hits: [[445, 418, 38, 31]] },
   {
     id: "sofa", label: "Sofa & Fernseher", floor: 1, x: 372, face: 1, state: "sit", expr: "happy", yOff: -16, screen: "tv_e",
     hits: [[306, 402, 96, 46], [438, 392, 54, 56]],
@@ -2739,6 +2742,14 @@ export class House {
   /** Kurzer Goldstern-Moment, wenn die geheime Reihenfolge gelingt. */
   private adventSternT = 0;
 
+  // Lunis zwei Hunde: Odin (schmaler Fang, helles Braun) & Apollo (breiter Kopf, gestromt)
+  private hunde = new HundeWelt();
+  private petHund: HundId | null = null;
+  private petT = 0;
+  /** Zuruf an der Gartentür: Luni ruft den Hund herein und streichelt ihn danach. */
+  private rufHund: HundId | null = null;
+  private rufT = 0;
+
   /* --- Datenkoffer (Osterei): Deckel, Antenne und der Update-Hinweis --- */
   private kofferPhase: "oeffnen" | "offen" | "schliessen" | null = null;
   private kofferT = 0;
@@ -2936,8 +2947,11 @@ export class House {
         .map((x) => (x.id === "herd" ? { ...x, label: "Ofen" } : x));
       st = [...st, baseKessel()];
       if (GRUSELRAEUME.kueche) st = kuechenStationen(st);
-      this.stations = st;
+      this.stations = st.filter((x) => x.id !== "odin" && x.id !== "apollo");
       if (GRUSELRAEUME.musikzimmer) this.musikzimmer = new MusikzimmerAblauf();
+    } else {
+      // Eigene Kopien der Hunde-Stationen, damit bewegte Trefferflächen STATIONS nie verändern.
+      this.stations = STATIONS.map((s) => (s.id === "odin" || s.id === "apollo" ? { ...s, hits: [...s.hits] } : s));
     }
     const alt = opts.onTraumhaus;
     this.onWelt = opts.onWelt ?? (alt ? (z) => { if (z === "traum") alt(); } : null);
@@ -3076,6 +3090,7 @@ export class House {
       ashButts: this.ashButts,
       bucketButts: this.bucketButts,
       lighterOnTable: this.lightAufTisch,
+      hunde: this.welt === "normal" ? this.hunde.snapshot() : undefined,
     };
   }
 
@@ -3113,6 +3128,7 @@ export class House {
     this.ashButts = typeof s.ashButts === "number" ? Math.max(0, Math.round(s.ashButts)) : 0;
     this.bucketButts = typeof s.bucketButts === "number" ? Math.max(0, Math.round(s.bucketButts)) : 0;
     this.lightAufTisch = s.lighterOnTable === true;
+    if (this.welt === "normal" && s.hunde) this.hunde.wiederherstellen(s.hunde);
     const vi = s.vampir;
     this.vampirStil = typeof vi === "number" && vi >= 0 && vi < VAMPIR_OUTFITS.length ? vi : null;
     this.vampirLetzt = typeof s.vampirLetzt === "number" ? s.vampirLetzt : -1;
@@ -3261,6 +3277,17 @@ export class House {
     const find = (k: string) => this.stations.find((s) => s.id === k) ?? null;
     if (id === "laufziel" && (this.bedPhase || this.sleepPhase)) return;
     if (id === "adventskalender" && this.welt !== "normal") return;
+    if ((id === "odin" || id === "apollo") && this.welt !== "normal") return;
+    // Laufendes Streicheln oder Hunde-Zuruf sauber beenden, wenn etwas anderes gewünscht ist
+    if (this.petHund && id !== this.petHund) {
+      this.hunde.beendeStreicheln(this.petHund);
+      this.petHund = null;
+      this.petT = 0;
+    }
+    if (this.rufHund && id !== this.rufHund && id !== "hund_ruf") {
+      this.rufHund = null;
+      this.rufT = 0;
+    }
     if (this.handy) {
       if (id === "raucherstuhl") return;
       this.handyDanach = request;
@@ -3647,6 +3674,37 @@ export class House {
       this.chain = [{ id: "aschenbecher", force: false }];
       const tin = find("tabak");
       if (tin) this.pending = tin;
+      return;
+    }
+
+    // ---- Odin & Apollo: im Garten zurückrufen, im Haus hingehen und streicheln ----
+    if ((id === "odin" || id === "apollo") && this.welt === "normal") {
+      this.chain = [];
+      this.smokeRequested = false;
+      if (this.hunde.istImGarten(id)) {
+        this.rufHund = id;
+        this.rufT = 0;
+        this.pending = {
+          id: "hund_ruf", label: "", floor: 0, x: 804, face: 1,
+          state: "wave", expr: "happy", hits: [],
+        };
+        return;
+      }
+      const h = this.hunde.get(id);
+      this.hunde.erwarteStreicheln(id, this.lx);
+      this.petHund = id;
+      this.petT = 0;
+      const [minX, maxX] = RANGE[h.floor];
+      const linksPlatz = h.x - 27 >= minX + 4;
+      const standX = clamp(linksPlatz ? h.x - 27 : h.x + 27, minX, maxX);
+      const blick: 1 | -1 = standX <= h.x ? 1 : -1;
+      const st = find(id);
+      if (st) {
+        st.floor = h.floor;
+        st.x = standX;
+        st.face = blick;
+        this.pending = st;
+      }
       return;
     }
 
@@ -4222,6 +4280,28 @@ export class House {
   /** Raucherecke, Zigaretten drehen, Tür aufmachen, Befehlskette */
   private updateActions(dt: number) {
     const act = this.activity;
+
+    // Odin & Apollo leben ununterbrochen im normalen Haus – unabhängig von Lunis Aktion.
+    if (this.welt === "normal") {
+      const hour = this.clock.hour + this.clock.min / 60;
+      const schlecht = ["regen", "sturm", "gewitter", "schnee", "hagel"].includes(this.wetter.art);
+      this.hunde.update(dt, {
+        hour,
+        luniFloor: this.lf,
+        luniX: this.lx,
+        luniSchlaeft: this.asleep || !!this.sleepPhase || this.lieDown,
+        gardenDoor: this.gardenDoor,
+        gardenWant: this.gardenWant,
+        cellarDoor: this.cellarDoorV,
+        smoke: this.smoke,
+        schlechtesWetter: schlecht,
+        onWuff: (tief) => sfx.wuff(tief),
+      });
+      for (const hid of ["odin", "apollo"] as const) {
+        const st = this.stations.find((s) => s.id === hid);
+        if (st) st.hits = [this.hunde.hitBox(hid)];
+      }
+    }
     // Andere direkte Wege (z. B. zum Fernseher) können den Stuhl verlassen.
     if (this.lightT !== null && act?.id !== "raucherstuhl") {
       this.lightT = null;
@@ -4660,6 +4740,50 @@ export class House {
       this.adventWarteT += dt;
       if (this.adventWarteT >= 0.45 && !this.adventFullscreen && !this.adventSchliessen) this.adventAuf();
       return;
+    }
+
+    // Odin & Apollo: Streicheln & Zuruf bei Ankunft
+    if (this.welt === "normal") {
+      if (act?.id === "hund_ruf" && this.rufHund) {
+        const vorher = this.rufT;
+        this.rufT += dt;
+        if (this.gardenWant < 0.5) this.gardenWant = 1;
+        if (vorher < 0.35 && this.rufT >= 0.35 && this.gardenDoor > 0.55) {
+          sfx.ui();
+          this.hunde.rufeZurueck(this.rufHund);
+        } else if (this.rufT >= 0.35 && this.gardenDoor > 0.55 && this.hunde.istImGarten(this.rufHund)) {
+          this.hunde.rufeZurueck(this.rufHund);
+        }
+        const gerufener = this.hunde.get(this.rufHund);
+        const drinnen = !this.hunde.istImGarten(this.rufHund) && gerufener.schritte.length === 0;
+        if (drinnen && this.rufT >= 1.0) {
+          const ziel = this.rufHund;
+          this.rufHund = null;
+          this.rufT = 0;
+          this.activity = null;
+          this.target = null;
+          this.command(ziel);
+        } else if (this.rufT >= 10) {
+          this.rufHund = null;
+          this.rufT = 0;
+          this.finishActivity();
+        }
+        return;
+      }
+      if ((act?.id === "odin" || act?.id === "apollo") && this.petHund === act.id) {
+        const vorher = this.petT;
+        this.petT += dt;
+        if (vorher === 0) {
+          this.hunde.starteStreicheln(act.id, this.lx, (tief) => sfx.wuff(tief));
+        }
+        if (this.petT >= 3.8) {
+          this.hunde.beendeStreicheln(act.id);
+          this.petHund = null;
+          this.petT = 0;
+          this.finishActivity();
+        }
+        return;
+      }
     }
 
     if (act?.id === "tabak") {
@@ -5401,6 +5525,8 @@ export class House {
     this.drawSargPass(ctx, false);
     // Osterei: der Datenkoffer steht hinter Luni, nicht vor ihrem Laufweg.
     this.drawKoffer(ctx);
+    // Odin & Apollo: vor den Möbeln, direkt hinter Lunis streichelnder Hand.
+    if (this.welt === "normal") this.hunde.draw(ctx);
     this.drawLuniLayered(ctx);
     if (this.bettRendered) drawBedFront(ctx, 282, FO);
     if (this.gruselBad) {
@@ -8144,6 +8270,9 @@ export class House {
       posePhase = this.packMove
         ? clamp(this.packT / 1.1, 0, 1)
         : clamp(this.takeT / 0.9, 0, 1);
+    } else if (state === "pet" && this.petHund) {
+      // Sanft in die Hocke (0..0.45 s), streicheln, weich wieder aufstehen (3.35..3.8 s)
+      posePhase = Math.min(clamp(this.petT / 0.45, 0, 1), clamp((3.8 - this.petT) / 0.45, 0, 1));
     }
 
     let back = false;
