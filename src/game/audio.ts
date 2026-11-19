@@ -185,6 +185,14 @@ export class Sfx {
     this.noise(0.16, 0.12, 260, 0.9);
   }
 
+  /** Sanftes, freundliches Hundebellen (Odin heller, Apollo etwas tiefer). */
+  wuff(tief = false) {
+    const f0 = tief ? 175 : 245;
+    const f1 = tief ? 105 : 150;
+    this.tone({ f: f0, f2: f1, dur: 0.14, type: "triangle", gain: 0.08, attack: 0.01 });
+    this.noise(0.08, 0.035, tief ? 420 : 620, 1.8);
+  }
+
   ui() {
     this.tone({ f: 660, dur: 0.05, type: "square", gain: 0.1 });
   }

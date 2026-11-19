@@ -198,3 +198,12 @@ adventskalender-station | src/game/house.ts | "adventskalender"
 adventskalender-tastatur | src/game/house.ts | adventOeffne
 adventskalender-tests | tools/test-adventskalender.mjs | Türchen
 adventskalender-deko | src/game/deko.ts | drawDeko
+
+## Hunde Odin & Apollo
+
+hunde-datei | src/game/hunde.ts | class HundeWelt
+hund-odin | src/game/hunde.ts | drawOdin
+hund-apollo | src/game/hunde.ts | drawApollo
+hund-stationen | src/game/house.ts | "apollo"
+hund-streicheln | src/game/luni.ts | case "pet"
+hunde-tests | tools/test-hunde.mjs | Odin und Apollo

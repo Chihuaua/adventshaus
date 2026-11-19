@@ -85,7 +85,8 @@ export type LuniState =
   | "brush"
   | "labBend"
   | "labBrush"
-  | "sleepBend";
+  | "sleepBend"
+  | "pet";
 
 export type LuniExpr =
   | "happy"
@@ -910,6 +911,26 @@ function buildRig(state: LuniState, t: number, walkP: number, phase: number, rea
       r.legFar = leg([8, -19], [10, -9.5]);
       r.legNear = leg([9.5, -19], [12, -9.5]);
       r.hairFlow = 0.4;
+      break;
+    }
+
+    case "pet": {
+      // Sanft in die Hocke gehen und Odin oder Apollo über den Kopf streicheln.
+      // `phase` 0..1 blendet weich zwischen Stehen und Hocken; Füße bleiben am Boden.
+      const p = ease(clamp01(phase));
+      const strich = Math.sin(t * 4.6) * p;
+      const senk = 10.5 * p;
+      r.rootY = senk;
+      r.headTilt = 0.24 * p;
+      r.armNear = { elbow: [lerp(6.4, 5.2, p), -29], hand: [lerp(7.6, 6.2, p), -21] };
+      r.armFar = armIK(
+        [-3.4, r.shoulderY + 2],
+        [lerp(-7.2, 12.4 + strich * 1.5, p), lerp(-21.5, -40.8 + Math.abs(strich) * 0.5, p)],
+        1,
+      );
+      r.legFar = leg([lerp(-3.6, 5.5, p), lerp(-10, -16.5, p)], [lerp(-4.2, -1.5, p), -senk]);
+      r.legNear = leg([lerp(3.6, 7.6, p), lerp(-10, -16.2, p)], [lerp(4.2, 2.2, p), -senk]);
+      r.hairFlow = 0.35 * p;
       break;
     }
 

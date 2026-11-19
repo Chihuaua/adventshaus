@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 import HouseView from "@/components/HouseView";
 import TraumhausView from "@/components/TraumhausView";
 import StudioApp from "@/StudioApp";
+import { OdinStudio, ApolloStudio } from "@/components/HundeStudio";
+import MonsStudio from "@/components/MonsStudio";
 
-/** Hash-Weiche: "#studio" Figuren-Studio, "#traumhaus" Traumhaus, "#gruselhaus" Gruselhaus, sonst das normale Haus. */
+/** Hash-Weiche: "#studio" Figuren-Studio, "#studio-odin"/"#studio-apollo" Hunde-Studios,
+    "#traumhaus" Traumhaus, "#gruselhaus" Gruselhaus, sonst das normale Haus. */
 function useHash() {
   const [hash, setHash] = useState(() => (typeof window === "undefined" ? "" : window.location.hash));
   useEffect(() => {
@@ -17,6 +20,9 @@ function useHash() {
 export default function App() {
   const hash = useHash();
   if (hash === "#studio") return <StudioApp />;
+  if (hash === "#studio-odin") return <OdinStudio />;
+  if (hash === "#studio-apollo") return <ApolloStudio />;
+  if (hash === "#studio-mons") return <MonsStudio />;
   if (hash === "#traumhaus") return <TraumhausView />;
   // key: jede Hauswelt bekommt ihre eigene Instanz (und damit ihren eigenen Speicher)
   if (hash === "#gruselhaus") return <HouseView key="gruesel" welt="gruesel" />;
