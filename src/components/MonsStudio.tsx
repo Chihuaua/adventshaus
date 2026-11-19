@@ -62,10 +62,12 @@ function MonsStage({ tuer, zoom, paused, speed }: Props) {
       ctx.fillStyle = "rgba(255,255,255,.07)";
       ctx.fillRect(0, groundY, w, 2);
 
-      const mon = LUNI_MONS.find((m) => m.tuer === tuer);
+      // Auswahl und Zoom kommen aus den frischen Props (o), nicht aus dem
+      // beim Start eingefangenen Wert.
+      const mon = LUNI_MONS.find((m) => m.tuer === o.tuer);
       if (!mon) return;
-      const sk = o.zoom * Math.min(1, 1.6);
-      drawLuniMon(ctx, tuer, w / 2, groundY, t, sk);
+      const sk = o.zoom;
+      drawLuniMon(ctx, o.tuer, w / 2, groundY, t, sk);
 
       ctx.fillStyle = "rgba(238,247,242,.72)";
       ctx.font = '600 11px "Space Grotesk", sans-serif';
@@ -161,7 +163,8 @@ function MonsBogen({
         ctx.beginPath();
         ctx.rect(x0 + 4, y0 + 4, cw - 8, CH - 10);
         ctx.clip();
-        drawLuniMon(ctx, mon.tuer, x0 + cw / 2, groundY, t + i * 0.35, 1.35);
+        // Skala 1: der Kontakt-Bogen bleibt in bewährter Größe
+        drawLuniMon(ctx, mon.tuer, x0 + cw / 2, groundY, t + i * 0.35, 1);
         ctx.restore();
 
         ctx.fillStyle = "rgba(238,247,242,.72)";
@@ -367,6 +370,10 @@ export default function MonsStudio() {
 
             <Panel title="BESCHREIBUNG">
               <p className="text-[11px] leading-relaxed text-mint-200/80">{mon.beschreibung}</p>
+            </Panel>
+
+            <Panel title={`FÄHIGKEIT · ${mon.name.toUpperCase()}`} hint="angedachte Idle-Aktion">
+              <p className="text-[11px] leading-relaxed text-mint-200/80">{mon.faehigkeit}</p>
             </Panel>
 
             <Panel title="BAUMASSE">
