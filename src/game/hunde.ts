@@ -53,8 +53,8 @@ export const ODIN_FARBEN = {
 } as const;
 
 /**
- * Schwarzes Fell mit weißer Blesse, Kragen, Bauch, Brust und Rutenspitze
- * für Apollo. Die Pfoten bleiben schwarz mit brauner Stromung.
+ * Schwarzes Fell mit weißem Brustfeld für Apollo; der Kopf ist ganz schwarz.
+ * Läufe und Pfoten tragen eine feine braune Stromung.
  */
 /** Dunkles Lederhalsband, gemeinsam für beide Hunde. */
 export const LEDER_FARBEN = {
@@ -116,40 +116,61 @@ function glied(c: C, a: Pt, b: Pt, d: Pt, farbe: string, w1: number, w2: number,
   oval(c, d[0] + 0.9, d[1] - 0.5, w2 * 0.68, w2 * 0.48, 0, pfote);
 }
 
-/** Schwarze Pfoten mit schräger brauner Stromung, an der Beinform anliegend. */
-function pfoteStromung(c: C, bein: Bein, breite: number) {
-  const [bx, by] = bein.gelenk;
+/**
+ * Feine braune Stromung an Läufen und Pfoten: hauchdünne Strähnen, die an der Pfote
+ * beginnen, dem Unterlauf folgen (im Stand also senkrecht) und zum Gelenk hin auslaufen.
+ * `staerke` dämpft die Zeichnung auf den abgewandten Läufen.
+ */
+function pfoteStromung(c: C, bein: Bein, breite: number, staerke = 1) {
+  const [gx, gy] = bein.gelenk;
   const [px, py] = bein.pfote;
-  // Kehlung von schräg oben (Gelenk) nach unten vorn (Pfote)
-  const sx = lerp(bx, px, 0.78) - 0.4;
-  const sy = lerp(by, py, 0.78);
+  const laenge = Math.hypot(gx - px, gy - py);
+  if (laenge < 0.5) return;
+  // Richtung Pfote -> Gelenk und die Querrichtung dazu
+  const ux = (gx - px) / laenge;
+  const uy = (gy - py) / laenge;
+  const qx = -uy;
+  const qy = ux;
+  const halb = breite * 0.5;
+
+  c.save();
+  c.lineCap = "butt";
+  // Je Strähne: Querversatz (Anteil der halben Laufbreite), Beginn, Ende (1 = Gelenk), Farbe.
+  // Unterschiedliche Längen, damit die Stromung natürlich und nicht wie ein Raster ausläuft.
+  const straehnen: [number, number, number, string][] = [
+    [-0.56, 0.05, 0.74, APOLLO_FARBEN.pfoteStrom],
+    [-0.2, 0.12, 1.0, APOLLO_FARBEN.pfoteStromMittel],
+    [0.18, 0.02, 0.88, APOLLO_FARBEN.pfoteStrom],
+    [0.56, 0.14, 0.62, APOLLO_FARBEN.pfoteStromMittel],
+  ];
+  const STUFEN = 5;
+  for (const [quer, von, bis, farbe] of straehnen) {
+    const ox = qx * quer * halb;
+    const oy = qy * quer * halb;
+    c.strokeStyle = farbe;
+    for (let i = 0; i < STUFEN; i++) {
+      const k0 = lerp(von, bis, i / STUFEN) * laenge;
+      const k1 = lerp(von, bis, (i + 1) / STUFEN) * laenge;
+      // Zum Gelenk hin dünner und blasser: die Strähne läuft aus.
+      c.globalAlpha = staerke * lerp(0.9, 0.12, i / (STUFEN - 1));
+      c.lineWidth = lerp(0.36, 0.22, i / (STUFEN - 1));
+      c.beginPath();
+      c.moveTo(px + ux * k0 + ox, py + uy * k0 + oy);
+      c.lineTo(px + ux * k1 + ox, py + uy * k1 + oy);
+      c.stroke();
+    }
+  }
+  // Pfote: drei hauchfeine senkrechte Zehenstriche
+  c.globalAlpha = staerke * 0.8;
   c.strokeStyle = APOLLO_FARBEN.pfoteStrom;
-  c.lineWidth = Math.max(0.75, breite * 0.38);
-  c.lineCap = "round";
-  c.beginPath();
-  c.moveTo(sx, sy);
-  c.lineTo(px + 0.7, py - 0.7);
-  c.stroke();
-  c.strokeStyle = APOLLO_FARBEN.pfoteStromMittel;
-  c.lineWidth = Math.max(0.6, breite * 0.3);
-  c.beginPath();
-  c.moveTo(sx + 0.55, sy + 0.35);
-  c.lineTo(px + 0.95, py - 0.3);
-  c.stroke();
-  c.strokeStyle = APOLLO_FARBEN.pfoteStrom;
-  c.lineWidth = 0.55;
-  c.beginPath();
-  c.moveTo(sx - 0.5, sy + 0.75);
-  c.lineTo(px - 0.1, py + 0.1);
-  c.stroke();
-  // Braune Kehlung auf der Pfote selbst
-  oval(c, px + 0.9, py - 0.5, breite * 0.67, breite * 0.48, 0, APOLLO_FARBEN.fell);
-  c.strokeStyle = APOLLO_FARBEN.pfoteStrom;
-  c.lineWidth = 0.6;
-  c.beginPath();
-  c.moveTo(px + 0.35, py - 0.75);
-  c.lineTo(px + 1.35, py - 0.35);
-  c.stroke();
+  c.lineWidth = 0.26;
+  for (const [zx, oben] of [[-0.7, 1.0], [0.25, 1.25], [1.2, 0.9]]) {
+    c.beginPath();
+    c.moveTo(px + 0.9 + zx, py - oben);
+    c.lineTo(px + 0.9 + zx, py - 0.1);
+    c.stroke();
+  }
+  c.restore();
 }
 
 /* ------------------------------- Rig ---------------------------------- */
@@ -523,8 +544,9 @@ function zeichneOdinKopf(c: C, r: HundRig) {
 }
 
 /**
- * Apollo: markant breiter Kopf mit schwarzen Ohren und Augenflecken,
- * weißer Border-Collie-Blesse sowie weißen Wangen an der kurzen Schnauze.
+ * Apollo: kräftiger, breiter Kopf im Profil – er schaut wie Odin nach vorn.
+ * Hoher Oberkopf mit steilem Stop, kurzer tiefer Fang mit weicher Hängelefze
+ * und volles Klappohr. Der Kopf ist durchgehend schwarz, ohne weiße Zeichnung.
  */
 function zeichneApolloKopf(c: C, r: HundRig) {
   const F = APOLLO_FARBEN;
@@ -534,125 +556,103 @@ function zeichneApolloKopf(c: C, r: HundRig) {
 
   const oh = r.ohrHub * 1.2;
 
-  // Rechtes (hinteres) Klappohr – hoch am steilen Schädel angesetzt
-  c.fillStyle = F.ohr;
+  // Abgewandtes Ohr: schmaler dunkler Ansatz hinter dem Scheitel
+  c.fillStyle = F.fellSchatten;
   c.beginPath();
-  c.moveTo(4.1, -6.4);
-  c.quadraticCurveTo(8.0, -7.0 - oh, 8.6, -1.6 - oh * 0.6);
-  c.quadraticCurveTo(7.5, 0.4 - oh * 0.4, 5.6, -1.8);
+  c.moveTo(1.4, -4.6);
+  c.quadraticCurveTo(2.6, -7.0 - oh * 1.2, -0.6, -5.9 - oh * 0.7);
+  c.lineTo(-1.2, -3.6);
   c.closePath();
   c.fill();
 
-  // Steiler, hoher Oberkopf mit gerader Stirn und schmaler, kantiger Wange
-  c.save();
-  c.beginPath();
-  c.moveTo(-4.4, 2.2);
-  c.quadraticCurveTo(-5.0, -3.2, -4.5, -6.3);
-  c.lineTo(-0.5, -7.2);
-  c.lineTo(2.3, -7.2);
-  c.quadraticCurveTo(5.6, -6.7, 5.9, -3.0);
-  // Wange fällt steil und schmal zur Lefze
-  c.quadraticCurveTo(6.4, 1.4, 4.3, 3.7);
-  c.lineTo(-1.8, 3.7);
-  c.quadraticCurveTo(-4.6, 3.4, -4.4, 2.2);
-  c.closePath();
+  // Breiter, hoher Oberkopf mit steilem Stop und voller Wange
   c.fillStyle = F.fell;
-  c.fill();
-
-  // Schmale weiße Blesse mittig zwischen den schwarzen Augenflecken.
-  c.clip();
-  c.fillStyle = F.weiss;
   c.beginPath();
-  c.moveTo(1.0, -7.3);
-  c.quadraticCurveTo(2.3, -6.9, 2.7, -5.8);
-  c.lineTo(3.2, -2.2);
-  c.quadraticCurveTo(3.45, -0.6, 2.9, 0.35);
-  c.quadraticCurveTo(1.5, -1.4, 1.0, -2.6);
+  c.moveTo(-4.9, 1.8);
+  c.quadraticCurveTo(-5.7, -2.8, -3.3, -5.1);
+  c.quadraticCurveTo(-0.6, -6.7, 2.3, -5.3);
+  c.quadraticCurveTo(4.1, -4.3, 4.2, -2.2);
+  c.lineTo(4.0, 2.6);
+  c.quadraticCurveTo(1.0, 4.5, -2.6, 3.7);
+  c.quadraticCurveTo(-4.6, 3.3, -4.9, 1.8);
   c.closePath();
   c.fill();
-  oval(c, -3.7, 1.4, 1.3, 1.7, -0.3, F.weissSchatten);
-  oval(c, 5.4, 1.5, 1.0, 1.4, 0.2, F.weissSchatten);
-  c.restore();
+  // Gedämpfter Schimmer auf dem Scheitel
+  oval(c, -0.5, -3.9, 3.3, 1.4, -0.12, F.fellHell);
 
-  // Sanfte Stirnfalte in der Mitte des steilen Schädels
-  c.strokeStyle = F.fellSchatten;
-  c.lineWidth = 0.7;
-  c.beginPath();
-  c.moveTo(1.9, -6.2);
-  c.lineTo(2.1, -3.6);
-  c.stroke();
-
-  // Ausgeprägte helle Brauenbögen über den weit auseinander stehenden Augen
-  oval(c, -0.2, -2.9, 1.7, 0.75, -0.15, F.fellHell);
-  oval(c, 4.4, -2.9, 1.5, 0.75, 0.15, F.fellHell);
-
-  // Zwei weit gesetzte Augen – zeigen Apollos breites Gesicht
-  for (const [ax, ay, rr] of [[-0.1, -1.55, 1.18], [4.5, -1.55, 1.08]] as const) {
-    if (r.augeZu) {
-      c.strokeStyle = F.auge;
-      c.lineWidth = 0.95;
-      c.beginPath();
-      if (r.augeFroh) c.arc(ax, ay + 0.4, rr, Math.PI * 1.12, Math.PI * 1.88);
-      else c.arc(ax, ay - 0.3, rr, Math.PI * 0.15, Math.PI * 0.85);
-      c.stroke();
-    } else {
-      kreis(c, ax, ay, rr, F.auge);
-      kreis(c, ax + 0.36, ay - 0.36, 0.38, "#ffffff");
-    }
-  }
-
-  // Breite, kurze, kantige Schnauze mit dunkler Maske und weichen Hängelefzen
+  // Unterkiefer (öffnet sich beim Hecheln oder Bellen) mit Zunge
   const offen = r.maulOffen * 1.5;
-  // Breiter Unterkiefer + Zunge beim Hecheln/Bellen
-  oval(c, 3.2, 2.9 + offen * 0.7, 3.2, 1.4, 0, F.maske);
   if (r.maulOffen > 0.12) {
-    oval(c, 3.5, 2.7 + offen * 0.55, 1.7, 1.05, 0.08, "#e37e82");
+    oval(c, 5.6, 3.0 + offen * 0.5, 1.9, 0.85, 0.15, "#e37e82");
   }
-  // Kräftiger Fangblock
+  c.fillStyle = F.lefze;
+  c.beginPath();
+  c.moveTo(1.2, 2.0);
+  c.lineTo(7.5, 2.1 + offen);
+  c.quadraticCurveTo(7.4, 3.5 + offen, 5.6, 3.7 + offen * 0.8);
+  c.lineTo(0.8, 3.9);
+  c.closePath();
+  c.fill();
+
+  // Kurzer, tiefer, stumpfer Fang mit weich herabhängender Lefze (Apollos Erkennungsmerkmal)
   c.fillStyle = F.maske;
   c.beginPath();
-  c.moveTo(-0.7, -0.7);
-  c.quadraticCurveTo(3.2, -2.1, 6.7, -0.7);
-  // Rechte & linke gerundete Lefze (Boxer-/Molosser-typisch)
-  c.quadraticCurveTo(7.3, 2.6, 5.4, 3.4);
-  c.quadraticCurveTo(3.3, 2.2, 1.0, 3.5);
-  c.quadraticCurveTo(-1.2, 2.8, -0.7, -0.7);
+  c.moveTo(2.6, -2.7);
+  // Kurzer gerader Nasenrücken hinter dem steilen Stop
+  c.quadraticCurveTo(4.8, -2.4, 7.6, -1.9);
+  c.quadraticCurveTo(8.9, -1.2, 8.5, 0.6);
+  // Lefze rundet sich vorn nach unten und läuft zur Wange zurück
+  c.quadraticCurveTo(8.3, 2.7, 6.5, 3.0);
+  c.quadraticCurveTo(4.4, 3.3, 2.2, 2.5);
   c.closePath();
   c.fill();
-  // Weiße Lefzenflächen rahmen die dunkle Nase, ohne die Kopfbreite zu ändern.
-  oval(c, 0.2, 1.65, 1.4, 1.2, -0.2, F.weiss);
-  oval(c, 5.95, 1.55, 0.9, 1.15, 0.2, F.weissSchatten);
 
-  // Lefzenfalte in der Mitte
-  c.strokeStyle = F.lefze;
-  c.lineWidth = 0.85;
+  // Feine Lefzenlinie
+  c.strokeStyle = F.fellHell;
+  c.lineWidth = 0.65;
+  c.lineCap = "round";
   c.beginPath();
-  c.moveTo(3.4, 0.4);
-  c.lineTo(3.4, 2.0);
-  c.moveTo(0.8, 2.7);
-  c.quadraticCurveTo(3.4, 1.7, 5.7, 2.6);
+  c.moveTo(3.3, 1.5);
+  c.quadraticCurveTo(5.9, 2.0, 8.1, 1.0);
   c.stroke();
 
-  // Breite, kräftige schwarze Nase mit Glanz
-  oval(c, 3.5, -0.5, 2.15, 1.35, 0, F.nase);
-  oval(c, 3.1, -0.95, 0.9, 0.38, -0.1, "rgba(255,255,255,.55)");
-  kreis(c, 2.6, -0.2, 0.35, "#070505");
-  kreis(c, 4.3, -0.2, 0.35, "#070505");
+  // Breite, kräftige Nase mit Glanzpunkt
+  oval(c, 8.35, -1.15, 1.5, 1.15, 0.1, F.nase);
+  kreis(c, 8.0, -1.55, 0.36, "rgba(255,255,255,.6)");
 
-  // Linkes (vorderes) Klappohr – rahmt den steilen Kopf seitlich ein
+  // Kräftiger Brauenbogen über dem Auge
+  oval(c, 2.3, -3.25, 1.6, 0.7, -0.22, F.fellHell);
+
+  // Auge
+  const ax = 2.45;
+  const ay = -1.85;
+  if (r.augeZu) {
+    c.strokeStyle = F.auge;
+    c.lineWidth = 0.95;
+    c.beginPath();
+    if (r.augeFroh) c.arc(ax, ay + 0.4, 1.18, Math.PI * 1.13, Math.PI * 1.88);
+    else c.arc(ax, ay - 0.3, 1.14, Math.PI * 0.15, Math.PI * 0.85);
+    c.stroke();
+  } else {
+    kreis(c, ax, ay, 1.14, F.auge);
+    kreis(c, ax + 0.38, ay - 0.38, 0.38, "#ffffff");
+  }
+
+  // Volles Klappohr: hoch angesetzt, hängt weich an der Wange herab
   c.fillStyle = F.ohr;
   c.beginPath();
-  c.moveTo(-3.0, -6.6);
-  c.quadraticCurveTo(-7.6, -6.8 - oh, -8.0, -0.6 - oh * 0.6);
-  c.quadraticCurveTo(-6.9, 1.6 - oh * 0.4, -4.7, 0.0 - oh * 0.2);
-  c.quadraticCurveTo(-3.7, -2.4, -2.2, -5.2);
+  c.moveTo(-0.9, -4.3);
+  c.quadraticCurveTo(-5.2, -6.0 - oh, -6.6, 0.2 - oh * 0.7);
+  c.quadraticCurveTo(-5.9, 2.7 - oh * 0.5, -3.3, 1.5 - oh * 0.3);
+  c.quadraticCurveTo(-1.7, -0.6, -0.5, -3.0);
   c.closePath();
   c.fill();
-  c.strokeStyle = F.fellSchatten;
-  c.lineWidth = 0.65;
+  // Feine Ohrkante, damit sich das Ohr vom schwarzen Kopf abhebt
+  c.strokeStyle = F.fellHell;
+  c.lineWidth = 0.5;
   c.beginPath();
-  c.moveTo(-3.3, -6.0);
-  c.quadraticCurveTo(-6.4, -5.8 - oh * 0.7, -6.9, -0.8 - oh * 0.5);
+  c.moveTo(-0.6, -3.1);
+  c.quadraticCurveTo(-1.8, -0.7, -3.3, 1.4);
   c.stroke();
 
   c.restore();
@@ -714,8 +714,8 @@ export function drawHund(c: C, id: HundId, x: number, y: number, opts: HundZeich
   glied(c, r.hintenFern.huefte, r.hintenFern.gelenk, r.hintenFern.pfote, fernFarbe, wOben * 0.92, wUnten * 0.92, fernPfote);
   glied(c, r.vornFern.huefte, r.vornFern.gelenk, r.vornFern.pfote, fernFarbe, wOben * 0.88, wUnten * 0.88, fernPfote);
   if (breit) {
-    pfoteStromung(c, r.hintenFern, wUnten * 0.86);
-    pfoteStromung(c, r.vornFern, wUnten * 0.9);
+    pfoteStromung(c, r.hintenFern, wUnten * 0.86, 0.55);
+    pfoteStromung(c, r.vornFern, wUnten * 0.9, 0.55);
   }
 
   // 2. Rute
