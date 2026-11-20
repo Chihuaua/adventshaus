@@ -806,10 +806,12 @@ function drawBedScene(
   pj: { top: string; bottom: string } | null,
   o: { pull: number; grab: number; turn: number; hair: number },
   sarg = false,
+  outfit: "dressed" | "towel" | "none" = "dressed",
+  glasses = false,
 ) {
   drawLuni(c, x, y, {
     t, state: "lie", expr: "sleep", blink: 1, scale: LUNI_SCALE,
-    shadow: false, glasses: false, pajama: pj, hairAside: o.hair,
+    shadow: false, glasses, outfit, pajama: pj, hairAside: o.hair,
   });
   // Hände zuerst: die Decke verdeckt sie, sobald sie darunter liegen.
   // Nur die greifenden Finger und die Hand auf dem Kissen bleiben sichtbar.
@@ -841,6 +843,35 @@ function drawBlanket(c: C, t: number, pull = 1, sarg = false) {
   rrect(c, x + 2, y + 1.2, w - 4, 3, 1.5, trimCol);
   rect(c, x + 4, y + 8, w - 8, 1.6, sarg ? "#c9a46a" : "rgba(255,255,255,.30)");
   rect(c, x + 4, y + 15, w - 8, 1.2, sarg ? "#a58350" : "rgba(255,255,255,.18)");
+}
+
+/** Die Decke wird für die Bettfolge nicht skaliert: dieselbe vollständig hochgezogene
+ * Decke (identische Größe zum Schlafzustand) wird nur verschoben. Beim Sitzen liegt sie
+ * rechts ans Fußende geschoben; beim Greifen zieht Luni sie an sich heran. Nie über die
+ * vordere Bettkante. */
+function drawBedEntryBlanket(c: C, t: number, phase: "umschlagen" | "setzen" | "fuesse" | "greifen" | "toss" | "hinlegen", p: number) {
+  const e = sanft(clamp(p, 0, 1));
+  let dx = 30, dy = 10;
+  if (phase === "umschlagen") { dx = lerp(14, 30, e); dy = lerp(16, 10, e); }
+  else if (phase === "greifen") { dx = lerp(30, 14, e); dy = lerp(10, 4, e); }
+  else if (phase === "toss") { dx = 14; dy = 4; }
+  else if (phase === "hinlegen") { dx = lerp(14, 0, e); dy = lerp(4, 0, e); }
+  const y = FLOOR_Y[2] - 48;
+  c.save();
+  c.beginPath(); c.rect(286, 230, 102, 370); c.clip();
+  c.translate(dx, dy + Math.sin(t * 1.1) * 0.15);
+  rrect(c, 320, y, 66, 32, 6, "#3f7f8c");
+  rrect(c, 322, y + 1.2, 62, 3, 1.5, "#5da0a8");
+  rect(c, 324, y + 8, 58, 1.6, "rgba(255,255,255,.30)");
+  rect(c, 324, y + 15, 58, 1.2, "rgba(255,255,255,.18)");
+  c.restore();
+  if (phase === "umschlagen" && e < 1) {
+    // Die umschlagende Falte wandert mit.
+    c.save();
+    c.globalAlpha = 0.85 * (1 - e);
+    poly(c, [[320 + dx, y + dy + 4], [308 + dx, y + dy + 10], [320 + dx, y + dy + 22]], "#72afb3");
+    c.restore();
+  }
 }
 
 /** Schlaf-Zzz: steigen in kleinen Gruppen auf (Pixelschrift, keine Webschrift). */
@@ -2762,6 +2793,11 @@ export class House {
   // Bett-Routine und Traum
   private bedPhase: "toss" | null = null;
   private pyjama: { top: string; bottom: string } | null = null;
+  private bedEinstieg: "anfahrt" | "umschlagen" | "setzen" | "fuesse" | "greifen" | "toss" | null = null;
+  private bedEinstiegT = 0;
+  private bedBrilleBehalten = false;
+  private bedKleidungAn: "dressed" | "towel" | "none" = "dressed";
+  private bedPyjama: { top: string; bottom: string } | null = null;
   /** 0 = zu Hause, 1 = oben am Himmel */
   private tossUp = 0;
   private tossLand = 1;
@@ -2777,6 +2813,8 @@ export class House {
   private sleepPhaseT = 0;
   /** kurze Aufwachpose nach „Aufwachen“ */
   private wakeT = 0;
+  /** Befehl, der erst nach der sichtbaren Aufwachpose gestartet wird */
+  private wakeNext: LuniCommand | null = null;
   /* Gruselhaus, Raum 03: Sarg, Outfits, Brille, Kronleuchter */
   /** Sargdeckel: 0 = zu, 1 = senkrecht offen. */
   private sargDeckel = 0;
@@ -3337,9 +3375,21 @@ export class House {
     if (this.shPhase && (SH_LOCKED.includes(this.shPhase) ||
       (this.gruselBad && this.shPhase === "toShower"))) return;
     if (this.shPhase) this.cancelShower();
+    if (this.bedEinstieg && id !== "bett") {
+      this.bedEinstieg = null;
+      this.bedEinstiegT = 0;
+      this.bedPhase = null;
+    }
     if (id === "dusche") {
       if (this.gruselBad && this.asleep) {
         this.sargAufwachen(request);
+        return;
+      }
+      if (this.asleep) {
+        // Im normalen Haus erst sichtbar aufstehen, dann beginnt die Folge –
+        // sonst liefen Umziehen und Duschen „hinter ihrem Rücken“ durch.
+        this.aufwachen();
+        this.wakeNext = request;
         return;
       }
       this.chain = [];
@@ -3377,14 +3427,9 @@ export class House {
       return;
     }
     if (id === "bett") {
-      const hour = this.clock.hour + this.clock.min / 60;
-      const nightOrSick = hour >= 20 || hour < 6 || this.sick > 0.35;
-      if (nightOrSick) {
-        // Abends oder krank: erst umziehen, dann ins Bett.
-        this.chain = [];
-        this.startBedRoutine();
-        return;
-      }
+      // Spielerwunsch: zu jeder Tageszeit, ohne Umziehen, in der aktuellen Kleidung.
+      this.startBedEinstieg();
+      return;
     }
     if (id === "brille" && this.glassesInSink) {
       this.chain = [];
@@ -4832,6 +4877,14 @@ export class House {
       this.rollT += dt;
       if (this.rollT >= 1.35) {
         this.rollT -= 1.35;
+        if (this.chain.length && this.pack <= 0 && this.cigs <= 0 && this.smokeRequested) {
+          // Nur eine Zigarette für sich selbst stopfen: sie wandert direkt in
+          // die Hand und geht mit nach unten – nichts bleibt auf dem Küchentisch liegen.
+          this.pack = 1;
+          sfx.ui();
+          this.finishActivity();
+          return;
+        }
         this.cigs = Math.min(PILE_MAX, this.cigs + 1 + ((Math.random() * 3) | 0));
         sfx.ui();
         // Stapel voll und noch Platz in der Schachtel -> einpacken
@@ -4884,6 +4937,7 @@ export class House {
 
     this.updateGolCarry(dt);
     this.updateShower(dt);
+    this.updateBedEinstieg(dt);
     this.updateBedToss(dt);
     this.updateBedState(dt);
     this.updateWake(dt);
@@ -5426,7 +5480,8 @@ export class House {
 
   private draw() {
     const bettBelegt = this.welt === "normal" && this.lf === 2 && !this.cur && !this.pending
-      && this.path.length === 0 && (this.lieDown || !!this.sleepPhase || this.asleep || this.activity?.id === "bett");
+      && this.path.length === 0 && (this.lieDown || !!this.sleepPhase || this.asleep ||
+        (this.bedEinstieg !== null && this.bedEinstieg !== "anfahrt"));
     if (bettBelegt !== this.bettRendered) {
       this.bettRendered = bettBelegt;
       this.dirty = true;
@@ -5513,8 +5568,7 @@ export class House {
       drawWardrobeOpen(ctx, 434, FLOOR_Y[2], this.wardrobeOpen, this.outfit !== "dressed" || this.towelOnRod);
     }
     if (this.glassesInSink) glassesObj(ctx, SINK_DROP[0], SINK_DROP[1], 0.12, 0.45);
-    this.drawBedToss(ctx);
-    this.drawGlassesRest(ctx);
+    if (this.gruselSarg) this.drawBedToss(ctx);
     if (this.gruselBad) drawLabLockerOpen(ctx, this.cabinetOpen, this.brushInCab);
     else drawCabinetOpen(ctx, this.cabinetOpen, this.brushInCab);
     // Auch der animierte Ofen steht hinter Luni, nicht vor ihrem Laufweg.
@@ -5522,10 +5576,15 @@ export class House {
     this.drawSargPass(ctx, false);
     // Osterei: der Datenkoffer steht hinter Luni, nicht vor ihrem Laufweg.
     this.drawKoffer(ctx);
-    // Odin & Apollo: vor den Möbeln, direkt hinter Lunis streichelnder Hand.
-    if (this.welt === "normal") this.hunde.draw(ctx);
     this.drawLuniLayered(ctx);
+    if (!this.gruselSarg) this.drawBedToss(ctx);
     if (this.bettRendered) drawBedFront(ctx, 282, FO);
+    // Die abgelegte Brille liegt vor Bett und Decke – sie wird nie von der
+    // Bettdecke verdeckt und „klebt“ dann scheinbar an ihr.
+    this.drawGlassesRest(ctx);
+    // Odin & Apollo: nach den Möbeln der Ebene – sie laufen davor und dürfen
+    // nicht hinter Bettpfosten, Decke oder Vorderkante verschwinden.
+    if (this.welt === "normal") this.hunde.draw(ctx);
     if (this.gruselBad) {
       drawBioBadAfter(ctx, this.bioFx(), () => drawLuni(ctx,
         BIO_BAD.kapsel.x + BIO_BAD.kapsel.w / 2, FLOOR_Y[2], {
@@ -7519,8 +7578,55 @@ export class House {
     return true;
   }
 
+  /** Normaler Bettgang, unabhaengig von Uhr und Kleidung. Der 3%-Wurf wird pro
+   * Bettgang genau einmal entschieden und nie waehrend der Animation neu gezogen. */
+  private startBedEinstieg(schonAmBett = false) {
+    if (this.bedEinstieg || this.asleep) return;
+    this.chain = [];
+    this.smokeRequested = false;
+    this.bedKleidungAn = this.outfit;
+    this.bedPyjama = this.pyjama ? { ...this.pyjama } : null;
+    this.bedBrilleBehalten = this.glassesOn && Math.random() < 0.03;
+    this.bedEinstieg = "anfahrt";
+    this.bedEinstiegT = 0;
+    if (schonAmBett && this.lf === 2 && Math.abs(this.lx - 307) < 1) {
+      this.bedEinstieg = "umschlagen";
+    } else {
+      this.goTo({ id: "bett_einstieg", label: "", floor: 2, x: 307,
+        face: 1, state: "idle", expr: "tired", hits: [] });
+    }
+  }
+
+  private updateBedEinstieg(dt: number) {
+    const ph = this.bedEinstieg;
+    if (!ph) return;
+    if (ph === "anfahrt") {
+      if (this.activity?.id === "bett_einstieg" && !this.cur && !this.path.length) {
+        this.bedEinstieg = "umschlagen";
+        this.bedEinstiegT = 0;
+      }
+      return;
+    }
+    if (ph === "toss") return; // updateBedToss beendet den Brillenwurf.
+    const dauer = { umschlagen: 2.2, setzen: 1.2, fuesse: 1.5, greifen: 1.2 }[ph];
+    this.bedEinstiegT += dt;
+    if (this.bedEinstiegT < dauer) return;
+    this.bedEinstiegT = 0;
+    if (ph === "umschlagen") this.bedEinstieg = "setzen";
+    else if (ph === "setzen") this.bedEinstieg = "fuesse";
+    else if (ph === "fuesse") this.bedEinstieg = "greifen";
+    else {
+      this.bedEinstieg = "toss";
+      if (this.bedBrilleBehalten || !this.beginBedToss()) {
+        this.bedEinstieg = null;
+        this.beginLieDown();
+      }
+    }
+  }
+
   /** Hinlegen ist unabhängig davon, ob vorher eine Brille geworfen wurde. */
   private beginLieDown() {
+    this.bedEinstieg = null;
     this.pending = null;
     this.activity = null;
     this.target = null;
@@ -7588,6 +7694,7 @@ export class House {
         this.sargStart("deckelZu");
         return;
       }
+      this.bedEinstieg = null;
       this.beginLieDown();
     }
   }
@@ -7632,6 +7739,7 @@ export class House {
       this.glassesRest = null;
     }
     this.asleep = false;
+    this.bedEinstieg = null;
     this.sleepT = 0;
     this.bedSitHair = 0;
     this.activity = null;
@@ -7668,29 +7776,30 @@ export class House {
   }
 
   private updateWake(dt: number) {
-    if (this.wakeT > 0) this.wakeT = Math.max(0, this.wakeT - dt);
+    if (this.wakeT > 0) {
+      this.wakeT = Math.max(0, this.wakeT - dt);
+      if (this.wakeT === 0 && this.wakeNext) {
+        const next = this.wakeNext;
+        this.wakeNext = null;
+        this.command(next);
+      }
+    }
   }
 
   private updateBedState(dt: number) {
     if (this.sleepRest > 0) this.sleepRest = Math.max(0, this.sleepRest - dt);
-    // Wer tagsüber ins Bett geschickt wird, schläft abends trotzdem ein:
-    // das Bett ist nachts der einzige Schlafplatz.
-    if (!this.asleep && this.activity?.id === "bett" && !this.bedPhase && !this.shPhase) {
-      const hour = this.clock.hour + this.clock.min / 60;
-      if ((hour >= 20 || hour < 6 || this.sick > 0.35) && !this.cur && this.path.length === 0) {
-        this.asleep = true;
-        this.sleepT = 0;
-        this.outfit = "dressed";
-        if (!this.pyjama) this.makePajama();
-        this.glassesOn = false;
-        this.dirty = true;
-      }
+    // Auch ein selbststaendiger Besuch am Bett durchlaeuft dieselben sichtbaren Schritte.
+    if (!this.asleep && !this.bedEinstieg && !this.bedPhase && !this.lieDown &&
+        !this.sleepPhase && !this.shPhase && this.activity?.id === "bett" &&
+        !this.cur && this.path.length === 0) {
+      this.startBedEinstieg(true);
     }
     if (this.lieDown) {
       this.lieT += dt;
       if (this.lieT >= 1.4) {
         this.lieDown = false;
-        this.sleepPhase = "grab";
+        // Die Decke wurde bereits im Sitzen herangezogen; nur noch zurechtlegen.
+        this.sleepPhase = "settle";
         this.sleepPhaseT = 0;
       }
       return;
@@ -7747,7 +7856,8 @@ export class House {
       if (this.gruselBad) drawLabBrush(c, this.hand[0], this.hand[1], bent ? 0 : -0.7, this.lface);
       else brushObj(c, this.hand[0], this.hand[1], bent ? 0 : -0.7, this.lface);
     }
-    if (this.glassesInHand) {
+    // Beim Bettwurf malt drawBedToss die Brille bereits im Bogen; nicht zugleich an der Hand.
+    if (this.glassesInHand && (this.gruselSarg || this.bedPhase !== "toss")) {
       const face = this.lface;
       disc(c, this.hand[0], this.hand[1], 2.2, LUNI_COLORS.skin);
       glassesObj(c, this.hand[0] + 2.6 * face, this.hand[1] - 1, -0.15 * face);
@@ -8271,6 +8381,51 @@ export class House {
 
     let back = false;
     let hairAside = 0;
+    if (this.bedEinstieg && this.bedEinstieg !== "anfahrt") {
+      const ph = this.bedEinstieg;
+      const d = { umschlagen: 2.2, setzen: 1.2, fuesse: 1.5, greifen: 1.2, toss: 1.25 }[ph];
+      const p = clamp(this.bedEinstiegT / d, 0, 1);
+      const e = sanft(p);
+      const f = FLOOR_Y[2];
+      this.lastPose = ph === "umschlagen" ? "act" : "sit";
+      c.save();
+      if (ph === "umschlagen") {
+        const standX = lerp(307, 323, e);
+        const hand = drawLuni(c, standX, f, {
+          t: this.elapsed, state: "act", expr: "focus", face: 1,
+          scale: LUNI_SCALE, shadow: false, glasses: this.glassesOn,
+          outfit: this.bedKleidungAn, pajama: this.bedPyjama,
+          handTarget: [lerp(325, 350, e), lerp(f - 32, f - 27, e)],
+        });
+        this.hand[0] = hand[0]; this.hand[1] = hand[1];
+      } else {
+        const sitX = lerp(323, 333, ph === "setzen" ? e : 1);
+        // Die Decke verdeckt die Beine ab dem Einschieben der Fuesse; die
+        // Abschnittkante folgt der Oberkante der verschobenen Decke (f-38).
+        if (ph === "fuesse" || ph === "greifen" || ph === "toss") {
+          const verdeckt = ph === "fuesse" ? e : 1;
+          c.beginPath(); c.rect(0, 0, W, f - 7 - 31 * verdeckt); c.clip();
+        }
+        const hand = drawLuni(c, sitX, f - 11, {
+          t: this.elapsed, state: "sit", expr: "tired", face: 1,
+          scale: LUNI_SCALE, shadow: false, glasses: this.glassesOn,
+          outfit: this.bedKleidungAn, pajama: this.bedPyjama,
+          bedLean: ph === "greifen" ? Math.sin(Math.PI * e) : 0,
+          sitzgriff: ph === "greifen" ? [6, -18] : null,
+        });
+        this.hand[0] = hand[0]; this.hand[1] = hand[1];
+      }
+      c.restore();
+      drawBedEntryBlanket(c, this.elapsed, ph, p);
+      if (ph === "umschlagen" || ph === "greifen") {
+        // Die greifende Hand liegt vor dem umgeschlagenen Deckenrand.
+        const hx = ph === "umschlagen" ? lerp(329, 351, e) : lerp(321, 329, e);
+        const hy = ph === "umschlagen" ? lerp(f - 34, f - 28, e) : f - 29;
+        c.fillStyle = LUNI_COLORS.skin;
+        c.beginPath(); c.ellipse(hx, hy, 2.5, 1.8, 0, 0, Math.PI * 2); c.fill();
+      }
+      return;
+    }
     if (this.wakeT > 0 && !this.asleep) {
       const p = 1 - this.wakeT / 1.2;
       x = 380;
@@ -8290,6 +8445,8 @@ export class House {
         scale: LUNI_SCALE,
         shadow: yOff === 0,
         glasses: this.glassesOn,
+        outfit: this.bedKleidungAn,
+        pajama: this.bedPyjama,
       });
       this.hand[0] = wh[0];
       this.hand[1] = wh[1];
@@ -8312,17 +8469,19 @@ export class House {
         blink: 1,
         scale: LUNI_SCALE,
         shadow: false,
-        glasses: false,
-        pajama: this.pyjama,
+        glasses: this.glassesOn,
+        outfit: this.bedKleidungAn,
+        pajama: this.bedPyjama,
       });
       this.hand[0] = wh[0];
       this.hand[1] = wh[1];
       c.restore();
       const inSarg = this.welt === "gruesel" && GRUSELRAEUME.schlafzimmer;
-      drawBlanket(c, this.elapsed, 0, inSarg);
+      if (inSarg) drawBlanket(c, this.elapsed, e, true);
+      else drawBedEntryBlanket(c, this.elapsed, "hinlegen", e);
       return;
     }
-    const ruhtImBett = this.welt === "normal" && !a && this.activity?.id === "bett";
+    const ruhtImBett = this.welt === "normal" && !a && this.activity?.id === "bett" && !this.bedEinstieg;
     if (this.sleepPhase || this.asleep || ruhtImBett) {
       // Kopfmitte bei x≈310, y≈286: direkt auf dem Kissen (294–324, 286–298).
       st = this.stations.find((sn) => sn.id === "bett") ?? null;
@@ -8332,13 +8491,17 @@ export class House {
       state = "lie";
       expr = "sleep";
       face = 1;
-      const pr = ruhtImBett && !this.sleepPhase && !this.asleep
+      let pr = ruhtImBett && !this.sleepPhase && !this.asleep
         ? { pull: 1, grab: 1, turn: 1, hair: 1 }
         : this.sleepProgress();
+      // Normales Haus: die Decke wurde schon beim Hineinlegen hochgezogen –
+      // sie darf beim Einschlafen nicht zurückfallen (das wäre ein Sprung).
+      if (!this.gruselSarg) pr = { ...pr, pull: 1 };
       hairAside = pr.hair;
       this.lastPose = "sleep";
       const inSarg = this.welt === "gruesel" && GRUSELRAEUME.schlafzimmer;
-      drawBedScene(c, x, y + yOff, this.elapsed, this.pyjama, pr, inSarg);
+      drawBedScene(c, x, y + yOff, this.elapsed, this.gruselSarg ? this.pyjama : this.bedPyjama,
+        pr, inSarg, this.gruselSarg ? "dressed" : this.bedKleidungAn, this.glassesOn);
       if (this.asleep || ruhtImBett) drawSleepZ(c, 312, y - 52, this.asleep ? this.sleepT : this.elapsed);
       return;
     }
