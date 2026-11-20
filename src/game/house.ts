@@ -169,24 +169,36 @@ const KOFFER_Y = 522;
 const KOFFER_W = 34;
 const KOFFER_H = 26;
 const LUNI_SCALE = 1.08;
+const BETT_STAND_X = 337;
 /** Adventskalender: Zurück-Knopf im Vollbild (Fernseh-tauglich, ≥ 24 hoch). */
 const ADVENT_ZURUECK = { x: 836, y: 30, w: 100, h: 28 };
+/** Große TV-Ansicht: Zurück- und Power-Knöpfe (alle ≥ 24×24, im sicheren Bereich). */
+const TV_BACK_E = { x: 390, y: 516, w: 180, h: 34 } as const;
+const TV_PWR_E = { x: 755, y: 372, w: 56, h: 36 } as const;
+const TV_BACK_D = { x: 390, y: 420, w: 180, h: 34 } as const;
+const TV_PWR_D = { x: 782, y: 350, w: 56, h: 26 } as const;
 const SPEED = 80;
 
 /** „Paulchen“: das bisher einzige Saxophonstück. Weitere Lieder später ergänzen. */
 const SAX_SONG_PAULCHEN = { id: "paulchen", duration: SAX_DURATION_SECONDS } as const;
-/** Referenzgröße: exakt die Größe, in der Luni das Saxophon spielt. */
-const SAX_SCALE = 0.52 * LUNI_SCALE;
-/** Mundstück-Anker, wenn das Instrument auf dem Stativ steht. */
+/** Referenzgröße: exakt die Größe, in der Luni das Saxophon spielt.
+ *  Auf Lunis Größe abgestimmt (Schallloch bis Knie): dieselbe Größe am
+ *  Stativ und in der Hand – das Instrument wächst beim Anheben nicht. */
+const SAX_SCALE = 0.68 * LUNI_SCALE;
+/** Mundstück-Anker, wenn das Instrument auf dem Stativ steht. Das größere
+ *  Instrument steht etwas höher, damit die untere Hand es am Stativ noch
+ *  erreicht (Armlänge). */
 const SAX_STAND_X = 652;
-const SAX_STAND_Y = FLOOR_Y[3] - 36;
+const SAX_STAND_Y = FLOOR_Y[3] - 40;
 /** Mundstück sitzt so viele Einheiten vor der Körpermitte am Mund. */
 const SAX_MOUTH_DX = 1.2;
 /** Griffpunkte in LOKALEN Saxophon-Koordinaten (Ursprung = Mundstück-Anker).
  *  Sie liegen auf der Klappenspalte, die saxophone() zeichnet – die Hände
- *  sitzen damit immer exakt am gezeichneten Instrument. */
+ *  sitzen damit immer exakt am gezeichneten Instrument. Die untere Hand
+ *  liegt weiter oben (y 26 statt 31), damit sie das größere Instrument
+ *  mit natürlicher Armlänge erreicht. */
 const SAX_GRIP_UP: Pt = [11.4, 16];
-const SAX_GRIP_LOW: Pt = [10.7, 31];
+const SAX_GRIP_LOW: Pt = [10.7, 26];
 /** Hinstrecken, Anheben, Abstellen – jeweils in Sekunden. */
 const SAX_REACH = 0.9;
 const SAX_LIFT = 1.0;
@@ -809,9 +821,13 @@ function drawBedScene(
   outfit: "dressed" | "towel" | "none" = "dressed",
   glasses = false,
 ) {
+  const zug = clamp(o.pull, 0, 1);
+  const links = lerp(338, 320, zug);
+  const oben = sarg ? FLOOR_Y[2] - 36 - 12 * zug : lerp(288, 281, zug);
+  clipBedCover(c, links, oben);
   drawLuni(c, x, y, {
     t, state: "lie", expr: "sleep", blink: 1, scale: LUNI_SCALE,
-    shadow: false, glasses, outfit, pajama: pj, hairAside: o.hair,
+    shadow: false, glasses, outfit, pajama: pj, hairAside: o.hair, bedCover: true,
   });
   // Hände zuerst: die Decke verdeckt sie, sobald sie darunter liegen.
   // Nur die greifenden Finger und die Hand auf dem Kissen bleiben sichtbar.
@@ -829,49 +845,183 @@ function drawBedScene(
     c.fill();
     c.restore();
   }
+  c.restore();
   drawBlanket(c, t, o.pull, sarg);
 }
 
-/** Eine einzige Decke auf der Matratze, nicht vor dem Bett oder unter dem Boden. */
-function drawBlanket(c: C, t: number, pull = 1, sarg = false) {
-  const x = lerp(338, 320, clamp(pull, 0, 1));
-  const y = FLOOR_Y[2] - 36 - 12 * clamp(pull, 0, 1) + Math.sin(t * 1.1) * 0.15;
-  const w = 386 - x;
-  const blanketCol = sarg ? "#580f1a" : "#3f7f8c";
-  const trimCol = sarg ? "#8c1b29" : "#5da0a8";
-  rrect(c, x, y, w, FLOOR_Y[2] - 16 - y, 6, blanketCol);
-  rrect(c, x + 2, y + 1.2, w - 4, 3, 1.5, trimCol);
-  rect(c, x + 4, y + 8, w - 8, 1.6, sarg ? "#c9a46a" : "rgba(255,255,255,.30)");
-  rect(c, x + 4, y + 15, w - 8, 1.2, sarg ? "#a58350" : "rgba(255,255,255,.18)");
+/**
+ * Alles, was beim Liegen über die Deckenoberkante hinausragt (Arm, Hand,
+ * Socke), wird aus der Figur ausgespart. Die Decke selbst wird erst danach
+ * gezeichnet und behält damit ihre organische, wellige Kante unverändert.
+ * Der Kopf bleibt links der Nahkante sichtbar.
+ */
+function clipBedCover(c: C, links: number, oben: number) {
+  c.save();
+  c.beginPath();
+  c.rect(0, 0, W, H);
+  // Rechts der Nahkante und oberhalb des Stoffes: Loch in der Zeichenfläche.
+  c.rect(links + 3, 0, 386 - links - 3, Math.max(0, oben + 2.5));
+  c.clip("evenodd");
 }
 
-/** Die Decke wird für die Bettfolge nicht skaliert: dieselbe vollständig hochgezogene
- * Decke (identische Größe zum Schlafzustand) wird nur verschoben. Beim Sitzen liegt sie
- * rechts ans Fußende geschoben; beim Greifen zieht Luni sie an sich heran. Nie über die
- * vordere Bettkante. */
-function drawBedEntryBlanket(c: C, t: number, phase: "umschlagen" | "setzen" | "fuesse" | "greifen" | "toss" | "hinlegen", p: number) {
-  const e = sanft(clamp(p, 0, 1));
-  let dx = 30, dy = 10;
-  if (phase === "umschlagen") { dx = lerp(14, 30, e); dy = lerp(16, 10, e); }
-  else if (phase === "greifen") { dx = lerp(30, 14, e); dy = lerp(10, 4, e); }
-  else if (phase === "toss") { dx = 14; dy = 4; }
-  else if (phase === "hinlegen") { dx = lerp(14, 0, e); dy = lerp(4, 0, e); }
-  const y = FLOOR_Y[2] - 48;
+/** Dasselbe Stoffstück für leere Decke, Zuschieben und Zudecken. Der Stoff wird
+ * nicht verschoben, sondern zusammengeschoben: die nahe Kante hebt sich und
+ * rollt sich auf (`gather`), während das Fußende auf der Matratze bleibt. */
+function drawBedCloth(
+  c: C, links: number, oben: number, falten: number, t: number,
+  rechts = 386, unten = FLOOR_Y[2] - 16, gather = 0, welle = 0,
+) {
+  const w = rechts - links, h = unten - oben;
+  const g = clamp(gather, 0, 1);
+  const hub = g * 9;
+  const naheOben = oben - hub * 0.4;
+  const naheUnten = unten - hub * 0.95;
+  const wellen = falten * 3.6 + g * 2.2;
+  // Laufende Kräuselung der Oberkante: sie wandert zur Nahkante (Richtung Kopf)
+  // und klingt zum Fußende hin ab. Ohne Bewegung (welle = 0) bleibt die Linie
+  // unverändert – das Aufdecken sieht dadurch genau wie bisher aus.
+  const rip = (x: number) => welle * Math.sin((x - links) * 0.2 + t * 7) * clamp((rechts - x) / 24, 0, 1);
+  const ry = (x: number, y: number) => y + rip(x);
   c.save();
-  c.beginPath(); c.rect(286, 230, 102, 370); c.clip();
-  c.translate(dx, dy + Math.sin(t * 1.1) * 0.15);
-  rrect(c, 320, y, 66, 32, 6, "#3f7f8c");
-  rrect(c, 322, y + 1.2, 62, 3, 1.5, "#5da0a8");
-  rect(c, 324, y + 8, 58, 1.6, "rgba(255,255,255,.30)");
-  rect(c, 324, y + 15, 58, 1.2, "rgba(255,255,255,.18)");
-  c.restore();
-  if (phase === "umschlagen" && e < 1) {
-    // Die umschlagende Falte wandert mit.
+  c.beginPath();
+  c.moveTo(links + 4, ry(links + 4, naheOben + wellen));
+  // Oberkante: an der Nahkante hochgezogen, am Fußende flach aufliegend
+  c.bezierCurveTo(
+    links + w * 0.16, ry(links + w * 0.16, naheOben + wellen),
+    links + w * 0.2, ry(links + w * 0.2, oben + wellen * 0.4),
+    links + w * 0.3, ry(links + w * 0.3, oben + wellen * 0.5),
+  );
+  c.bezierCurveTo(
+    links + w * 0.44, ry(links + w * 0.44, oben + wellen * 1.2),
+    links + w * 0.5, ry(links + w * 0.5, oben + wellen * 0.2),
+    links + w * 0.62, ry(links + w * 0.62, oben + wellen * 0.4),
+  );
+  c.bezierCurveTo(
+    links + w * 0.76, ry(links + w * 0.76, oben + wellen),
+    rechts - 7, ry(rechts - 7, oben + wellen * 0.5),
+    rechts - 4, ry(rechts - 4, oben + 1),
+  );
+  c.quadraticCurveTo(rechts, ry(rechts, oben + 1), rechts, ry(rechts, oben + 6));
+  c.lineTo(rechts, unten - 4);
+  c.quadraticCurveTo(rechts, unten, rechts - 4, unten);
+  // Unterkante: am Fußende flach, zur Nahkante angehoben (Stoff hängt durch)
+  c.bezierCurveTo(links + w * 0.7, unten - 1, links + w * 0.6, unten - hub * 0.3, links + w * 0.48, unten - hub * 0.45);
+  c.bezierCurveTo(links + w * 0.34, unten - hub * 0.75, links + w * 0.2, naheUnten + (unten - naheUnten) * 0.3, links + 4, naheUnten);
+  c.quadraticCurveTo(links, naheUnten - 2, links, naheUnten - 7);
+  c.lineTo(links, naheOben + 7);
+  c.quadraticCurveTo(links, naheOben, links + 4, naheOben);
+  c.fillStyle = "#3f7f8c";
+  c.fill();
+
+  // Aufgerollte Nahkante: der Stoff stapelt sich, statt als Platte zu wandern
+  if (g > 0.03) {
     c.save();
-    c.globalAlpha = 0.85 * (1 - e);
-    poly(c, [[320 + dx, y + dy + 4], [308 + dx, y + dy + 10], [320 + dx, y + dy + 22]], "#72afb3");
+    c.globalAlpha = 0.9 * g;
+    c.fillStyle = "#5da0a8";
+    c.beginPath();
+    c.ellipse(links + 3.4, (naheOben + naheUnten) / 2, 3.4 + g * 1.6, (naheUnten - naheOben) / 2 - 1.5, 0, 0, Math.PI * 2);
+    c.fill();
+    c.strokeStyle = "rgba(255,255,255,.32)";
+    c.lineWidth = 1.2;
+    for (let i = 0; i < 3; i++) {
+      const yy = (naheOben + naheUnten) / 2 + (i - 1) * (naheUnten - naheOben) * 0.28;
+      c.beginPath();
+      c.moveTo(links + 1.4, yy);
+      c.lineTo(links + 5.6, yy + 0.6);
+      c.stroke();
+    }
     c.restore();
   }
+
+  c.lineCap = "round";
+  c.lineWidth = 1.7;
+  c.strokeStyle = "#5da0a8";
+  c.beginPath();
+  c.moveTo(links + 3, ry(links + 3, naheOben + 2.6));
+  c.bezierCurveTo(
+    links + w * 0.2, ry(links + w * 0.2, oben + 1),
+    links + w * 0.34, ry(links + w * 0.34, oben + 5 + wellen),
+    links + w * 0.52, ry(links + w * 0.52, oben + 2.4),
+  );
+  c.bezierCurveTo(
+    links + w * 0.7, ry(links + w * 0.7, oben + 1),
+    rechts - 9, ry(rechts - 9, oben + 5 + falten),
+    rechts - 3, ry(rechts - 3, oben + 2.6),
+  );
+  c.stroke();
+  c.lineWidth = 0.9;
+  c.strokeStyle = "rgba(255,255,255,.25)";
+  c.beginPath();
+  c.moveTo(links + 4, (naheOben + naheUnten) / 2 + h * 0.1);
+  c.bezierCurveTo(links + w * 0.3, oben + h * 0.4, links + w * 0.6, oben + h * 0.6, rechts - 4, oben + h * 0.45);
+  c.stroke();
+  // Falten: laufen zur Nahkante zusammen, je mehr Stoff zusammengezogen ist
+  const faltenKraft = Math.max(falten, g);
+  if (faltenKraft > 0.01) {
+    c.globalAlpha = faltenKraft * 0.55;
+    c.strokeStyle = "#275d68";
+    c.lineWidth = 1;
+    const stauch = 1 - 0.4 * g;
+    for (let i = 0; i < 3; i++) {
+      const x = links + 5 + i * (w - 10) / 3 * stauch;
+      const bewegung = Math.sin(t * 1.6 + i) * 0.5 * faltenKraft;
+      c.beginPath();
+      c.moveTo(x, oben + 5 + (i % 2) * 2);
+      c.bezierCurveTo(x - 4 + bewegung, oben + h * 0.35, x + 4, unten - hub * 0.5, lerp(x, links + 5, g) - 1, unten - hub * 0.55);
+      c.stroke();
+    }
+    c.globalAlpha = 1;
+  }
+  c.restore();
+}
+
+/** Eine einzige Decke auf der Matratze. Im normalen Haus hat sie beim Liegen
+ *  dieselbe Dicke wie beim Zudecken (Oberkante 281, Unterkante 308). */
+function drawBlanket(c: C, t: number, pull = 1, sarg = false) {
+  const p = clamp(pull, 0, 1);
+  const x = lerp(338, 320, p);
+  if (!sarg) {
+    const y = lerp(288, 281, p) + Math.sin(t * 1.1) * 0.15;
+    drawBedCloth(c, x, y, 0, t);
+    return;
+  }
+  const y = FLOOR_Y[2] - 36 - 12 * p + Math.sin(t * 1.1) * 0.15;
+  const w = 386 - x;
+  rrect(c, x, y, w, FLOOR_Y[2] - 16 - y, 6, "#580f1a");
+  rrect(c, x + 2, y + 1.2, w - 4, 3, 1.5, "#8c1b29");
+  rect(c, x + 4, y + 8, w - 8, 1.6, "#c9a46a");
+  rect(c, x + 4, y + 15, w - 8, 1.2, "#a58350");
+}
+
+type BedEntryPhase = "umschlagen" | "setzen" | "fuesse" | "greifen" | "toss" | "hinlegen";
+
+/** Lage des Stoffes je Phase. `falten` = sichtbare Falten, `gather` = wie viel
+ *  Stoff an der Nahkante zusammengerollt ist, `welle` = laufende Kräuselung
+ *  (nur beim Zudecken). Das Fußende bleibt stets auf dem Bett; jede Phase
+ *  endet dort, wo die nächste beginnt. */
+function bedBlanketPose(phase: BedEntryPhase, p: number) {
+  const e = sanft(clamp(p, 0, 1));
+  if (phase === "umschlagen") return { links: lerp(328, 350, e), oben: lerp(288, 284.5, e), falten: e, gather: lerp(0.15, 0.35, e), welle: 0 };
+  if (phase === "greifen") return { links: lerp(350, 334, e), oben: lerp(284.5, 281, e), falten: lerp(0.35, 1, e), gather: lerp(0.35, 1, e), welle: 0 };
+  if (phase === "toss") return { links: 334, oben: 281, falten: 1, gather: 1, welle: 0 };
+  if (phase === "hinlegen") {
+    // Zudecken: der Stoff wird vom Fußende über den Körper gezogen. Die Dicke
+    // bleibt konstant; nur die Nahkante wandert und rollt sich ab. Die Kräuselung
+    // läuft mit, solange sich der Stoff bewegt, und ist an beiden Enden null.
+    return { links: lerp(334, 320, e), oben: 281, falten: lerp(1, 0, e), gather: 1 - e, welle: Math.sin(Math.PI * clamp(p, 0, 1)) * 1.3 };
+  }
+  return { links: 350, oben: 284.5, falten: 1, gather: 0.35, welle: 0 };
+}
+
+/** Greifpunkt der schiebenden Hand folgt derrollenden Stoffkante. */
+function bedBlanketPushHand(p: number): Pt {
+  const pose = bedBlanketPose("umschlagen", p);
+  return [lerp(BETT_STAND_X + 8, 349.7, sanft(p)), pose.oben + 4];
+}
+
+function drawBedEntryBlanket(c: C, t: number, phase: BedEntryPhase, p: number) {
+  const pose = bedBlanketPose(phase, p);
+  drawBedCloth(c, pose.links, pose.oben, pose.falten, t, 386, FLOOR_Y[2] - 16, pose.gather, pose.welle);
 }
 
 /** Schlaf-Zzz: steigen in kleinen Gruppen auf (Pixelschrift, keine Webschrift). */
@@ -1246,12 +1396,11 @@ function bed(c: C, x: number, F: number, belegt = false) {
   rrect(c, x + 8, F - 30, 98, 14, 5, "#f2efe6");
   rrect(c, x + 12, F - 38, 30, 12, 6, "#ffffff");
   if (!belegt) {
-    rrect(c, x + 46, F - 36, 58, 20, 6, "#3f7f8c");
-    rect(c, x + 48, F - 30, 54, 2, "rgba(255,255,255,.35)");
+    drawBedCloth(c, x + 46, F - 36, 0, 0, x + 104, F - 16);
   }
 }
 
-/** Nur bei belegtem Bett: Luni liegt hinter Vorderkante und Fußpfosten. */
+/** Vorderkante des Bettes, vor der Luni sichtbar bleibt. */
 function drawBedFront(c: C, x: number, F: number) {
   rect(c, x + 6, F - 16, 100, 10, "#8a5a34");
   rrect(c, x + 104, F - 34, 8, 34, 3, "#6f4a2a");
@@ -1427,6 +1576,11 @@ function guitar(c: C, x: number, F: number) {
   disc(c, x, F - 27, 6.5, "#c9843c");
   disc(c, x, F - 18, 2.6, "#2a1f1b");
   rect(c, x - 5, F - 8, 10, 1.6, "#8a5a24");
+  // Saiten: vom Steg über das Schallloch bis zum Kopf – drei helle Linien,
+  // die sich vom Steg (breit) zum Hals (schmal) verjüngen.
+  for (const [sx, nx] of [[-2, -0.8], [0, 0], [2, 0.8]] as const) {
+    line(c, x + sx, F - 8, x + nx, F - 52, "#e8dcc4", 0.55);
+  }
 }
 
 /* --- Möbel: Keller --- */
@@ -2753,7 +2907,13 @@ export class House {
   /** greifen, zum Fernseher tragen, einlegen, hinsetzen, oder Vergrößern */
   private golPhase: "reach" | "carry" | "insert" | "watch" | "rise" | "toButton" | "press" | "back" | null = null;
   private golAnimT = 0;
-  private golFullscreen = false;
+  /** Welcher Fernseher groß dargestellt wird (null = normale Hausansicht). */
+  private tvZoom: "tv_e" | "tv_d" | null = null;
+  /** Manuelles Ein-/Ausschalten am großen TV (null = folgt Lunis Nutzung). */
+  private tvManual: Record<"tv_e" | "tv_d", boolean | null> = { tv_e: null, tv_d: null };
+  private get golFullscreen() {
+    return this.tvZoom === "tv_d" && this.tvContent("tv_d") === "gol";
+  }
 
   // Adventskalender (Zielbild aus dem Spielkonzept; Prototyp: alle Türchen frei)
   private adventFullscreen = false;
@@ -3159,6 +3319,10 @@ export class House {
     // heißt, sie trug es gerade – dann liegt es wieder im Regal.
     this.golInserted = s.golInserted;
     this.golOnShelf = s.golOnShelf || !s.golInserted;
+    if (this.golInserted) {
+      this.tvMode = "gol";
+      if (!this.golState) this.golState = createState();
+    }
     this.smoke = clamp(s.smoke, 0, 1);
     this.burnLeft = typeof s.burnLeft === "number" ? Math.max(0, s.burnLeft) : 0;
     this.burnTotal = typeof s.burnTotal === "number" ? Math.max(0, s.burnTotal) : (this.burnLeft > 0 ? Math.max(this.burnLeft, 240) : 0);
@@ -3235,17 +3399,21 @@ export class House {
       sfx.ui();
       return;
     }
-    if (this.golFullscreen) {
-      this.onGolFullscreenClick(x, y);
+    if (this.tvZoom) {
+      this.onTvFullscreenClick(x, y);
       return;
     }
     if (this.adventFullscreen) {
       this.adventKlick(x, y);
       return;
     }
-    // Nur der Fernseher im Zockerzimmer, und nur wenn das Modul steckt.
-    if (this.golInserted && this.hitAtticTv(x, y)) {
-      this.startTvZoom();
+    // Klick auf eines der beiden TV-Geräte öffnet immer die große TV-Darstellung.
+    if (this.hitAtticTv(x, y)) {
+      this.openTvZoom("tv_d");
+      return;
+    }
+    if (this.hitLivingTv(x, y)) {
+      this.openTvZoom("tv_e");
       return;
     }
     // Ausnahme von der Ankunftslogik: Die Wechselsteine sind ein GUI fuer den
@@ -3281,19 +3449,21 @@ export class House {
       }
       return;
     }
-    if (this.golFullscreen) {
+    if (this.tvZoom) {
       this.hover = null;
-      const b = GOL_BTN;
-      const onBtn = x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
-      const onCtrl = !!golCtrlAt(x, y);
-      const v = this.golState ? golView(this.golState) : null;
+      const inBox = (b: { x: number; y: number; w: number; h: number }) =>
+        x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+      const back = this.tvZoom === "tv_e" ? TV_BACK_E : (this.golFullscreen ? GOL_BTN : TV_BACK_D);
+      const pwr = this.tvZoom === "tv_e" ? TV_PWR_E : TV_PWR_D;
+      const onCtrl = this.golFullscreen && !!golCtrlAt(x, y);
+      const v = this.golFullscreen && this.golState ? golView(this.golState) : null;
       const onGrid = !!v && x >= v.x && x <= v.x + v.w && y >= v.y && y <= v.y + v.h;
-      this.canvas.style.cursor = onBtn || onCtrl || onGrid ? "pointer" : "default";
+      this.canvas.style.cursor = inBox(back) || inBox(pwr) || onCtrl || onGrid ? "pointer" : "default";
       return;
     }
     this.hover = this.steinUnter(x, y) ?? this.pick(x, y);
     this.wetterHover = wetterStationHit(wetterStationLayout(this.wetter, this.wetterAdd, this.wetterOffen, this.welt === "normal"), x, y);
-    const onTv = this.golInserted && this.hitAtticTv(x, y);
+    const onTv = this.hitAtticTv(x, y) || this.hitLivingTv(x, y);
     this.canvas.style.cursor = this.wetterHover || this.hover || onTv
       ? "pointer" : this.walkTargetAt(x, y) ? "crosshair" : "default";
   };
@@ -5149,6 +5319,7 @@ export class House {
         }
         this.activity = this.target;
         this.lface = this.target.face;
+        if (this.activity.screen) this.tvManual[this.activity.screen] = null;
         if (this.gruselBad && this.target.id === "bio_wc") {
           this.bioWcTime = 0;
           this.bioWcTriggered = false;
@@ -5576,9 +5747,9 @@ export class House {
     this.drawSargPass(ctx, false);
     // Osterei: der Datenkoffer steht hinter Luni, nicht vor ihrem Laufweg.
     this.drawKoffer(ctx);
+    if (this.bettRendered) drawBedFront(ctx, 282, FO);
     this.drawLuniLayered(ctx);
     if (!this.gruselSarg) this.drawBedToss(ctx);
-    if (this.bettRendered) drawBedFront(ctx, 282, FO);
     // Die abgelegte Brille liegt vor Bett und Decke – sie wird nie von der
     // Bettdecke verdeckt und „klebt“ dann scheinbar an ihr.
     this.drawGlassesRest(ctx);
@@ -5617,7 +5788,7 @@ export class House {
 
     drawWetterStation(ctx, this.wetter, this.wetterAdd, this.wetterHover, this.wetterOffen, this.welt === "normal");
     this.drawHoverLabel(ctx);
-    if (this.golFullscreen) this.drawGolFullscreen(ctx);
+    if (this.tvZoom) this.drawTvFullscreen(ctx);
     if (this.adventFullscreen || this.adventZoomT > 0) this.drawAdventskalender(ctx);
   }
 
@@ -5659,7 +5830,7 @@ export class House {
   private saxApproachX(): number | null {
     const st = this.stations.find((s) => s.id === "saxophon");
     if (!st) return null;
-    const reach = 8.2 + 8.4 - 0.6;
+    const reach = (8.2 + 8.4 - 0.6) * LUNI_SCALE;
     const shy = FLOOR_Y[3] + -34 * LUNI_SCALE;
     for (const local of [SAX_GRIP_UP, SAX_GRIP_LOW] as const) {
       const gx = this.saxStand.x + local[0] * SAX_SCALE * st.face;
@@ -5695,7 +5866,7 @@ export class House {
     const dir = st.face;
     const raw = this.saxLift();
     const e = raw * raw * (3 - 2 * raw);
-    const mouthX = st.x + SAX_MOUTH_DX * LUNI_SCALE * dir;
+    const mouthX = this.lx + SAX_MOUTH_DX * LUNI_SCALE * dir;
     const mouthY = FLOOR_Y[st.floor] - 40.5 * LUNI_SCALE;
     // Leichter Bogen beim Anheben – kein gerader Flug durch den Raum.
     const arc = Math.sin(Math.PI * raw) * 3;
@@ -5772,30 +5943,6 @@ export class House {
       c.translate(-p.ax, -p.ay);
     }
     if (!this.musikzimmer) saxophone(c, p.ax, p.ay, SAX_SCALE, p.dir);
-    c.restore();
-  }
-
-  /** Beide Hände auf dem Klappenschacht – über dem Instrument und den Ärmeln. */
-  private drawSaxHands(c: C, hands: { front: [number, number]; rear: [number, number] }) {
-    if (!this.saxPhase) return;
-    const rot = this.saxPose().rot;
-    for (const h of [hands.front, hands.rear]) this.drawSaxHand(c, h, rot);
-  }
-
-  /** Hand am Griffpunkt: flache Hand auf dem Korpus, Finger über die Klappen. */
-  private drawSaxHand(c: C, h: [number, number], rot = 0) {
-    c.save();
-    c.translate(h[0], h[1]);
-    c.rotate(rot + 0.35);
-    rrect(c, -4.4, -3.1, 8.8, 6.2, 3, LUNI_COLORS.skin);
-    c.strokeStyle = LUNI_COLORS.skinShade;
-    c.lineWidth = 0.8;
-    for (let i = 0; i < 3; i++) {
-      c.beginPath();
-      c.moveTo(-1.8 + i * 1.8, -3);
-      c.lineTo(-1.3 + i * 1.8, 3);
-      c.stroke();
-    }
     c.restore();
   }
 
@@ -6484,35 +6631,42 @@ export class House {
     c.fillText(label, x + 2 - off + tw, y + h - 1.8);
   }
 
-  /** Läuft auf dem Fernseher, während Luni spielt */
+  /** Welcher Inhalt aktuell auf einem der beiden TV-Geräte läuft. */
+  private tvContent(which: "tv_e" | "tv_d"): "off" | "cozy" | "console" | "gol" {
+    if (this.tvManual[which] === false) return "off";
+    if (which === "tv_d" && this.golInserted && this.tvMode === "gol" && this.golState) return "gol";
+    if ((this.activity?.screen === which && !this.cur) || this.tvManual[which] === true) {
+      return which === "tv_d" && this.tvMode === "console" ? "console" : "cozy";
+    }
+    return "off";
+  }
+
+  /** Läuft auf den beiden Fernsehern im Haus (klein) und in der Vergrößerung (groß). */
   private drawScreens(c: C) {
-    // Eingestecktes Spiel bleibt auf dem Zockerzimmer-Fernseher, auch wenn
-    // Luni woanders ist. Die Fläche liegt vor Luni im Zeichenablauf, also
-    // hinter ihr, wenn sie vorbeigeht.
-    if (this.golInserted && this.tvMode === "gol" && this.golState) {
-      const x = 410, y = 137, w = 54, h = 34;
+    const mD = this.tvContent("tv_d");
+    if (mD !== "off") {
       c.save();
       c.beginPath();
-      c.rect(x, y, w, h);
+      c.rect(410, 137, 54, 34);
       c.clip();
-      drawGridCoarse(c, this.golState, x, y, w, h);
-      c.fillStyle = "rgba(0,0,0,.12)";
-      for (let i = 0; i < h; i += 3) c.fillRect(x, y + i, w, 1);
+      this.drawTvProgram(c, 410, 137, 54, 34, mD);
       c.restore();
     }
-    const st = this.activity;
-    if (!st || !st.screen || this.cur) return;
-    if (st.screen === "tv_d" && this.tvMode === "gol") return;
-    const cozy = this.tvMode === "cozy";
-    const r: Rect4 = st.screen === "tv_e"
-      ? (cozy ? [435, 392, 44, 32] : [445, 395, 40, 26])
-      : [410, 137, 54, 34];
-    const [x, y, w, h] = r;
+    const mE = this.tvContent("tv_e");
+    if (mE !== "off") {
+      c.save();
+      c.beginPath();
+      c.rect(445, 395, 40, 26);
+      c.clip();
+      this.drawTvProgram(c, 445, 395, 40, 26, mE);
+      c.restore();
+    }
+  }
+
+  /** Zeichnet das aktive TV-Bild (Harvest/Musikvideo, Konsole oder Spiel des Lebens) in den Bereich (x, y, w, h). */
+  private drawTvProgram(c: C, x: number, y: number, w: number, h: number, mode: "cozy" | "console" | "gol") {
+    const cozy = mode === "cozy";
     const t = cozy ? this.harvestClock : this.elapsed;
-    c.save();
-    c.beginPath();
-    c.rect(x, y, w, h);
-    c.clip();
 
     if (cozy) {
       // Wohnzimmer-Kanäle: Harvest-Spiel und Musikvideo im Wechsel,
@@ -6522,161 +6676,148 @@ export class House {
       if (inStatic) {
         this.drawTVStatic(c, x, y, w, h, Math.floor(t * 12));
       } else if (tt < TV_RICK_AT) {
-      // ── HARVEST GAME ──────────────────────────────────────────────
-      // Crops only change while the farmer is physically tending that plot.
-      // A full year takes 4 minutes; visits and growth stay deliberately slow.
-      const dayLen = 240;
-      const dayP = (t % dayLen) / dayLen;
-      const seasons = [
-        { n: "FRÜJAHR", top: "#a8dff0", grs: "#79c981", tint: 0 },
-        { n: "SOMMER", top: "#7fcdef", grs: "#6bbb74", tint: 0 },
-        { n: "HERBST", top: "#c9d8e4", grs: "#a8b96a", tint: 0.35 },
-        { n: "WINTER", top: "#dfe9f2", grs: "#cfe0e8", tint: 0.75 },
-      ];
-      const season = seasons[Math.floor(dayP * 4) % 4];
-      const dayT = (dayP * 4) % 1;
+        // ── HARVEST GAME ──────────────────────────────────────────────
+        const dayLen = 240;
+        const dayP = (t % dayLen) / dayLen;
+        const seasons = [
+          { n: "FRÜJAHR", top: "#a8dff0", grs: "#79c981", tint: 0 },
+          { n: "SOMMER", top: "#7fcdef", grs: "#6bbb74", tint: 0 },
+          { n: "HERBST", top: "#c9d8e4", grs: "#a8b96a", tint: 0.35 },
+          { n: "WINTER", top: "#dfe9f2", grs: "#cfe0e8", tint: 0.75 },
+        ];
+        const season = seasons[Math.floor(dayP * 4) % 4];
+        const dayT = (dayP * 4) % 1;
 
-      // Himmel (morgens/abends wärmer)
-      const warm = Math.max(0, 1 - Math.min(dayT, 1 - dayT) * 5);
-      const sky = c.createLinearGradient(0, y, 0, y + h * 0.55);
-      sky.addColorStop(0, mix(season.top, "#f7c98a", warm * 0.55));
-      sky.addColorStop(1, mix(season.top, "#e8e2cf", warm * 0.3));
-      c.fillStyle = sky;
-      c.fillRect(x, y, w, h * 0.58);
+        // Himmel (morgens/abends wärmer)
+        const warm = Math.max(0, 1 - Math.min(dayT, 1 - dayT) * 5);
+        const sky = c.createLinearGradient(0, y, 0, y + h * 0.55);
+        sky.addColorStop(0, mix(season.top, "#f7c98a", warm * 0.55));
+        sky.addColorStop(1, mix(season.top, "#e8e2cf", warm * 0.3));
+        c.fillStyle = sky;
+        c.fillRect(x, y, w, h * 0.58);
 
-      // Sonne wandert
-      disc(c, x + w * (0.12 + dayT * 0.76), y + h * (0.3 - Math.sin(dayT * Math.PI) * 0.18), 2.4, "#ffe9a8");
+        // Sonne wandert
+        disc(c, x + w * (0.12 + dayT * 0.76), y + h * (0.3 - Math.sin(dayT * Math.PI) * 0.18), 2.4, "#ffe9a8");
 
-      // Felder
-      c.fillStyle = season.grs;
-      c.fillRect(x, y + h * 0.5, w, h * 0.5);
-      // Ackerstreifen
-      const cols = ["#7a5233", "#8a5f3b"];
-      const fw = w / 3.4;
-      const fh = h * 0.115;
-      const crops = ["karotte", "kuerbis", "tomate", "salat"];
-      const fieldPoint = (i: number): Pt => [
-        x + 3 + (i % 3) * (fw + 1.5) + fw * 0.5,
-        y + h * 0.5 + Math.floor(i / 3) * (fh + 2) + fh * 0.75,
-      ];
-      for (let i = 0; i < 6; i++) {
-        const cx = x + 3 + (i % 3) * (fw + 1.5);
-        const cy = y + h * 0.5 + Math.floor(i / 3) * (fh + 2) + 1.5;
-        rect(c, cx, cy, fw, fh, cols[i % 2]);
-        rect(c, cx, cy, fw, 1.2, "rgba(255,255,255,.12)");
-        // Each plot keeps its own state while the farmer tends another plot.
-        const growth = this.harvestCrops[i];
-        const ripe = growth >= 0.999;
-        const col = crops[i % 4];
-        const tending = !this.harvestMoving && i === this.harvestSpot;
-        if (tending) {
-          c.strokeStyle = "rgba(255,233,168,.6)";
-          c.lineWidth = 0.7;
-          c.strokeRect(cx + 0.8, cy + 0.8, fw - 1.6, fh - 1.6);
-        }
-        for (let k = 0; k < 3; k++) {
-          const px = cx + fw * (0.22 + k * 0.28);
-          const py = cy + fh * 0.62;
-          // Blattgrün
-          c.fillStyle = ripe ? "#3f8f4f" : "#6fae5a";
-          c.beginPath();
-          c.ellipse(px, py - fh * 0.3 * growth, fw * 0.075 * growth + 0.5, fh * 0.2 * growth + 0.4, 0, 0, Math.PI * 2);
-          c.fill();
-          // Frucht
-          if (growth > 0.45) {
-            const fs = (fw * 0.075) * growth;
-            if (col === "karotte") rect(c, px - fs * 0.35, py, fs * 0.7, fs * 1.5, "#e8722f");
-            else if (col === "kuerbis") disc(c, px, py + fs * 0.5, fs * 1.1, "#e8912f");
-            else if (col === "tomate") disc(c, px, py + fs * 0.4, fs * 0.85, "#d9453a");
-            else disc(c, px, py + fs * 0.3, fs * 0.9, "#a8d94f");
+        // Felder
+        c.fillStyle = season.grs;
+        c.fillRect(x, y + h * 0.5, w, h * 0.5);
+        const cols = ["#7a5233", "#8a5f3b"];
+        const fw = w / 3.4;
+        const fh = h * 0.115;
+        const crops = ["karotte", "kuerbis", "tomate", "salat"];
+        const fieldPoint = (i: number): Pt => [
+          x + 3 + (i % 3) * (fw + 1.5) + fw * 0.5,
+          y + h * 0.5 + Math.floor(i / 3) * (fh + 2) + fh * 0.75,
+        ];
+        for (let i = 0; i < 6; i++) {
+          const cx = x + 3 + (i % 3) * (fw + 1.5);
+          const cy = y + h * 0.5 + Math.floor(i / 3) * (fh + 2) + 1.5;
+          rect(c, cx, cy, fw, fh, cols[i % 2]);
+          rect(c, cx, cy, fw, 1.2, "rgba(255,255,255,.12)");
+          const growth = this.harvestCrops[i];
+          const ripe = growth >= 0.999;
+          const col = crops[i % 4];
+          const tending = !this.harvestMoving && i === this.harvestSpot;
+          if (tending) {
+            c.strokeStyle = "rgba(255,233,168,.6)";
+            c.lineWidth = 0.7;
+            c.strokeRect(cx + 0.8, cy + 0.8, fw - 1.6, fh - 1.6);
           }
-          // Erntefunken über reifem Feld
-          if (ripe && tending && Math.sin(t * 1.8 + i * 2 + k) > 0.96) {
-            c.fillStyle = "#ffe9a8";
-            c.fillRect(px - 0.6, py - fh * 0.95, 1.2, 2.4);
+          for (let k = 0; k < 3; k++) {
+            const px = cx + fw * (0.22 + k * 0.28);
+            const py = cy + fh * 0.62;
+            c.fillStyle = ripe ? "#3f8f4f" : "#6fae5a";
+            c.beginPath();
+            c.ellipse(px, py - fh * 0.3 * growth, fw * 0.075 * growth + 0.5, fh * 0.2 * growth + 0.4, 0, 0, Math.PI * 2);
+            c.fill();
+            if (growth > 0.45) {
+              const fs = (fw * 0.075) * growth;
+              if (col === "karotte") rect(c, px - fs * 0.35, py, fs * 0.7, fs * 1.5, "#e8722f");
+              else if (col === "kuerbis") disc(c, px, py + fs * 0.5, fs * 1.1, "#e8912f");
+              else if (col === "tomate") disc(c, px, py + fs * 0.4, fs * 0.85, "#d9453a");
+              else disc(c, px, py + fs * 0.3, fs * 0.9, "#a8d94f");
+            }
+            if (ripe && tending && Math.sin(t * 1.8 + i * 2 + k) > 0.96) {
+              c.fillStyle = "#ffe9a8";
+              c.fillRect(px - 0.6, py - fh * 0.95, 1.2, 2.4);
+            }
+          }
+          if (ripe) {
+            c.strokeStyle = "rgba(255,233,168,.85)";
+            c.lineWidth = 0.8;
+            c.strokeRect(cx + 0.4, cy + 0.4, fw - 0.8, fh - 0.8);
           }
         }
-        // Reif-Rahmen
-        if (ripe) {
-          c.strokeStyle = "rgba(255,233,168,.85)";
-          c.lineWidth = 0.8;
-          c.strokeRect(cx + 0.4, cy + 0.4, fw - 0.8, fh - 0.8);
+
+        // Scheune oben rechts
+        const bx = x + w * 0.72;
+        const by = y + h * 0.3;
+        rect(c, bx, by, w * 0.2, h * 0.2, "#c9453a");
+        poly(c, [[bx - 1.2, by], [bx + w * 0.1, by - h * 0.1], [bx + w * 0.2 + 1.2, by]], "#8f2f27");
+        rect(c, bx + w * 0.07, by + h * 0.06, w * 0.06, h * 0.14, "#8f2f27");
+
+        // Bäume
+        for (let i = 0; i < 3; i++) {
+          const tx = x + w * (0.08 + i * 0.09);
+          const ty = y + h * 0.47;
+          rect(c, tx - 0.7, ty, 1.4, h * 0.06, "#6b4a2a");
+          const leaf = season.n === "WINTER" ? "#e8f0f6" : season.n === "HERBST" ? "#d98f3c" : "#3f8f5f";
+          disc(c, tx, ty - h * 0.03, h * 0.07, leaf);
         }
-      }
 
-      // Scheune oben rechts
-      const bx = x + w * 0.72;
-      const by = y + h * 0.3;
-      rect(c, bx, by, w * 0.2, h * 0.2, "#c9453a");
-      poly(c, [[bx - 1.2, by], [bx + w * 0.1, by - h * 0.1], [bx + w * 0.2 + 1.2, by]], "#8f2f27");
-      rect(c, bx + w * 0.07, by + h * 0.06, w * 0.06, h * 0.14, "#8f2f27");
+        // Bauer
+        const from = fieldPoint(this.harvestMoving ? this.harvestFrom : this.harvestSpot);
+        const to = fieldPoint(this.harvestMoving ? this.harvestTo : this.harvestSpot);
+        const moveP = this.harvestMoving ? this.harvestMoveT * this.harvestMoveT * (3 - 2 * this.harvestMoveT) : 0;
+        const tx = lerp(from[0], to[0], moveP);
+        const ty = lerp(from[1], to[1], moveP);
+        const bob = this.harvestMoving ? Math.abs(Math.sin(t * 1.3)) * 0.45 : Math.sin(t * 0.5) * 0.12;
+        const cropReady = this.harvestCrops[this.harvestSpot] >= 1;
+        const crouch = !this.harvestMoving && (cropReady || this.harvestCrops[this.harvestSpot] > 0) ? 1 : 0;
+        const bodyY = bob + crouch * 1.2;
+        c.fillStyle = "#33566b";
+        c.fillRect(tx - 1.6, ty - 5.5 + bodyY, 3.2, 4);
+        c.fillStyle = "#e8a33d";
+        c.fillRect(tx - 1.9, ty - 9.5 + bodyY, 3.8, 4.2);
+        disc(c, tx, ty - 11.5 + bodyY, 1.9, "#f4c9a0");
+        c.fillStyle = "#4a3126";
+        c.beginPath();
+        c.arc(tx, ty - 12.2 + bodyY, 1.95, Math.PI * 1.02, Math.PI * 2.08);
+        c.fill();
+        c.fillStyle = "#b98a4a";
+        c.fillRect(tx + 2.4, ty - 3.5 + bodyY, 2.6, 2.2);
+        c.fillStyle = "#e8912f";
+        c.fillRect(tx + 2.6, ty - 4 + bodyY, 2.2, Math.min(2, this.harvestCrops[this.harvestSpot] * 2));
+        if (!this.harvestMoving && cropReady && Math.sin(t * 3) > 0.45) {
+          disc(c, tx + 4, ty - 10, 1.2, "#ffe9a8");
+        }
 
-      // Bäume (Herbst/Winter verfärbt)
-      for (let i = 0; i < 3; i++) {
-        const tx = x + w * (0.08 + i * 0.09);
-        const ty = y + h * 0.47;
-        rect(c, tx - 0.7, ty, 1.4, h * 0.06, "#6b4a2a");
-        const leaf = season.n === "WINTER" ? "#e8f0f6" : season.n === "HERBST" ? "#d98f3c" : "#3f8f5f";
-        disc(c, tx, ty - h * 0.03, h * 0.07, leaf);
-      }
+        // Wolke
+        const cl = x + ((t * 2) % (w + 18)) - 9;
+        c.fillStyle = "rgba(255,255,255,.92)";
+        c.beginPath();
+        c.ellipse(cl, y + h * 0.16, w * 0.11, h * 0.055, 0, 0, Math.PI * 2);
+        c.ellipse(cl + w * 0.07, y + h * 0.17, w * 0.08, h * 0.045, 0, 0, Math.PI * 2);
+        c.fill();
 
-      // The farmer walks between plots, then spends time working at one plot.
-      const from = fieldPoint(this.harvestMoving ? this.harvestFrom : this.harvestSpot);
-      const to = fieldPoint(this.harvestMoving ? this.harvestTo : this.harvestSpot);
-      const moveP = this.harvestMoving ? this.harvestMoveT * this.harvestMoveT * (3 - 2 * this.harvestMoveT) : 0;
-      const tx = lerp(from[0], to[0], moveP);
-      const ty = lerp(from[1], to[1], moveP);
-      const bob = this.harvestMoving ? Math.abs(Math.sin(t * 1.3)) * 0.45 : Math.sin(t * 0.5) * 0.12;
-      // Crouch while planting/harvesting at the current plot.
-      const cropReady = this.harvestCrops[this.harvestSpot] >= 1;
-      const crouch = !this.harvestMoving && (cropReady || this.harvestCrops[this.harvestSpot] > 0) ? 1 : 0;
-      const bodyY = bob + crouch * 1.2;
-      c.fillStyle = "#33566b";
-      c.fillRect(tx - 1.6, ty - 5.5 + bodyY, 3.2, 4);
-      c.fillStyle = "#e8a33d";
-      c.fillRect(tx - 1.9, ty - 9.5 + bodyY, 3.8, 4.2);
-      disc(c, tx, ty - 11.5 + bodyY, 1.9, "#f4c9a0");
-      c.fillStyle = "#4a3126";
-      c.beginPath();
-      c.arc(tx, ty - 12.2 + bodyY, 1.95, Math.PI * 1.02, Math.PI * 2.08);
-      c.fill();
-      // Korb, füllt sich mit Erntefortschritt
-      c.fillStyle = "#b98a4a";
-      c.fillRect(tx + 2.4, ty - 3.5 + bodyY, 2.6, 2.2);
-      c.fillStyle = "#e8912f";
-      c.fillRect(tx + 2.6, ty - 4 + bodyY, 2.2, Math.min(2, this.harvestCrops[this.harvestSpot] * 2));
-      if (!this.harvestMoving && cropReady && Math.sin(t * 3) > 0.45) {
-        disc(c, tx + 4, ty - 10, 1.2, "#ffe9a8");
-      }
-
-      // Wolke
-      const cl = x + ((t * 2) % (w + 18)) - 9;
-      c.fillStyle = "rgba(255,255,255,.92)";
-      c.beginPath();
-      c.ellipse(cl, y + h * 0.16, w * 0.11, h * 0.055, 0, 0, Math.PI * 2);
-      c.ellipse(cl + w * 0.07, y + h * 0.17, w * 0.08, h * 0.045, 0, 0, Math.PI * 2);
-      c.fill();
-
-      // HUD: Jahreszeit + Münzen
-      c.fillStyle = "rgba(12,28,34,.6)";
-      c.fillRect(x + 1.5, y + 1.5, w * 0.42, h * 0.16);
-      c.fillStyle = "#ffe9a8";
-      c.font = '700 4px "Silkscreen", monospace';
-      c.fillText(season.n, x + 3.2, y + h * 0.085);
-      const coins = this.harvestCoins;
-      c.fillText(`${coins} G`, x + 3.2, y + h * 0.145);
-      disc(c, x + w * 0.3, y + h * 0.12, 1.4, "#ffd166");
+        // HUD: Jahreszeit + Münzen
+        c.fillStyle = "rgba(12,28,34,.6)";
+        c.fillRect(x + 1.5, y + 1.5, w * 0.42, h * 0.16);
+        c.fillStyle = "#ffe9a8";
+        c.font = '700 4px "Silkscreen", monospace';
+        c.fillText(season.n, x + 3.2, y + h * 0.085);
+        c.fillText(`${this.harvestCoins} G`, x + 3.2, y + h * 0.145);
+        disc(c, x + w * 0.3, y + h * 0.12, 1.4, "#ffd166");
       } else {
         this.drawRickTV(c, x, y, w, h, t);
       }
-      // Senderkennung oben links, Musiknote oben rechts
       c.fillStyle = "#eef7f2";
       c.font = '700 4px "Silkscreen", monospace';
       c.fillText(tt < TV_RICK_AT ? "CH1" : "CH2", x + 2, y + 5);
       c.fillStyle = "#ff5d8f";
       c.fillText("♪", x + w - 6, y + 5);
-
-    } else if (this.tvMode === "gol" && this.golState) {
+    } else if (mode === "gol" && this.golState) {
       drawGridCoarse(c, this.golState, x, y, w, h);
     } else {
       // Konsole im Dachgeschoss: dunkler Hintergrund, Level, Figuren
@@ -6685,11 +6826,9 @@ export class House {
       c.fillRect(x, y, w, h);
       for (let i = 0; i < 6; i++) disc(c, x + ((i * 29 + t * 26) % w), y + h * 0.22 + (i % 3) * h * 0.14, 0.8, "#c3d0ff");
       rect(c, x, y + h * 0.74, w, h * 0.26, "#3a2a5a");
-      // kleine Spielfigur
       const px = x + w * 0.3 + Math.sin(t * 1.4) * w * 0.12;
       rect(c, px, y + h * 0.58, w * 0.08, h * 0.16, "#ffd166");
       rect(c, x + w * 0.66, y + h * 0.5, w * 0.1, h * 0.1, "#ff6f61");
-      // Punkte
       c.fillStyle = "#eef7f2";
       c.font = '700 4px "Silkscreen", monospace';
       c.fillText("LV 3", x + 2.5, y + h * 0.14);
@@ -6697,7 +6836,6 @@ export class House {
     // Scanlines
     c.fillStyle = "rgba(0,0,0,.12)";
     for (let i = 0; i < h; i += 3) c.fillRect(x, y + i, w, 1);
-    c.restore();
   }
 
   private onKey = (e: KeyboardEvent) => {
@@ -6715,7 +6853,17 @@ export class House {
       e.preventDefault();
       return;
     }
-    if (e.code === "Escape" && this.golFullscreen) this.golFullscreen = false;
+    if (e.code === "Escape" && this.tvZoom) {
+      this.tvZoom = null;
+      sfx.ui();
+      e.preventDefault();
+      return;
+    }
+    if ((e.code === "Enter" || e.code === "Space") && this.tvZoom) {
+      this.toggleTvPower(this.tvZoom);
+      sfx.ui();
+      e.preventDefault();
+    }
   };
 
   /** Versteckter Tab hält Traum und Saxophon an. */
@@ -6746,9 +6894,26 @@ export class House {
     }
   };
 
-  /** Bildfläche des Fernsehers im Zockerzimmer. */
+  /** Fernseher im Dachgeschoss (Gehäuse + Bildfläche). */
   private hitAtticTv(x: number, y: number) {
-    return x >= 410 && x <= 464 && y >= 137 && y <= 171;
+    return x >= 404 && x <= 470 && y >= 134 && y <= 200;
+  }
+
+  /** Fernseher im Erdgeschoss (Wohnzimmer-TV + Schrank). */
+  private hitLivingTv(x: number, y: number) {
+    return x >= 438 && x <= 492 && y >= 392 && y <= 448;
+  }
+
+  /** Große Fernseh-Ansicht sofort öffnen (unterbricht Lunis Ablauf nicht). */
+  private openTvZoom(which: "tv_e" | "tv_d") {
+    this.tvZoom = which;
+    this.hover = null;
+    sfx.ui();
+  }
+
+  private toggleTvPower(which: "tv_e" | "tv_d") {
+    const an = this.tvContent(which) !== "off";
+    this.tvManual[which] = !an;
   }
 
   /** Standplatz direkt vor dem Fernseher im Zockerzimmer. */
@@ -6765,31 +6930,7 @@ export class House {
     };
   }
 
-  /** Klick auf den Fernseher: aufstehen, Knopf drücken, Bild groß, wieder setzen. */
-  private startTvZoom() {
-    if (
-      this.golPhase === "insert" ||
-      this.golPhase === "press" ||
-      this.golPhase === "reach" ||
-      this.golPhase === "carry" ||
-      this.golPhase === "rise" ||
-      this.golPhase === "toButton" ||
-      this.golPhase === "back"
-    ) return;
-    if (this.golFullscreen) return;
-    if (this.handy || this.lightT !== null || this.standing || this.ashMove) {
-      this.command(this.golTvStand());
-      return;
-    }
-    this.golAnimT = 0;
-    const sitting = this.activity?.id === "gaming" && !this.cur && this.path.length === 0;
-    if (sitting) {
-      this.golPhase = "rise";
-      return;
-    }
-    this.golPhase = "toButton";
-    this.goTo(this.golTvStand());
-  }
+
 
   /* ------------------------------ Duschen -------------------------------- */
 
@@ -7564,11 +7705,11 @@ export class House {
 
   private beginBedToss(): boolean {
     if (!this.glassesOn && !this.glassesInHand) return false;
-    // Brille vom Bett aus hochwerfen. 20 %: bleibt an Gardinenstange, Lampe
-    // oder Schrank hängen; 40 %: Nachttisch; sonst: Bett oder Boden.
+    // Brille vom Bett aus hochwerfen. Im normalen Haus landet sie immer auf
+    // der Nachttischplatte – kein Boden, kein Bett, keine Lampe, kein Schrank.
+    // Das Gruselhaus behält seine eigenen, dokumentierten Wurfregeln.
     if (this.gruselSarg) this.brillenZielName = brillenZiel();
-    const r = Math.random();
-    this.tossLand = r < 0.4 ? 0 : r < 0.6 ? 1 + Math.floor(Math.random() * 3) : Math.random() < 0.5 ? 4 : 5;
+    this.tossLand = 0;
     this.tossUp = 0;
     this.tossLanded = false;
     this.bedPhase = "toss";
@@ -7589,10 +7730,10 @@ export class House {
     this.bedBrilleBehalten = this.glassesOn && Math.random() < 0.03;
     this.bedEinstieg = "anfahrt";
     this.bedEinstiegT = 0;
-    if (schonAmBett && this.lf === 2 && Math.abs(this.lx - 307) < 1) {
+    if (schonAmBett && this.lf === 2 && Math.abs(this.lx - BETT_STAND_X) < 1) {
       this.bedEinstieg = "umschlagen";
     } else {
-      this.goTo({ id: "bett_einstieg", label: "", floor: 2, x: 307,
+      this.goTo({ id: "bett_einstieg", label: "", floor: 2, x: BETT_STAND_X,
         face: 1, state: "idle", expr: "tired", hits: [] });
     }
   }
@@ -7643,19 +7784,18 @@ export class House {
       const z = BRILLEN_ZIELE[this.brillenZielName];
       return [z.x, z.y];
     }
+    // Alle Landeplätze liegen auf der Nachttischplatte (y = Boden - 26),
+    // links neben dem Lampenstiel - nicht am Lampenschirm (Schirm y 274-288,
+    // x 400-418) und nie auf dem Boden. Die alten Fallnummern bleiben als
+    // Sicherheit erhalten, falls ein gespeicherter Zustand sie enthaelt.
     switch (this.tossLand) {
       case 1:
-        return [352, 226];
       case 2:
-        return [348, 216];
       case 3:
-        return [470, 246];
       case 4:
-        return [340, 286];
       case 5:
-        return [392, FLOOR_Y[2] + 2];
       default:
-        return [404, FLOOR_Y[2] - 40];
+        return [401, FLOOR_Y[2] - 27];
     }
   }
 
@@ -7788,6 +7928,10 @@ export class House {
 
   private updateBedState(dt: number) {
     if (this.sleepRest > 0) this.sleepRest = Math.max(0, this.sleepRest - dt);
+    // Steht sie auf oder bricht ab, haengen die Haare wieder normal.
+    if (this.bedSitHair > 0 && !this.asleep && !this.lieDown && !this.sleepPhase && !this.bedEinstieg) {
+      this.bedSitHair = 0;
+    }
     // Auch ein selbststaendiger Besuch am Bett durchlaeuft dieselben sichtbaren Schritte.
     if (!this.asleep && !this.bedEinstieg && !this.bedPhase && !this.lieDown &&
         !this.sleepPhase && !this.shPhase && this.activity?.id === "bett" &&
@@ -7833,6 +7977,13 @@ export class House {
   }
 
   /** Brille in der Hand (über dem Gesicht) oder im hohen Bogen ins Becken. */
+  /** Während der Bettfolge liegt die Hand unter dem Stoff: kein Gegenstand
+   *  darf nachträglich über die Decke gemalt werden. */
+  private handUnterDecke(): boolean {
+    return this.lieDown || this.asleep || !!this.sleepPhase ||
+      (!!this.bedEinstieg && this.bedEinstieg !== "anfahrt");
+  }
+
   private drawGlassesMoving(c: C) {
     if (this.gruselBad && this.shPhase) {
       const p = clamp(this.shT / (SH_DUR[this.shPhase] ?? 1), 0, 1);
@@ -7851,13 +8002,13 @@ export class House {
         drawHazmatVlies(c, hx, hy);
       }
     }
-    if (this.brushInHand) {
+    if (this.brushInHand && !this.handUnterDecke()) {
       const bent = this.shPhase === "bBrush" || this.shPhase === "bBend" || this.shPhase === "bUp";
       if (this.gruselBad) drawLabBrush(c, this.hand[0], this.hand[1], bent ? 0 : -0.7, this.lface);
       else brushObj(c, this.hand[0], this.hand[1], bent ? 0 : -0.7, this.lface);
     }
     // Beim Bettwurf malt drawBedToss die Brille bereits im Bogen; nicht zugleich an der Hand.
-    if (this.glassesInHand && (this.gruselSarg || this.bedPhase !== "toss")) {
+    if (!this.handUnterDecke() && this.glassesInHand && (this.gruselSarg || this.bedPhase !== "toss")) {
       const face = this.lface;
       disc(c, this.hand[0], this.hand[1], 2.2, LUNI_COLORS.skin);
       glassesObj(c, this.hand[0] + 2.6 * face, this.hand[1] - 1, -0.15 * face);
@@ -7948,7 +8099,7 @@ export class House {
     if (this.golPhase === "press") {
       this.golAnimT += dt;
       if (this.golAnimT >= 0.7) {
-        this.golFullscreen = true;
+        this.tvZoom = "tv_d";
         sfx.ui();
         this.golPhase = "back";
         this.golAnimT = 0;
@@ -7967,7 +8118,7 @@ export class House {
    * Millimeter in den Steckplatz unter dem Fernseher.
    */
   private drawGolInHand(c: C) {
-    if (this.golInserted || this.golOnShelf) return;
+    if (this.golInserted || this.golOnShelf || this.handUnterDecke()) return;
     let x = this.hand[0] - 3;
     let y = this.hand[1] - 11;
     if (this.golPhase === "insert") {
@@ -8141,12 +8292,9 @@ export class House {
     c.restore();
   }
 
-  private drawGolFullscreen(c: C) {
-    rect(c, 0, 0, W, H, "#061018");
-    if (!this.golState) return;
-    const g = this.golState;
+  /** Zeichnet das aktive Spiel-des-Lebens-Raster in den Bereich (x, y, w, h). */
+  private drawGolGridInTv(c: C, g: GOLState) {
     const view = golView(g);
-
     const key = `${g.generation}|${g.cols}x${g.rows}|${this.golEdits}`;
     if (key !== this.golBufKey) {
       if (this.golBuf.width !== g.cols || this.golBuf.height !== g.rows) {
@@ -8167,9 +8315,6 @@ export class House {
     c.imageSmoothingEnabled = false;
     c.drawImage(this.golBuf, view.x, view.y, view.w, view.h);
     c.restore();
-    c.strokeStyle = "#24333a";
-    c.lineWidth = 2;
-    c.strokeRect(GOL_X - 1, GOL_Y - 1, GOL_VIEW_W + 2, GOL_VIEW_H + 2);
 
     c.fillStyle = "rgba(6,16,24,.78)";
     c.fillRect(GOL_X + 8, GOL_Y + 8, 178, 18);
@@ -8177,30 +8322,202 @@ export class House {
     c.font = '700 10px "Silkscreen", monospace';
     c.textAlign = "left";
     c.fillText(`Gen ${g.generation}`, GOL_X + 12, GOL_Y + 20);
+  }
 
-    drawGolControls(c);
-    const fade = clamp(this.golMeterT / 0.4, 0, 1);
-    if (this.golMeterKind === "speed") drawSpeedMeter(c, g.speedIdx, GOL_SPEEDS.length, fade);
-    else drawSpeedMeter(c, g.sizeIdx, GOL_SIZES.length, fade);
+  /**
+   * Große TV-Darstellung: zeigt immer einen Fernseher (Wohnzimmer-Röhre oder
+   * Dachgeschoss-Flachbildschirm) und stellt auf dessen Bildfläche das aktuell
+   * laufende Bild groß dar.
+   */
+  private drawTvFullscreen(c: C) {
+    const which = this.tvZoom;
+    if (!which) return;
+    rect(c, 0, 0, W, H, "rgba(4,11,16,.88)");
 
-    c.fillStyle = "#000000";
-    c.fillRect(GOL_BTN.x, GOL_BTN.y, GOL_BTN.w, GOL_BTN.h);
-    c.strokeStyle = "#f2f7f4";
-    c.lineWidth = 1.2;
-    c.strokeRect(GOL_BTN.x + 0.6, GOL_BTN.y + 0.6, GOL_BTN.w - 1.2, GOL_BTN.h - 1.2);
-    c.fillStyle = "#f2f7f4";
-    c.font = '700 12px "Silkscreen", monospace';
+    const mode = this.tvContent(which);
+    const an = mode !== "off";
+
+    if (which === "tv_e") {
+      // ── Erdgeschoss: Wohnzimmer-Röhrenfernseher im Holzgehäuse ──────
+      // Standfüße
+      poly(c, [[204, 480], [228, 480], [216, 504], [194, 504]], "#4f3a20");
+      poly(c, [[732, 480], [756, 480], [766, 504], [744, 504]], "#4f3a20");
+      // Holzgehäuse
+      rrect(c, 116, 48, 728, 434, 18, "#8a6a3c");
+      rrect(c, 120, 52, 720, 6, 3, "rgba(255,235,195,.2)");
+      rrect(c, 122, 54, 716, 422, 14, "#74572e");
+      // Röhren-Rahmen links
+      rrect(c, 134, 66, 594, 398, 16, "#1d242a");
+      rrect(c, 144, 76, 574, 378, 14, "#0b1217");
+
+      // Bildfläche: exakt 14× der kleinen Wohnzimmer-Bildfläche (40×26 -> 560×364)
+      const sx = 150, sy = 84, sw = 560, sh = 364;
+      c.save();
+      rrPath(c, sx, sy, sw, sh, 12);
+      c.clip();
+      if (mode === "off") {
+        rect(c, sx, sy, sw, sh, "#0b1217");
+        c.fillStyle = "rgba(185,216,205,.35)";
+        c.font = '700 12px "Silkscreen", monospace';
+        c.fillText("STANDBY", sx + 18, sy + 28);
+      } else if (mode === "gol" && this.golState) {
+        c.save();
+        c.imageSmoothingEnabled = false;
+        c.fillStyle = "#071016";
+        c.fillRect(sx, sy, sw, sh);
+        c.drawImage(this.golBuf, sx, sy, sw, sh);
+        c.restore();
+      } else {
+        c.save();
+        c.translate(sx, sy);
+        c.scale(14, 14);
+        this.drawTvProgram(c, 0, 0, 40, 26, mode);
+        c.restore();
+      }
+      // Röhren-Glasglanz
+      const gl = c.createLinearGradient(sx, sy, sx + sw * 0.45, sy + sh * 0.45);
+      gl.addColorStop(0, "rgba(255,255,255,.10)");
+      gl.addColorStop(1, "rgba(255,255,255,0)");
+      c.fillStyle = gl;
+      c.fillRect(sx, sy, sw, sh);
+      c.restore();
+
+      // Bedienfeld rechts am Holzfernseher
+      rrect(c, 742, 74, 84, 382, 8, "#222930");
+      rrect(c, 745, 77, 78, 376, 6, "#181e24");
+      // Lautsprecherschlitze
+      for (let i = 0; i < 9; i++) {
+        rrect(c, 754, 96 + i * 9, 60, 4, 2, "#0d1216");
+      }
+      // Zwei Drehregler (CH / VOL)
+      for (const [ry, lbl] of [[214, "CH"], [282, "VOL"]] as const) {
+        disc(c, 784, ry, 20, "#2f3840");
+        disc(c, 784, ry, 15, "#151a1f");
+        line(c, 784, ry, 792, ry - 10, "#d7e3de", 2.2);
+        c.fillStyle = "#9db5ae";
+        c.font = '700 10px "Silkscreen", monospace';
+        c.textAlign = "center";
+        c.fillText(lbl, 784, ry + 32);
+      }
+      c.textAlign = "left";
+      // Status-LED
+      disc(c, 784, 344, 5, an ? "#35d6c0" : "#d9453a");
+      // Power-Knopf (≥ 24×24)
+      rrect(c, TV_PWR_E.x, TV_PWR_E.y, TV_PWR_E.w, TV_PWR_E.h, 5, an ? "#24403e" : "#3a2224");
+      c.strokeStyle = an ? "#35d6c0" : "#e26a62";
+      c.lineWidth = 1.2;
+      c.strokeRect(TV_PWR_E.x + 0.6, TV_PWR_E.y + 0.6, TV_PWR_E.w - 1.2, TV_PWR_E.h - 1.2);
+      c.fillStyle = "#eef7f2";
+      c.font = '700 11px "Silkscreen", monospace';
+      c.textAlign = "center";
+      c.fillText(an ? "AUS" : "EIN", TV_PWR_E.x + TV_PWR_E.w / 2, TV_PWR_E.y + 22);
+
+      // Zurück-Knopf
+      rrect(c, TV_BACK_E.x, TV_BACK_E.y, TV_BACK_E.w, TV_BACK_E.h, 5, "#0d1820");
+      c.strokeStyle = "#f2f7f4";
+      c.lineWidth = 1.2;
+      c.strokeRect(TV_BACK_E.x + 0.6, TV_BACK_E.y + 0.6, TV_BACK_E.w - 1.2, TV_BACK_E.h - 1.2);
+      c.fillStyle = "#f2f7f4";
+      c.font = '700 12px "Silkscreen", monospace';
+      c.fillText("zurück", TV_BACK_E.x + TV_BACK_E.w / 2, TV_BACK_E.y + 22);
+      c.textAlign = "left";
+      return;
+    }
+
+    // ── Dachgeschoss: Moderner Flachbildfernseher (inkl. Standfuß) ─────
+    // Standfuß unter dem Gehäuse
+    rect(c, 452, 376, 56, 14, "#232732");
+    rrect(c, 368, 386, 224, 10, 4, "#2c313e");
+    rect(c, 372, 386, 216, 2, "rgba(255,255,255,.14)");
+
+    // TV-Gehäuse
+    rrect(c, 104, 34, 752, 344, 12, "#15171c");
+    c.strokeStyle = "#2d323e";
+    c.lineWidth = 1.6;
+    c.strokeRect(104.8, 34.8, 750.4, 342.4);
+    rect(c, 114, 46, 732, 312, "#0a0d12");
+
+    // Bildfläche (720×300, exakt GOL_X/GOL_Y/GOL_VIEW_W/GOL_VIEW_H)
+    const sx = GOL_X, sy = GOL_Y, sw = GOL_VIEW_W, sh = GOL_VIEW_H;
+    c.save();
+    c.beginPath();
+    c.rect(sx, sy, sw, sh);
+    c.clip();
+    if (mode === "off") {
+      rect(c, sx, sy, sw, sh, "#0a0d12");
+      c.fillStyle = "rgba(185,216,205,.35)";
+      c.font = '700 12px "Silkscreen", monospace';
+      c.fillText("STANDBY", sx + 16, sy + 26);
+    } else if (mode === "gol" && this.golState) {
+      this.drawGolGridInTv(c, this.golState);
+    } else {
+      c.save();
+      c.translate(sx, sy);
+      c.scale(10, 10);
+      this.drawTvProgram(c, 0, 0, 72, 30, mode);
+      c.restore();
+    }
+    // Dezente Glasreflexion oben links
+    const gl = c.createLinearGradient(sx, sy, sx + sw * 0.35, sy + sh * 0.4);
+    gl.addColorStop(0, "rgba(255,255,255,.07)");
+    gl.addColorStop(1, "rgba(255,255,255,0)");
+    c.fillStyle = gl;
+    c.fillRect(sx, sy, sw, sh);
+    c.restore();
+
+    c.strokeStyle = "#24333a";
+    c.lineWidth = 2;
+    c.strokeRect(sx - 1, sy - 1, sw + 2, sh + 2);
+
+    // Untere TV-Leiste: Markenstrich, Status-LED und Power-Knopf
+    rrect(c, 444, 362, 72, 4, 2, "#2f3542");
+    disc(c, 764, 363, 4.2, an ? "#35d6c0" : "#d9453a");
+    rrect(c, TV_PWR_D.x, TV_PWR_D.y, TV_PWR_D.w, TV_PWR_D.h, 4, an ? "#1b3332" : "#341e20");
+    c.strokeStyle = an ? "#35d6c0" : "#e26a62";
+    c.lineWidth = 1.1;
+    c.strokeRect(TV_PWR_D.x + 0.6, TV_PWR_D.y + 0.6, TV_PWR_D.w - 1.2, TV_PWR_D.h - 1.2);
+    c.fillStyle = "#eef7f2";
+    c.font = '700 10px "Silkscreen", monospace';
     c.textAlign = "center";
-    c.fillText("zurück", GOL_BTN.x + GOL_BTN.w / 2, GOL_BTN.y + 22);
+    c.fillText(an ? "AUS" : "EIN", TV_PWR_D.x + TV_PWR_D.w / 2, TV_PWR_D.y + 17);
     c.textAlign = "left";
 
-    const ry = GOL_BTN.y + GOL_BTN.h + 30;
-    c.fillStyle = "#8fa8a0";
-    c.font = '700 10px "Silkscreen", monospace';
-    c.fillText("REGELN", GOL_X, ry);
-    c.fillStyle = "#dfe9e4";
-    c.font = '600 11px "Silkscreen", monospace';
-    GOL_RULES.forEach((rule, i) => c.fillText(rule, GOL_X, ry + 18 + i * 16));
+    if (mode === "gol" && this.golState) {
+      const g = this.golState;
+      drawGolControls(c);
+      const fade = clamp(this.golMeterT / 0.4, 0, 1);
+      if (this.golMeterKind === "speed") drawSpeedMeter(c, g.speedIdx, GOL_SPEEDS.length, fade);
+      else drawSpeedMeter(c, g.sizeIdx, GOL_SIZES.length, fade);
+
+      c.fillStyle = "#000000";
+      c.fillRect(GOL_BTN.x, GOL_BTN.y, GOL_BTN.w, GOL_BTN.h);
+      c.strokeStyle = "#f2f7f4";
+      c.lineWidth = 1.2;
+      c.strokeRect(GOL_BTN.x + 0.6, GOL_BTN.y + 0.6, GOL_BTN.w - 1.2, GOL_BTN.h - 1.2);
+      c.fillStyle = "#f2f7f4";
+      c.font = '700 12px "Silkscreen", monospace';
+      c.textAlign = "center";
+      c.fillText("zurück", GOL_BTN.x + GOL_BTN.w / 2, GOL_BTN.y + 22);
+      c.textAlign = "left";
+
+      const ry = GOL_BTN.y + GOL_BTN.h + 24;
+      c.fillStyle = "#8fa8a0";
+      c.font = '700 10px "Silkscreen", monospace';
+      c.fillText("REGELN", GOL_X, ry);
+      c.fillStyle = "#dfe9e4";
+      c.font = '600 11px "Silkscreen", monospace';
+      GOL_RULES.forEach((rule, i) => c.fillText(rule, GOL_X, ry + 18 + i * 16));
+    } else {
+      rrect(c, TV_BACK_D.x, TV_BACK_D.y, TV_BACK_D.w, TV_BACK_D.h, 5, "#0d1820");
+      c.strokeStyle = "#f2f7f4";
+      c.lineWidth = 1.2;
+      c.strokeRect(TV_BACK_D.x + 0.6, TV_BACK_D.y + 0.6, TV_BACK_D.w - 1.2, TV_BACK_D.h - 1.2);
+      c.fillStyle = "#f2f7f4";
+      c.font = '700 12px "Silkscreen", monospace';
+      c.textAlign = "center";
+      c.fillText("zurück", TV_BACK_D.x + TV_BACK_D.w / 2, TV_BACK_D.y + 22);
+      c.textAlign = "left";
+    }
   }
 
   /** Zellenzahl, Geschwindigkeit und Neustart. */
@@ -8225,18 +8542,29 @@ export class House {
     sfx.ui();
   }
 
-  private onGolFullscreenClick(x: number, y: number) {
-    const b = GOL_BTN;
-    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
-      this.golFullscreen = false;
+  private onTvFullscreenClick(x: number, y: number) {
+    const which = this.tvZoom;
+    if (!which) return;
+    const inBox = (b: { x: number; y: number; w: number; h: number }) =>
+      x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+    const back = which === "tv_e" ? TV_BACK_E : (this.golFullscreen ? GOL_BTN : TV_BACK_D);
+    if (inBox(back)) {
+      this.tvZoom = null;
+      sfx.ui();
       return;
     }
+    const pwr = which === "tv_e" ? TV_PWR_E : TV_PWR_D;
+    if (inBox(pwr)) {
+      this.toggleTvPower(which);
+      sfx.ui();
+      return;
+    }
+    if (!this.golFullscreen || !this.golState) return;
     const ctrl = golCtrlAt(x, y);
     if (ctrl) {
       this.applyGolCtrl(ctrl);
       return;
     }
-    if (!this.golState) return;
     const v = golView(this.golState);
     if (x < v.x || y < v.y || x >= v.x + v.w || y >= v.y + v.h) return;
     toggleCellAt(this.golState, Math.floor((x - v.x) / v.cell), Math.floor((y - v.y) / v.cell));
@@ -8388,41 +8716,36 @@ export class House {
       const e = sanft(p);
       const f = FLOOR_Y[2];
       this.lastPose = ph === "umschlagen" ? "act" : "sit";
-      c.save();
+      const decke = bedBlanketPose(ph, p);
+      const deckeZeichnen = () => {
+        const s = this.scale * this.dpr;
+        c.save();
+        c.setTransform(s, 0, 0, s, 0, 0);
+        drawBedEntryBlanket(c, this.elapsed, ph, p);
+        c.restore();
+      };
       if (ph === "umschlagen") {
-        const standX = lerp(307, 323, e);
-        const hand = drawLuni(c, standX, f, {
-          t: this.elapsed, state: "act", expr: "focus", face: 1,
+        drawBedEntryBlanket(c, this.elapsed, ph, p);
+        const hand = drawLuni(c, BETT_STAND_X, f, {
+          t: this.elapsed, state: "idle", expr: "focus", face: 1,
           scale: LUNI_SCALE, shadow: false, glasses: this.glassesOn,
           outfit: this.bedKleidungAn, pajama: this.bedPyjama,
-          handTarget: [lerp(325, 350, e), lerp(f - 32, f - 27, e)],
+          bedLean: Math.sin(Math.PI * e) * 0.3,
+          handTarget: bedBlanketPushHand(p),
+          handElbow: 1, handKontakt: true,
         });
         this.hand[0] = hand[0]; this.hand[1] = hand[1];
       } else {
-        const sitX = lerp(323, 333, ph === "setzen" ? e : 1);
-        // Die Decke verdeckt die Beine ab dem Einschieben der Fuesse; die
-        // Abschnittkante folgt der Oberkante der verschobenen Decke (f-38).
-        if (ph === "fuesse" || ph === "greifen" || ph === "toss") {
-          const verdeckt = ph === "fuesse" ? e : 1;
-          c.beginPath(); c.rect(0, 0, W, f - 7 - 31 * verdeckt); c.clip();
-        }
-        const hand = drawLuni(c, sitX, f - 11, {
+        const hand = drawLuni(c, BETT_STAND_X, f - 11, {
           t: this.elapsed, state: "sit", expr: "tired", face: 1,
           scale: LUNI_SCALE, shadow: false, glasses: this.glassesOn,
           outfit: this.bedKleidungAn, pajama: this.bedPyjama,
           bedLean: ph === "greifen" ? Math.sin(Math.PI * e) : 0,
-          sitzgriff: ph === "greifen" ? [6, -18] : null,
+          bedSitzen: ph === "setzen" ? p : undefined,
+          handTarget: ph === "setzen" || ph === "greifen" ? [decke.links - 0.3, decke.oben + 4] : null,
+          handElbow: 1, handKontakt: ph === "setzen" || ph === "greifen", betweenBodyAndArms: deckeZeichnen,
         });
         this.hand[0] = hand[0]; this.hand[1] = hand[1];
-      }
-      c.restore();
-      drawBedEntryBlanket(c, this.elapsed, ph, p);
-      if (ph === "umschlagen" || ph === "greifen") {
-        // Die greifende Hand liegt vor dem umgeschlagenen Deckenrand.
-        const hx = ph === "umschlagen" ? lerp(329, 351, e) : lerp(321, 329, e);
-        const hy = ph === "umschlagen" ? lerp(f - 34, f - 28, e) : f - 29;
-        c.fillStyle = LUNI_COLORS.skin;
-        c.beginPath(); c.ellipse(hx, hy, 2.5, 1.8, 0, 0, Math.PI * 2); c.fill();
       }
       return;
     }
@@ -8456,16 +8779,23 @@ export class House {
       // Sie legt sich hin: aus dem Sitzen in die Seitenlage, Decke folgt.
       const p = clamp(this.lieT / 1.4, 0, 1);
       const e = p * p * (3 - 2 * p);
-      c.save();
       this.lastPose = "lie";
+      // Die Figur wird vor dem Stoff gezeichnet; was über die Kante ragt,
+      // verschwindet unter der Decke. Die Decke bewegt sich weiter frei.
+      const decke = bedBlanketPose("hinlegen", e);
+      clipBedCover(c, decke.links, decke.oben);
       // Sitzende Hüfte auf der Matratze; der Kopf landet auf dem vorhandenen Kissen.
-      const wh = drawLuni(c, lerp(330, 345, e), FLOOR_Y[2] - lerp(8, 32, e), {
+      const wh = drawLuni(c, lerp(BETT_STAND_X, 345, e), FLOOR_Y[2] - lerp(11, 32, e), {
         t: this.elapsed,
         face: 1,
         state: "lie",
         expr: "sleep",
         phase: e,
         lieDown: e,
+        // Die Strähnen werden beim Hinlegen neben das Ohr gelegt und bleiben
+        // dort: dieses Umschalten läuft nur einmal, nie zurück.
+        hairAside: Math.max(e, this.bedSitHair),
+        bedCover: true,
         blink: 1,
         scale: LUNI_SCALE,
         shadow: false,
@@ -8476,6 +8806,8 @@ export class House {
       this.hand[0] = wh[0];
       this.hand[1] = wh[1];
       c.restore();
+      // Einmal gelegt, bleibt der Straeh dort - auch in allen Folgeschritten.
+      this.bedSitHair = Math.max(this.bedSitHair, e);
       const inSarg = this.welt === "gruesel" && GRUSELRAEUME.schlafzimmer;
       if (inSarg) drawBlanket(c, this.elapsed, e, true);
       else drawBedEntryBlanket(c, this.elapsed, "hinlegen", e);
@@ -8497,7 +8829,10 @@ export class House {
       // Normales Haus: die Decke wurde schon beim Hineinlegen hochgezogen –
       // sie darf beim Einschlafen nicht zurückfallen (das wäre ein Sprung).
       if (!this.gruselSarg) pr = { ...pr, pull: 1 };
-      hairAside = pr.hair;
+      // Die Haare bleiben neben dem Ohr, sobald sie dort liegen. Ohne diese
+      // Sperre legten grab/pull/turn sie zurueck ins Gesicht (Blitzen).
+      hairAside = Math.max(pr.hair, this.bedSitHair);
+      this.bedSitHair = hairAside;
       this.lastPose = "sleep";
       const inSarg = this.welt === "gruesel" && GRUSELRAEUME.schlafzimmer;
       drawBedScene(c, x, y + yOff, this.elapsed, this.gruselSarg ? this.pyjama : this.bedPyjama,
@@ -8718,8 +9053,8 @@ export class House {
       }
     }
     // Rechte/linke Handziele für Gesundheitstee und Eimer-Leeren
-    let handElbow: 1 | -1 = -1;
-    let handElbow2: 1 | -1 = 1;
+    let handElbow: 1 | -1 = this.saxPhase ? 1 : -1;
+    let handElbow2: 1 | -1 = this.saxPhase ? -1 : 1;
     if (!a && !this.standing && !this.ashMove) {
       if (tee) {
         saxHand = tee.rechts;
@@ -8792,7 +9127,7 @@ export class House {
       handElbow2,
       sitzgriff: zuenden?.rechts ?? aschgriff,
       sitzgriffLinks: handy ? handyGriff(handy) : null,
-      handKontakt: !!tee || st?.id === "eimer" || !!aschziel,
+      handKontakt: !!this.saxPhase || !!tee || st?.id === "eimer" || !!aschziel,
       handVorRumpf: !!handy,
       armeVorne: !!tee,
       rauchzeit: this.smokeIdleT,
@@ -8841,7 +9176,6 @@ export class House {
     } else if (this.holding && (st?.id !== "raucherstuhl" || this.standing)) {
       cigarette(c, hand[0], hand[1], face, this.burnLeft > 0 ? 0.4 : 0, this.burnFrac());
     }
-    this.drawSaxHands(c, saxHands);
     if (handy) drawHandy(c, saxHands.rear, face, handy, this.elapsed);
     if (zuenden) {
       const rechts = saxHands.front;

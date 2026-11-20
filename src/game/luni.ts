@@ -171,6 +171,10 @@ export interface LuniOpts {
   lieDown?: number;
   /** Nur Bett: leichte Vorbeuge beim Greifen nach der Decke. */
   bedLean?: number;
+  /** Nur Bett: Übergang vom Stehen zum Sitzen auf der Matratze. */
+  bedSitzen?: number;
+  /** Nur Bett: Arme und Beine liegen unter der Decke und werden nicht gezeichnet. */
+  bedCover?: boolean;
   /** Nur Musikzimmer: frontaler Hocker, 0 = stehen, 1 = sitzen. */
   pianoSeat?: number;
   /** Verneinende Kopfbewegung, ohne die laufende Koerperpose zu ersetzen. */
@@ -1510,6 +1514,43 @@ function pullBack(from: V, to: V, d: number): V {
   return [to[0] - (dx / len) * d, to[1] - (dy / len) * d];
 }
 
+/** Kleine Hand entlang des Unterarms, mit vier Fingern und seitlichem Daumen. */
+function drawHand(ctx: C, elbow: V, hand: V, skin: string, shade: string) {
+  ctx.save();
+  ctx.translate(hand[0], hand[1]);
+  ctx.rotate(Math.atan2(hand[1] - elbow[1], hand[0] - elbow[0]));
+  ctx.fillStyle = skin;
+  rr(ctx, -1.8, -1.5, 3.4, 3, 1.2);
+  ctx.fill();
+  ctx.strokeStyle = skin;
+  ctx.lineCap = "round";
+  ctx.lineWidth = 0.75;
+  for (const [y, end] of [[-1.1, 2.5], [-0.37, 3], [0.37, 2.9], [1.1, 2.3]] as const) {
+    ctx.beginPath();
+    ctx.moveTo(0.8, y);
+    ctx.lineTo(end, y * 1.08);
+    ctx.stroke();
+  }
+  ctx.lineWidth = 1.05;
+  ctx.beginPath();
+  ctx.moveTo(-0.7, 0.9);
+  ctx.quadraticCurveTo(-0.1, 2.35, 1.05, 2.35);
+  ctx.stroke();
+  ctx.strokeStyle = shade;
+  ctx.lineWidth = 0.3;
+  for (const y of [-0.74, 0, 0.74]) {
+    ctx.beginPath();
+    ctx.moveTo(1.15, y);
+    ctx.lineTo(2.35, y);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.moveTo(-0.35, 1.25);
+  ctx.lineTo(0.4, 1.85);
+  ctx.stroke();
+  ctx.restore();
+}
+
 /* ------------------------------ Kleidung -------------------------------- */
 
 /** Gruselbad: sanfter Rückenbogen bei unveränderter Schulter-, Hüft- und Kopfgröße. */
@@ -2126,6 +2167,8 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     hairAside = 0,
     lieDown,
     bedLean = 0,
+    bedSitzen,
+    bedCover = false,
     pianoSeat,
     headShake = 0,
     gaze = 0,
@@ -2188,9 +2231,23 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     : KP;
   const r = buildRig(state, state === "smoke" ? rauchzeit ?? t : t, walk, phase, armReach);
   if (bedLean > 0) r.bend = Math.max(r.bend, clamp01(bedLean) * 0.28);
+  const bettSitzEnde = state === "sit" && bedSitzen !== undefined ? buildRig("sit", t, walk, phase, armReach) : null;
+  if (bettSitzEnde && bedSitzen !== undefined) {
+    const p = ease(bedSitzen);
+    const stand = buildRig("idle", t, walk, phase, armReach);
+    r.rootY = lerp(stand.rootY + 11 / scale, bettSitzEnde.rootY, p);
+    r.headTilt = lerp(stand.headTilt, bettSitzEnde.headTilt, p);
+    for (const key of ["armFar", "armNear", "legFar", "legNear"] as const) {
+      const a = stand[key], b = bettSitzEnde[key];
+      r[key] = {
+        elbow: [lerp(a.elbow[0], b.elbow[0], p), lerp(a.elbow[1], b.elbow[1], p)],
+        hand: [lerp(a.hand[0], b.hand[0], p), lerp(a.hand[1], b.hand[1], p)],
+      };
+    }
+  }
   if (state === "lie" && lieDown !== undefined) {
     const p = clamp01(lieDown);
-    const sit = buildRig("sleepBend", t, walk, 1, armReach);
+    const sit = buildRig("sit", t, walk, 1, armReach);
     r.rootRot *= p;
     r.rootY = lerp(sit.rootY, r.rootY, p);
     r.headTilt = lerp(sit.headTilt, r.headTilt, p);
@@ -2227,36 +2284,6 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     }
   }
 
-  // Greifen: die vordere Hand (armFar wird vorn gezeichnet) fährt exakt zum Ziel.
-  // Das ist die Verbindung zwischen Hand und Instrument – kein Springen, weil
-  // das Ziel selbst stetig wandert.
-  const backIK = pianoSeat !== undefined || backReach;
-  if (handTarget) {
-    // Ziel in den lokalen Raum umrechnen (Spiegelung beachten) und mit der
-    // vorhandenen Zweigelenk-IK anvisieren. armIK kürzt zu weite Ziele auf die
-    // feste Armlänge – der Arm kann sich dadurch nicht verlängern.
-    const tx = (handTarget[0] - x) / (scale * face) - (backIK || handKontakt ? r.rootX : 0);
-    const ty = (handTarget[1] - y) / scale - (backIK || handKontakt ? r.rootY : 0);
-    const sh: V = backIK ? [-6.2, r.shoulderY + 2.2] : [-3.4, r.shoulderY + 2];
-    const limb = armIK(sh, [tx, ty], handElbow);
-    r.armFar = { elbow: limb.elbow, hand: [limb.hand[0], limb.hand[1]] };
-  }
-  if (handTarget2) {
-    // Zweite Hand: ebenfalls echte Zweigelenk-IK mit fester Armlänge.
-    const tx = (handTarget2[0] - x) / (scale * face) - (backIK || handKontakt ? r.rootX : 0);
-    const ty = (handTarget2[1] - y) / scale - (backIK || handKontakt ? r.rootY : 0);
-    const sh: V = backIK ? [6.2, r.shoulderY + 2.2] : [3.4, r.shoulderY + 2];
-    const limb = armIK(sh, [tx, ty], handElbow2);
-    r.armNear = { elbow: limb.elbow, hand: limb.hand };
-  }
-  const sitzPose = state === "sit" || state === "smoke" || state === "ashtray";
-  if (sitzgriff && sitzPose) {
-    r.armFar = armIK([-3.4, r.shoulderY + 2], sitzgriff, 1);
-  }
-  if (sitzgriffLinks && sitzPose) {
-    r.armNear = armIK([3.4, r.shoulderY + 2], sitzgriffLinks, 1);
-  }
-
   // Saxophon: rechter Fuß (legNear, sockR) wippt im Takt, der Oberkörper
   // wiegt sich leicht nach vorn und hinten. Beides kommt von außen (Musikzeit).
   if (state === "sax") {
@@ -2282,6 +2309,47 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
       r.hairFlow += sway * 0.35;
     }
   }
+
+  // Kontaktziele werden in den gedrehten Figurenraum zurückgerechnet, damit
+  // die Hand auch beim Wiegen oder Vorbeugen am Gegenstand bleibt.
+  const backIK = pianoSeat !== undefined || backReach;
+  const armZiel = (ziel: V): V => {
+    let tx = (ziel[0] - x) / (scale * face);
+    let ty = (ziel[1] - y) / scale;
+    if (backIK || handKontakt) {
+      tx -= r.rootX;
+      ty -= r.rootY;
+    }
+    if (handKontakt && r.rootRot) {
+      const dx = tx, dy = ty - r.pivotY;
+      tx = dx * Math.cos(r.rootRot) + dy * Math.sin(r.rootRot);
+      ty = r.pivotY - dx * Math.sin(r.rootRot) + dy * Math.cos(r.rootRot);
+    }
+    if (handKontakt && r.bend) {
+      const dx = tx, dy = ty - r.hipY;
+      tx = dx * Math.cos(r.bend) + dy * Math.sin(r.bend);
+      ty = r.hipY - dx * Math.sin(r.bend) + dy * Math.cos(r.bend);
+    }
+    return [tx, ty];
+  };
+  if (handTarget) {
+    const sh: V = backIK ? [-6.2, r.shoulderY + 2.2] : [-3.4, r.shoulderY + 2];
+    r.armFar = armIK(sh, armZiel(handTarget), handElbow);
+  }
+  if (handTarget2) {
+    const sh: V = backIK ? [6.2, r.shoulderY + 2.2] : [3.4, r.shoulderY + 2];
+    r.armNear = armIK(sh, armZiel(handTarget2), handElbow2);
+  }
+  if (bettSitzEnde && bedSitzen !== undefined && handTarget) {
+    const p = ease(bedSitzen), a = r.armFar, b = bettSitzEnde.armFar;
+    r.armFar = {
+      elbow: [lerp(a.elbow[0], b.elbow[0], p), lerp(a.elbow[1], b.elbow[1], p)],
+      hand: [lerp(a.hand[0], b.hand[0], p), lerp(a.hand[1], b.hand[1], p)],
+    };
+  }
+  const sitzPose = state === "sit" || state === "smoke" || state === "ashtray";
+  if (sitzgriff && sitzPose) r.armFar = armIK([-3.4, r.shoulderY + 2], sitzgriff, 1);
+  if (sitzgriffLinks && sitzPose) r.armNear = armIK([3.4, r.shoulderY + 2], sitzgriffLinks, 1);
 
   if (shadow) {
     const airLift = Math.max(0, -r.rootY);
@@ -2358,15 +2426,17 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   };
 
   /* --- hinteres Bein (das helle, unverdreht, steht sicher auf dem Boden) --- */
-  stroke3(
-    ctx,
-    beinHell.hip,
-    beinHell.leg.elbow,
-    pullBack(beinHell.leg.elbow, beinHell.leg.hand, 3.1),
-    beinHell.farbe,
-    5.4,
-  );
-  drawSock(ctx, [beinHell.leg.hand[0], beinHell.leg.hand[1] + r.footDrop], beinHell.ang, beinHell.sock, beinHell.dir);
+  if (!bedCover) {
+    stroke3(
+      ctx,
+      beinHell.hip,
+      beinHell.leg.elbow,
+      pullBack(beinHell.leg.elbow, beinHell.leg.hand, 3.1),
+      beinHell.farbe,
+      5.4,
+    );
+    drawSock(ctx, [beinHell.leg.hand[0], beinHell.leg.hand[1] + r.footDrop], beinHell.ang, beinHell.sock, beinHell.dir);
+  }
 
   /* --- Arme: Rollen getauscht ---
      Der bisher vordere Arm (+x) liegt jetzt hinter dem Rumpf, der bisher
@@ -2379,47 +2449,45 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   const drawBackArm = (nurHand = false) =>
     upperLean(() => {
       if (!nurHand) {
-        stroke3(ctx, [3.4, r.shoulderY + 2], armBehind.elbow, armBehind.hand, K.cardiganDark, 4.4);
-        if (K.cardigan === LUNI_COLORS.cardigan) armKaro(ctx, [[3.4, r.shoulderY + 2], armBehind.elbow, armBehind.hand]);
+        const wrist = pullBack(armBehind.elbow, armBehind.hand, 1.5);
+        stroke3(ctx, [3.4, r.shoulderY + 2], armBehind.elbow, wrist, K.cardiganDark, 4.4);
+        if (state !== "sax" && K.cardigan === LUNI_COLORS.cardigan) armKaro(ctx, [[3.4, r.shoulderY + 2], armBehind.elbow, wrist]);
       }
-      ctx.fillStyle = K.skinShade;
-      ctx.beginPath();
-      ctx.arc(armBehind.hand[0], armBehind.hand[1], 1.9, 0, Math.PI * 2);
-      ctx.fill();
+      drawHand(ctx, armBehind.elbow, armBehind.hand, K.skinShade, mixCol(K.skinShade, "#8f5940", 0.3));
     });
   // Beim Tragen eines Instruments liegt der Arm vor dem Korpus, nicht dahinter.
-  if (!back && !armsInFront && !armeVorne) drawBackArm();
+  if (!bedCover && !back && !armsInFront && !armeVorne) drawBackArm();
 
   /* --- vorderes Bein (das dunkle, unverdreht) --- */
-  stroke3(
-    ctx,
-    beinDunkel.hip,
-    beinDunkel.leg.elbow,
-    pullBack(beinDunkel.leg.elbow, beinDunkel.leg.hand, 3.1),
-    beinDunkel.farbe,
-    5.6,
-  );
-  drawSock(ctx, [beinDunkel.leg.hand[0], beinDunkel.leg.hand[1] + r.footDrop], beinDunkel.ang, beinDunkel.sock, beinDunkel.dir);
+  if (!bedCover) {
+    stroke3(
+      ctx,
+      beinDunkel.hip,
+      beinDunkel.leg.elbow,
+      pullBack(beinDunkel.leg.elbow, beinDunkel.leg.hand, 3.1),
+      beinDunkel.farbe,
+      5.6,
+    );
+    drawSock(ctx, [beinDunkel.leg.hand[0], beinDunkel.leg.hand[1] + r.footDrop], beinDunkel.ang, beinDunkel.sock, beinDunkel.dir);
+  }
 
-  // Schulterpunkt des vorderen Arms: ein Stück tiefer und nach innen, damit der Ärmel in der Schulter sitzt.
-  const SCHULTER_VORN: V = [-4.1, r.shoulderY + 3.1];
+  // Zeichnung und Armbewegung beginnen am selben Schultergelenk.
+  const SCHULTER_VORN: V = [-3.4, r.shoulderY + 2];
   const drawFrontArm = () =>
     upperLean(() => {
-      stroke3(ctx, SCHULTER_VORN, armFront.elbow, armFront.hand, K.cardigan, 4.6);
-      if (K.cardigan === LUNI_COLORS.cardigan) armKaro(ctx, [SCHULTER_VORN, armFront.elbow, armFront.hand]);
+      const wrist = pullBack(armFront.elbow, armFront.hand, 1.5);
+      stroke3(ctx, SCHULTER_VORN, armFront.elbow, wrist, K.cardigan, 4.6);
+      if (state !== "sax" && K.cardigan === LUNI_COLORS.cardigan) armKaro(ctx, [SCHULTER_VORN, armFront.elbow, wrist]);
       // Ärmelbündchen
       ctx.save();
       const ha = Math.atan2(armFront.hand[1] - armFront.elbow[1], armFront.hand[0] - armFront.elbow[0]);
-      ctx.translate(armFront.hand[0], armFront.hand[1]);
+      ctx.translate(wrist[0], wrist[1]);
       ctx.rotate(ha);
       ctx.fillStyle = K.cardiganLight;
-      rr(ctx, -3.4, -2.3, 2.6, 4.6, 1.1);
+      rr(ctx, -1.5, -2.3, 1.8, 4.6, 0.8);
       ctx.fill();
       ctx.restore();
-      ctx.fillStyle = K.skin;
-      ctx.beginPath();
-      ctx.arc(armFront.hand[0], armFront.hand[1], 2.1, 0, Math.PI * 2);
-      ctx.fill();
+      drawHand(ctx, armFront.elbow, armFront.hand, K.skin, K.skinShade);
     });
 
   if (P && oberteil === "dressed" && !back && !vampir) drawPajamaDetails(ctx, r, P.top, P.bottom);
@@ -2429,9 +2497,10 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     const arms = backIK
       ? { near: r.armNear, far: r.armFar, behind: false }
       : backArms(state, r, phase);
-    // Beim Umziehen und Handtuchschwenken gehören Schulter und Oberarm hinter
-    // den Rücken: sie werden vor dem Rumpf gemalt, Unterarm und Hand danach.
-    const oberteilArbeit = state === "undress" || state === "wrap";
+    // Beim Umziehen und Handtuchschwenken bleiben beide Arme als ganze Glieder
+    // vor dem Rumpf sichtbar. Früher wurden die Oberarme hinter den Rücken
+    // gemalt und nur die Unterarme davor – das sah nach Armen auf dem Rücken aus.
+    const armeVorn = state === "undress" || state === "wrap";
     const drawArms = (nurUnterarm = false) => {
       for (const [side, arm] of [[-1, arms.far], [1, arms.near]] as const) {
         if (nurUnterarm) {
@@ -2445,27 +2514,12 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
         } else {
           stroke3(ctx, [side * 6.2, r.shoulderY + 2.2], arm.elbow, arm.hand, side < 0 ? K.cardiganDark : K.cardigan, 4.5);
         }
-        ctx.fillStyle = side < 0 ? K.skinShade : K.skin;
-        ctx.beginPath();
-        ctx.arc(arm.hand[0], arm.hand[1], 2, 0, Math.PI * 2);
-        ctx.fill();
+        drawHand(ctx, arm.elbow, arm.hand, side < 0 ? K.skinShade : K.skin, K.skinShade);
       }
     };
-    // Hände vor dem Körper (Handtuch binden, in den Schrank greifen)
-    // verschwinden hinter dem Rücken.
-    if (arms.behind) drawArms();
-    // Vor dem Rumpf: nur die Oberarme – sie liegen auf dieser Ebene hinter dem Rücken.
-    if (!arms.behind && oberteilArbeit) {
-      for (const [side, arm] of [[-1, arms.far], [1, arms.near]] as const) {
-        ctx.strokeStyle = side < 0 ? K.cardiganDark : K.cardigan;
-        ctx.lineWidth = 4.5;
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(side * 6.2, r.shoulderY + 2.2);
-        ctx.lineTo(arm.elbow[0], arm.elbow[1]);
-        ctx.stroke();
-      }
-    }
+    // Nur Posen, die bewusst hinter den Rücken greifen (Schrank, Waschen),
+    // werden vor dem Rumpf gezeichnet und damit verdeckt.
+    if (!bedCover && arms.behind && !armeVorn) drawArms();
     drawTorsoBack(ctx, r, oberteil, K);
     if (kleidung?.hose && !kleidung.oberteil) {
       ctx.fillStyle = K.leggings;
@@ -2473,7 +2527,8 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
       ctx.fill();
     }
     if (vampir && oberteil === "dressed") drawVampirRuecken(ctx, r, vampir);
-    if (!arms.behind) drawArms(oberteilArbeit);
+    // Umziehen: volle Arme nach dem Rumpf, nie aufgeteilt.
+    if (!bedCover && (!arms.behind || armeVorn)) drawArms(false);
     if (vampir?.umhang && oberteil === "dressed" && umhang > 0.01) drawUmhangRuecken(ctx, r, vampir.umhang, umhang);
     // Die langen Haare liegen über Rücken und Schultern.
     drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen * (wet > 0.3 ? 0.94 : 1), true);
@@ -2500,12 +2555,12 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     // Ohne diese Reihenfolge verdeckt der Saxophon-Korpus beide Arme, und das
     // Instrument hängt scheinbar frei in der Luft.
     betweenBodyAndArms?.();
-    if (armsInFront || armeVorne) drawBackArm();
-    else if (handVorRumpf) drawBackArm(true);
+    if (!bedCover && (armsInFront || armeVorne)) drawBackArm();
+    else if (!bedCover && handVorRumpf) drawBackArm(true);
 
     /* --- vorderer Arm (früher der hintere) --- */
     // Beim Vorbeugen erst nach dem Kopf, damit die Bürstenhand vor den Haaren liegt.
-    if (!bent) drawFrontArm();
+    if (!bedCover && !bent) drawFrontArm();
   }
 
   /* --- Hals: in der Rückansicht vollständig von den Haaren verdeckt --- */
@@ -2600,8 +2655,24 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     ctx.globalAlpha = 1;
     ctx.restore();
   } else {
-    if (hairAside > 0.01) drawHairAside(ctx, hairAside);
-    else drawHairFront(ctx, r.hairFlow, r.hairUp, r.hairLen);
+    // Haare neben das Ohr: weich überblenden statt umzuschalten. Ein hartes
+    // Umschalten würde die Seitensträhnen für einen Moment verschwinden lassen
+    // und als Blitzen des Kopfes sichtbar sein.
+    const k = clamp01(hairAside);
+    if (k < 0.005) {
+      drawHairFront(ctx, r.hairFlow, r.hairUp, r.hairLen);
+    } else if (k > 0.995) {
+      drawHairAside(ctx, k);
+    } else {
+      ctx.save();
+      ctx.globalAlpha *= 1 - k;
+      drawHairFront(ctx, r.hairFlow, r.hairUp, r.hairLen);
+      ctx.restore();
+      ctx.save();
+      ctx.globalAlpha *= k;
+      drawHairAside(ctx, k);
+      ctx.restore();
+    }
     drawFace(ctx, eyeRoll > 0.01 ? "annoyed" : expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0);
     if (eyeRoll > 0.01) drawEyeRoll(ctx, eyeRoll);
   }
@@ -2632,7 +2703,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   ctx.restore();
   });
 
-  if (bent && !back) drawFrontArm();
+  if (!bedCover && bent && !back) drawFrontArm();
 
   ctx.restore();
 
@@ -2640,14 +2711,22 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   // Griff, Instrument und Arme zusammen (das Saxophon wird danach gezeichnet
   // und würde die Hände sonst verdecken).
   if (handOut) {
-    handOut.front = [
-      x + (r.rootX + r.armFar.hand[0]) * scale * face,
-      y + (r.rootY + r.armFar.hand[1]) * scale,
-    ];
-    handOut.rear = [
-      x + (r.rootX + r.armNear.hand[0]) * scale * face,
-      y + (r.rootY + r.armNear.hand[1]) * scale,
-    ];
+    const weltHand = (hand: V): V => {
+      let [hx, hy] = hand;
+      if (handKontakt && r.bend) {
+        const dx = hx, dy = hy - r.hipY;
+        hx = dx * Math.cos(r.bend) - dy * Math.sin(r.bend);
+        hy = r.hipY + dx * Math.sin(r.bend) + dy * Math.cos(r.bend);
+      }
+      if (handKontakt && r.rootRot) {
+        const dx = hx, dy = hy - r.pivotY;
+        hx = dx * Math.cos(r.rootRot) - dy * Math.sin(r.rootRot);
+        hy = r.pivotY + dx * Math.sin(r.rootRot) + dy * Math.cos(r.rootRot);
+      }
+      return [x + (r.rootX + hx) * scale * face, y + (r.rootY + hy) * scale];
+    };
+    handOut.front = weltHand(r.armFar.hand);
+    handOut.rear = weltHand(r.armNear.hand);
   }
 
   // Gegenstände hängen an der räumlich vorderen Hand – also der Hand, die

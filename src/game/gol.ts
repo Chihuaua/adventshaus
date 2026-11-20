@@ -12,9 +12,9 @@
 
 type C = CanvasRenderingContext2D;
 
-/** Ausschnitt der Vergrößerung auf der 960×600-Bühne. */
+/** Ausschnitt der Vergrößerung im Fernseher auf der 960×600-Bühne. */
 export const GOL_X = 120;
-export const GOL_Y = 30;
+export const GOL_Y = 52;
 export const GOL_VIEW_W = 720;
 export const GOL_VIEW_H = 300;
 
@@ -29,7 +29,7 @@ export const GOL_SPEED_DEFAULT = 5; // 12 / s
 const CTRL_W = 44;
 const CTRL_H = 34;
 const CTRL_GAP = 8;
-const CTRL_Y = GOL_Y + GOL_VIEW_H + 18;
+const CTRL_Y = GOL_Y + GOL_VIEW_H + 52;
 
 export type GOLCtrlId = "fewer" | "more" | "slower" | "faster" | "reset";
 

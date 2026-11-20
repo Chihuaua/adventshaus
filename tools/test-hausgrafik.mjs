@@ -1,5 +1,6 @@
 // Geometrieprüfungen für normales Bett, Klaviatur und Lunis Rückansicht.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { build } from "esbuild";
@@ -7,7 +8,10 @@ import { build } from "esbuild";
 const source = readFileSync("src/game/house.ts", "utf8");
 const bundle = await build({
   stdin: {
-    contents: source + '\nexport { piano, bed, drawBedScene, drawBlanket, drawBedFront, sfx };\nexport { drawLuni } from "./luni";',
+    contents: source
+      + '\nexport { piano, bed, drawBedScene, drawBlanket, drawBedFront, drawBedEntryBlanket, bedBlanketPose, bedBlanketPushHand, SAX_GRIP_UP, SAX_GRIP_LOW, sfx };'
+      + '\nexport { drawLuni } from "./luni";'
+      ,
     resolveDir: path.resolve("src/game"), loader: "ts",
   },
   bundle: true, write: false, format: "esm", platform: "node",
@@ -26,7 +30,7 @@ function canvas() {
   const record = (pts, extra = {}) => {
     if (!pts.length) return;
     const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
-    shapes.push({ color: ctx.fillStyle, left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys), ...extra });
+    shapes.push({ color: ctx.fillStyle, left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys), points: pts.map(p => [...p]), ...extra });
   };
   const gradient = () => ({ addColorStop() {} });
   const methods = {
@@ -36,6 +40,7 @@ function canvas() {
     translate(x, y) { multiply([1, 0, 0, 1, x, y]); },
     rotate(a) { multiply([Math.cos(a), Math.sin(a), -Math.sin(a), Math.cos(a), 0, 0]); },
     scale(x, y) { multiply([x, 0, 0, y, 0, 0]); },
+    setTransform(a, b, c, d, e, f) { matrix = [a, b, c, d, e, f]; },
     beginPath() { points = []; }, closePath() {},
     moveTo(x, y) { points.push(point(x, y)); }, lineTo(x, y) { points.push(point(x, y)); },
     quadraticCurveTo(x1, y1, x2, y2) { points.push(point(x1, y1), point(x2, y2)); },
@@ -47,14 +52,21 @@ function canvas() {
       const p = point(x, y); arcs.push({ x: p[0], y: p[1], r, color: ctx.fillStyle });
       points.push(point(x-r, y-r), point(x+r, y+r));
     },
-    ellipse(x, y, rx, ry) { points.push(point(x-rx, y-ry), point(x+rx, y+ry)); },
+    ellipse(x, y, rx, ry) {
+      this._last = "ellipse";
+      const p1 = point(x-rx, y-ry), p2 = point(x+rx, y+ry);
+      points.push(p1, p2);
+      record([p1, p2], { kind: "ellipse" });
+    },
     fill() { record(points, { kind: "path" }); },
     stroke() { record(points, { kind: "stroke", color: ctx.strokeStyle }); },
     createLinearGradient: gradient, createRadialGradient: gradient,
     measureText(text) { return { width: text.length * 6 }; },
   };
+  const texte = [];
+  methods.fillText = (inhalt, x, y) => { texte.push({ inhalt, x, y, farbe: ctx.fillStyle, font: ctx.font }); };
   const ctx = new Proxy(methods, { get(o, key) { return key in o ? o[key] : () => {}; } });
-  return { ctx, shapes, arcs };
+  return { ctx, shapes, arcs, texte };
 }
 let n = 0;
 const test = (name, run) => { run(); n++; console.log(`OK  ${name}`); };
@@ -129,9 +141,9 @@ test("Rückansicht malt weder Gesichtshaut noch Hals über die Haare", () => {
   }
 });
 
-test("Bettrahmen wird nur bei belegtem normalem Bett vor Luni gezeichnet", () => {
+test("Bettrahmen liegt bei belegtem normalem Bett hinter Luni", () => {
   assert.match(source, /const bettBelegt = this\.welt === "normal"/);
-  assert.ok(source.indexOf("if (this.bettRendered) drawBedFront(ctx, 282, FO)") > source.indexOf("this.drawLuniLayered(ctx)"));
+  assert.ok(source.indexOf("if (this.bettRendered) drawBedFront(ctx, 282, FO)") < source.indexOf("this.drawLuniLayered(ctx)"));
 });
 test("Hände liegen hinter der Decke, nicht als Hautfläche auf dem Stoff", () => {
   for (const turn of [0, .5, 1]) {
@@ -166,6 +178,142 @@ function haus(fields = {}) {
     glassesRest: null, outfit: "dressed", ...fields,
   });
 }
+
+test("Zugezogene Decke sammelt sich an der Nahkante, statt als Platte zu wandern", () => {
+  // Beim Zusammenschieben wächst die Ansammlung; die Nahkante hebt sich vom
+  // Matratzenrand ab, das Fußende bleibt liegen.
+  const stoff = (phase, p) => {
+    const c = canvas(); G.drawBedEntryBlanket(c.ctx, p, phase, p);
+    const s = c.shapes.find(q => q.color === "#3f7f8c");
+    return { links: s.left, rechts: s.right, unten: s.bottom };
+  };
+  const start = stoff("greifen", 0), ende = stoff("greifen", 1);
+  near(start.rechts, ende.rechts); near(start.unten, ende.unten);
+  assert.ok(ende.links < start.links, "Nahkante wandert zu Luni");
+  const rolle = c => c.shapes.find(s => s.color === "#5da0a8" && s.kind === "ellipse");
+  const anfang = canvas(); G.drawBedEntryBlanket(anfang.ctx, 0, "greifen", 0);
+  const spaeter = canvas(); G.drawBedEntryBlanket(spaeter.ctx, 1, "greifen", 1);
+  const r0 = rolle(anfang), r1 = rolle(spaeter);
+  assert.ok(r0 && r1, "Rollkante sichtbar");
+  assert.ok(r1.right - r1.left > r0.right - r0.left, "Stoff rollt sich sichtbar auf");
+  assert.ok(r1.bottom < 308, "Rollkante hebt sich von der Matratze ab");
+  // Am Ende des Hinlegens liegt sie flatt wie die Schlafdecke – kein Sprung.
+  const schlaf = canvas(); G.drawBlanket(schlaf.ctx, 0, 1);
+  const zulegt = canvas(); G.drawBedEntryBlanket(zulegt.ctx, 1, "hinlegen", 1);
+  const a = schlaf.shapes.find(s => s.color === "#3f7f8c"), b = zulegt.shapes.find(s => s.color === "#3f7f8c");
+  near(a.left, b.left); near(a.top, b.top); near(a.right, b.right); near(a.bottom, b.bottom);
+});
+
+test("Decke faltet sich auf dem Bett und springt zwischen den Phasen nicht", () => {
+  let letzteKante = 328;
+  let letzteHand = 345;
+  for (let i = 0; i <= 100; i++) {
+    const p = i / 100, pose = G.bedBlanketPose("umschlagen", p);
+    assert.ok(pose.links >= letzteKante && pose.links <= 350);
+    letzteKante = pose.links;
+    const hand = G.bedBlanketPushHand(p);
+    assert.ok(hand[0] >= letzteHand && hand[0] >= pose.links - 0.3 && hand[0] <= 386);
+    near(hand[1], pose.oben + 4);
+    letzteHand = hand[0];
+    const c = canvas(); G.drawBedEntryBlanket(c.ctx, p, "umschlagen", p);
+    const stoff = c.shapes.find(s => s.color === "#3f7f8c");
+    near(stoff.left, pose.links); near(stoff.right, 386); near(stoff.bottom, 308);
+  }
+  for (const [a, b] of [["umschlagen", "setzen"], ["setzen", "fuesse"], ["greifen", "toss"], ["toss", "hinlegen"]]) {
+    assert.deepEqual(G.bedBlanketPose(a, 1), G.bedBlanketPose(b, 0), `${a} -> ${b}`);
+  }
+  // „fuesse“ schiebt nur die Füße unter die Decke – der Stoff bleibt, wo er war.
+  const vor = G.bedBlanketPose("setzen", 1), nach = G.bedBlanketPose("fuesse", 1);
+  for (const k of ["links", "oben", "falten", "gather"]) near(vor[k], nach[k]);
+  const ende = G.bedBlanketPose("hinlegen", 1);
+  near(ende.links, 320); near(ende.oben, 281); near(ende.falten, 0); near(ende.gather, 0); near(ende.welle, 0);
+});
+
+test("Beim Deckenschieben bleiben beide Füße am selben Ort", () => {
+  const h = haus({
+    alpha: 1, lf: 2, lx: 337, lface: 1, cur: null, pending: null, path: [], activity: null,
+    bedEinstieg: "umschlagen", bedEinstiegT: 0, bedKleidungAn: "dressed", bedPyjama: null,
+    elapsed: 0, scale: 1, dpr: 1, hand: [0, 0],
+  });
+  let erste;
+  for (let i = 0; i <= 20; i++) {
+    h.bedEinstiegT = 2.2 * i / 20;
+    const c = canvas(); h.drawLuniNow(c.ctx);
+    const socken = c.shapes.filter(s => s.color === "#ff6f61" || s.color === "#35d6c0")
+      .map(({ left, right, top, bottom }) => [left, right, top, bottom]);
+    assert.equal(socken.length, 2);
+    if (!erste) erste = socken;
+    else assert.deepEqual(socken, erste);
+  }
+});
+
+test("Setzen und Hinlegen beginnen ohne Sprung von der vorherigen Pose", () => {
+  const zeichne = (y, opts) => {
+    const c = canvas();
+    G.drawLuni(c.ctx, 337, y, { t: 0, scale: 1.08, shadow: false, ...opts });
+    return {
+      kopf: head(c),
+      socken: c.shapes.filter(s => s.color === "#ff6f61" || s.color === "#35d6c0")
+        .map(({ left, right, top, bottom }) => [left, right, top, bottom]),
+    };
+  };
+  const griff = { handTarget: [349.7, 288.5], handElbow: 1, handKontakt: true };
+  const stand = zeichne(324, { state: "idle", ...griff });
+  const setzenStart = zeichne(313, { state: "sit", bedSitzen: 0, ...griff });
+  const sitzen = zeichne(313, { state: "sit" });
+  const setzenEnde = zeichne(313, { state: "sit", bedSitzen: 1, ...griff });
+  const hinlegenStart = zeichne(313, { state: "lie", lieDown: 0 });
+  for (const [a, b] of [[stand, setzenStart], [sitzen, setzenEnde], [sitzen, hinlegenStart]]) {
+    near(a.kopf.x, b.kopf.x); near(a.kopf.y, b.kopf.y);
+    for (let i = 0; i < 2; i++) for (let j = 0; j < 4; j++) near(a.socken[i][j], b.socken[i][j]);
+  }
+});
+
+test("Hände haben je vier Finger und einen Daumen", () => {
+  const c = canvas();
+  G.drawLuni(c.ctx, 0, 0, { state: "idle", shadow: false, t: 0 });
+  const striche = farbe => c.shapes.filter(s => s.kind === "stroke" && s.color === farbe).length;
+  assert.equal(striche("#f4c9a0"), 5);
+  assert.ok(striche("#e3b288") >= 5);
+});
+
+test("Saxophonhände bleiben beim Anheben, Spielen und Abstellen an den Griffen", () => {
+  const h = haus({ stations: G.STATIONS, lx: 653, saxStarted: true, saxMusic: { currentTime: 0 }, elapsed: 0 });
+  for (const phase of ["reach", "lift", "play", "lower"]) {
+    h.saxPhase = phase;
+    for (let i = 0; i <= 20; i++) {
+      h.saxT = i / 20;
+      h.saxMusic.currentTime = i / 10;
+      const oben = h.saxGripAt(G.SAX_GRIP_UP), unten = h.saxGripAt(G.SAX_GRIP_LOW);
+      const haende = { front: [0, 0], rear: [0, 0] }, c = canvas();
+      G.drawLuni(c.ctx, h.lx, 200, {
+        state: phase === "reach" ? "act" : "sax", t: 0, scale: 1.08, face: -1, shadow: false,
+        handTarget: oben, handTarget2: unten, handElbow: 1, handElbow2: -1,
+        handKontakt: true, sway: h.saxSway(), handOut: haende,
+      });
+      near(haende.front[0], oben[0]); near(haende.front[1], oben[1]);
+      near(haende.rear[0], unten[0]); near(haende.rear[1], unten[1]);
+    }
+  }
+});
+
+test("Saxophonärmel beginnt am Schultergelenk; das Instrument behält seine Größe", () => {
+  const h = haus({ stations: G.STATIONS, lx: 653, saxPhase: "play", saxT: 0, saxStarted: true,
+    saxMusic: { currentTime: 0 }, elapsed: 0, scale: 1, dpr: 1 });
+  const c = canvas();
+  G.drawLuni(c.ctx, h.lx, 200, { state: "sax", t: 0, scale: 1.08, face: -1, shadow: false,
+    handTarget: h.saxGripAt(G.SAX_GRIP_UP), handTarget2: h.saxGripAt(G.SAX_GRIP_LOW),
+    handElbow: 1, handElbow2: -1, handKontakt: true });
+  const arm = c.shapes.find(s => s.kind === "stroke" && s.color === "#dcc9a5" && s.points.length === 3);
+  assert.ok(arm); near(arm.points[0][0], 653 + 3.4 * 1.08); near(arm.points[0][1], 200 - 34 * 1.08);
+  const getragen = canvas(); h.drawSaxCarried(getragen.ctx);
+  h.saxPhase = null;
+  const abgestellt = canvas(); h.drawSax(abgestellt.ctx);
+  const form = c => c.shapes.find(s => s.kind === "stroke" && s.color === "#d9a83c");
+  const a = form(getragen), b = form(abgestellt);
+  assert.ok(a && b); near(a.right - a.left, b.right - b.left); near(a.bottom - a.top, b.bottom - b.top);
+});
+
 G.sfx.ui = () => {};
 G.sfx.ensure = () => {};
 
@@ -220,6 +368,236 @@ test("Schon abgelegte Brille bleibt beim Beginn des Bettgangs und Aufwachen lieg
   h.startBedRoutine(); assert.equal(h.glassesRest, rest);
   const sink = haus({ glassesInSink: true }); sink.aufwachen();
   assert.equal(sink.glassesOn, false); assert.equal(sink.glassesInSink, true);
+});
+
+test("Haare beim Hinlegen weich überblendet, nicht hart umgeschaltet", () => {
+  const zaehle = k => {
+    const c = canvas();
+    G.drawLuni(c.ctx, 0, 0, { state: "idle", shadow: false, t: 0, hairAside: k });
+    return c.shapes.filter(s => s.color === "#191920").length;
+  };
+  const offen = zaehle(0), seitlich = zaehle(1), mitte = zaehle(0.5);
+  assert.ok(mitte > offen && mitte > seitlich, `Mitte ${mitte}, offen ${offen}, seitlich ${seitlich}`);
+});
+
+test("Haare bleiben neben dem Ohr liegen und springen nicht zurück", () => {
+  const h = haus({
+    welt: "normal", alpha: 1, lf: 2, lx: 337, lface: 1, cur: null, pending: null, path: [],
+    activity: null, target: null, asleep: false, sleepPhase: null, sleepPhaseT: 0, lieDown: false,
+    lieT: 0, bedEinstieg: null, bedPhase: null, wakeT: 0, wakeNext: null, shPhase: null,
+    glassesOn: false, glassesInSink: false, glassesRest: null, glassesInHand: false, glassesFly: null,
+    outfit: "dressed", pyjama: null, bedKleidungAn: "dressed", bedPyjama: null, elapsed: 2,
+    hand: [0, 0], stations: G.STATIONS, bedSitHair: 0, walkP: 0, blink: 0, scale: 1, dpr: 1,
+    sleepRest: 0, sleepT: 0, luniHaende: null, luniKopf: null,
+  });
+  const verlauf = [];
+  h.lieDown = true;
+  for (let i = 0; i <= 28; i++) {
+    h.lieT = i * 0.05;
+    const c = canvas(); h.drawLuniNow(c.ctx);
+    verlauf.push(h.bedSitHair);
+  }
+  const hoechstNachHinlegen = Math.max(...verlauf);
+  assert.ok(hoechstNachHinlegen > 0.9, "Strähne ist gelegen");
+  h.lieDown = false; h.sleepPhase = "grab"; h.sleepPhaseT = 0;
+  for (let i = 0; i < 240; i++) {
+    h.updateBedState(0.05);
+    const c = canvas(); h.drawLuniNow(c.ctx);
+    verlauf.push(h.bedSitHair);
+    if (h.asleep) break;
+  }
+  for (let i = 1; i < verlauf.length; i++) {
+    assert.ok(verlauf[i] >= verlauf[i - 1] - 1e-9, `Sprung bei ${i}: ${verlauf[i - 1]} -> ${verlauf[i]}`);
+  }
+  assert.equal(h.asleep, true, "schläft ein");
+  assert.equal(verlauf[verlauf.length - 1], 1);
+  assert.ok(verlauf.slice(29).every(v => v >= hoechstNachHinlegen - 1e-9), "grab/pull/turn legen nichts zurück");
+  // Aufstehen gibt die Haare frei
+  h.asleep = false; h.sleepPhase = null; h.lieDown = false;
+  h.updateBedState(0.05);
+  assert.equal(h.bedSitHair, 0);
+});
+
+test("Zudecken: Stoff behält Dicke und Fußende, nur die Nahkante wandert", () => {
+  let vorher = null;
+  for (let i = 0; i <= 40; i++) {
+    const p = i / 40, c = canvas();
+    G.drawBedEntryBlanket(c.ctx, 0.3, "hinlegen", p);
+    const stoff = c.shapes.find(q => q.color === "#3f7f8c");
+    near(stoff.right, 386);
+    near(stoff.bottom, 308);
+    // Die aufgerollte Nahkante steht bis ca. 4 Einheiten höher; der Körper bleibt bei 281.
+    if (p >= 0.25) assert.ok(Math.abs(stoff.top - 281) <= 4, `Oberkante ${stoff.top.toFixed(2)} bei p=${p}`);
+    if (vorher) assert.ok(stoff.left <= vorher.left + 1e-9, `Nahkante läuft zurück bei p=${p}`);
+    vorher = stoff;
+  }
+});
+
+test("Zudecken schließt nahtlos an das Hochziehen an (gleiches Bild am Übergang)", () => {
+  const a = canvas(); G.drawBedEntryBlanket(a.ctx, 0.5, "toss", 1);
+  const b = canvas(); G.drawBedEntryBlanket(b.ctx, 0.5, "hinlegen", 0);
+  const sa = a.shapes.find(q => q.color === "#3f7f8c"), sb = b.shapes.find(q => q.color === "#3f7f8c");
+  for (const k of ["left", "right", "top", "bottom"]) near(sa[k], sb[k]);
+  const ta = a.shapes.filter(q => q.color === "#5da0a8").length, tb = b.shapes.filter(q => q.color === "#5da0a8").length;
+  assert.equal(ta, tb, "gleiche Zierlinien am Übergang");
+});
+
+test("Kräuselung läuft nur beim Zudecken und ist an beiden Enden null", () => {
+  assert.equal(G.bedBlanketPose("hinlegen", 0).welle, 0);
+  assert.ok(Math.abs(G.bedBlanketPose("hinlegen", 1).welle) < 1e-9);
+  assert.ok(G.bedBlanketPose("hinlegen", 0.5).welle > 1);
+  for (const phase of ["umschlagen", "greifen", "toss"]) {
+    for (const p of [0, 0.5, 1]) assert.equal(G.bedBlanketPose(phase, p).welle, 0, `${phase} ${p}`);
+  }
+});
+
+test("Aufdecken bleibt unverändert: ohne Kräuselung dieselbe Oberkante wie zuvor", () => {
+  const c = canvas(); G.drawBedEntryBlanket(c.ctx, 0.9, "greifen", 0.5);
+  const s = c.shapes.find(q => q.color === "#3f7f8c");
+  assert.ok(s.top > 280 && s.top < 286, `Oberkante ${s.top}`);
+});
+
+test("Zudecken: Figur wird vor dem Stoff beschnitten, Decke bleibt frei", () => {
+  const src = readFileSync("src/game/house.ts", "utf8");
+  const clip = src.indexOf("function clipBedCover(");
+  const szene = src.indexOf("function drawBedScene(");
+  const hinlegen = src.indexOf("if (this.lieDown && !this.asleep)");
+  assert.ok(clip > 0 && szene > 0 && hinlegen > 0);
+  const szeneEnde = src.indexOf("function drawBedCloth(", szene);
+  const szeneText = src.slice(szene, szeneEnde);
+  assert.ok(szeneText.indexOf("clipBedCover(") < szeneText.indexOf("drawLuni("), "Clip vor der Figur");
+  assert.ok(szeneText.lastIndexOf("c.restore()") < szeneText.lastIndexOf("drawBlanket("), "Decke nach dem Clip");
+  const hinText = src.slice(hinlegen, src.indexOf("const ruhtImBett", hinlegen));
+  assert.ok(hinText.includes("clipBedCover("), "Hinlegen nutzt dieselbe Abdeckung");
+  assert.ok(hinText.indexOf("drawBedEntryBlanket(") > hinText.indexOf("c.restore()"), "Stoff zuletzt");
+  assert.ok(src.includes('c.clip("evenodd")'), "Kopf bleibt ausgespart");
+});
+
+test("Unter der Decke wird kein Handobjekt nachträglich über den Stoff gezeichnet", () => {
+  const h = haus({ lieDown: true, glassesInHand: true, brushInHand: true,
+    hand: [360, 290], lface: 1, shPhase: null, glassesFly: null,
+    golInserted: false, golOnShelf: false });
+  const c = canvas();
+  h.drawGlassesMoving(c.ctx);
+  h.drawGolInHand(c.ctx);
+  assert.equal(c.shapes.some(z => z.color === "#f4c9a0"), false, "keine Hautfläche an der Hand");
+  assert.equal(c.shapes.length, 0, "kein Handgegenstand");
+  // Außerhalb des Bettes bleiben die Objekte erhalten.
+  h.lieDown = false;
+  const d = canvas();
+  h.drawGlassesMoving(d.ctx);
+  h.drawGolInHand(d.ctx);
+  assert.ok(d.shapes.length > 0, "Geh-/Stehphase unverändert");
+});
+
+test("Im Bett bleiben nur Kopf, Hals und Schulter; Arme und Socken fehlen", () => {
+  const ohne = canvas(), mit = canvas();
+  const opts = { state: "lie", t: 0, scale: 1.08, shadow: false, glasses: true };
+  G.drawLuni(ohne.ctx, 345, 292, opts);
+  G.drawLuni(mit.ctx, 345, 292, { ...opts, bedCover: true });
+  const socken = c => c.shapes.filter(z => ["#ff6f61", "#35d6c0", "#ffd166", "#c3e84f"].includes(z.color)).length;
+  assert.ok(socken(ohne) > 0, "normalerweise Socken sichtbar");
+  assert.equal(socken(mit), 0, "unter der Decke keine Socken");
+  const hand = c => c.shapes.filter(z => z.kind === "stroke" && ["#f4c9a0", "#e3b288"].includes(z.color)).length;
+  assert.ok(hand(ohne) >= 8, "normalerweise Finger sichtbar");
+  assert.equal(hand(mit), 0, "unter der Decke keine Finger");
+  assert.ok(mit.shapes.length < ohne.shapes.length, "Figur schlanker");
+  // Kopf bleibt erhalten
+  assert.ok(head(ohne) && head(mit), "Kopf bleibt in beiden Fällen");
+  near(head(mit).x, head(ohne).x); near(head(mit).y, head(ohne).y);
+});
+
+test("Beide Bett-Zeichnungen setzen bedCover; die Decke behält ihre eigene Form", () => {
+  const src = readFileSync("src/game/house.ts", "utf8");
+  assert.ok(src.includes("hairAside: o.hair, bedCover: true"), "Schlafszene");
+  assert.ok(src.includes("bedCover: true,"), "Hinlegen");
+  const luni = readFileSync("src/game/luni.ts", "utf8");
+  assert.ok(luni.includes("bedCover = false"), "Vorgabe aus");
+  assert.ok((luni.match(/!bedCover/g) || []).length >= 7, "Gliedmaßen konsequent aus");
+  // Organische Bewegung bleibt: Kräuselung und Rollen sind weiter aktiv.
+  assert.ok(src.includes("const rip = (x: number)"), "wellige Oberkante");
+  assert.ok(src.includes("g * 9"), "Rollkante hebt sich");
+});
+
+test("Umziehen: ganze Arme vor dem Rumpf, keine Oberarme auf dem Rücken", () => {
+  const src = readFileSync("src/game/luni.ts", "utf8");
+  assert.ok(src.includes("const armeVorn = state === \"undress\" || state === \"wrap\""));
+  assert.ok(src.includes("if (!bedCover && (!arms.behind || armeVorn)) drawArms(false);"));
+  assert.equal(src.includes("drawArms(oberteilArbeit)"), false, "Aufteilung entfernt");
+  const c = canvas();
+  G.drawLuni(c.ctx, 0, 0, { state: "undress", phase: 0.5, back: true, shadow: false, t: 0 });
+  const arme = c.shapes.filter(z => z.kind === "stroke" &&
+    ["#dcc9a5", "#c4ad84"].includes(z.color));
+  const ganz = arme.filter(z => z.points && z.points.length >= 3);
+  const halb = arme.filter(z => z.points && z.points.length === 2);
+  assert.ok(ganz.length >= 2, "zwei ganze Arme sichtbar");
+  assert.equal(halb.length, 0, "keine abgetrennten Oberarme");
+});
+
+test("Brillenwurf: immer Nachttisch, nie Boden", () => {
+  const src = readFileSync("src/game/house.ts", "utf8");
+  const anfang = src.indexOf("private beginBedToss()");
+  const text = src.slice(anfang, anfang + 700);
+  assert.ok(text.includes("this.tossLand = 0"), "Landeplatz fest auf Nachttisch");
+  assert.equal(text.includes("r < 0.4"), false, "keine Zufallsverteilung mehr");
+  const h = haus({ glassesOn: true, glassesInHand: false,
+    tossLand: 5, tossUp: 0, tossLanded: false, bedPhase: null });
+  h.beginBedToss();
+  assert.equal(h.tossLand, 0);
+  for (const land of [0, 1, 2, 3, 4, 5]) {
+    h.tossLand = land;
+    const [x, y] = h.tossTarget();
+    assert.ok(y <= 324 - 26 + 1, `Landeplatz ${land} liegt nicht auf dem Boden (y=${y})`);
+    assert.ok(x > 380 && x < 420, `Landeplatz ${land} am Nachttisch (x=${x})`);
+  }
+});
+
+test("TV-Geräte: beide Fernseher öffnen die große Fernseh-Ansicht unabhängig von GOL", () => {
+  const h = haus({
+    stations: G.STATIONS, golInserted: false, golOnShelf: true, golState: null,
+    tvMode: "cozy", tvZoom: null, tvManual: { tv_e: null, tv_d: null },
+    activity: null, cur: null, path: [], pending: null, target: null,
+    harvestClock: 5, harvestCrops: [0.3, 0.5, 0.8, 1, 0, 0.2], harvestSpot: 0,
+    harvestFrom: 0, harvestTo: 1, harvestMoveT: 0, harvestMoving: false, harvestCoins: 15,
+    elapsed: 5,
+  });
+  assert.equal(h.hitLivingTv(460, 410), true, "Wohnzimmer-TV getroffen");
+  assert.equal(h.hitLivingTv(340, 420), false, "Sofa bleibt Station");
+  assert.equal(h.hitAtticTv(436, 155), true, "Dachgeschoss-TV getroffen");
+  assert.equal(h.hitAtticTv(320, 185), false, "Sitzsack bleibt Station");
+
+  h.openTvZoom("tv_e");
+  assert.equal(h.tvZoom, "tv_e");
+  const ce = canvas(); h.drawTvFullscreen(ce.ctx);
+  assert.ok(ce.shapes.some(z => z.color === "#8a6a3c"), "Wohnzimmer-Holzfernseher sichtbar");
+  assert.ok(ce.texte.some(t => t.inhalt === "zurück"), "Zurück-Knopf sichtbar");
+  assert.ok(ce.texte.some(t => t.inhalt === "STANDBY"), "Aus-Zustand ohne Luni sichtbar");
+
+  // Einschalten über den Power-Knopf zeigt das TV-Programm (Harvest CH1)
+  h.onTvFullscreenClick(780, 390);
+  const ceAn = canvas(); h.drawTvFullscreen(ceAn.ctx);
+  assert.ok(ceAn.texte.some(t => t.inhalt === "CH1"), "laufendes TV-Programm groß im Fernseher");
+
+  // Klick auf Dachgeschoss-TV zeigt modernen Fernseher
+  h.openTvZoom("tv_d");
+  assert.equal(h.tvZoom, "tv_d");
+  h.tvManual.tv_d = true;
+  const cd = canvas(); h.drawTvFullscreen(cd.ctx);
+  assert.ok(cd.shapes.some(z => z.color === "#15171c"), "Dachgeschoss-Fernsehergehäuse sichtbar");
+  assert.ok(cd.texte.some(t => t.inhalt === "CH1" || t.inhalt === "CH2"), "Programm auf Dachgeschoss-TV");
+
+  // Zurück schließt die Ansicht
+  h.onTvFullscreenClick(460, 435);
+  assert.equal(h.tvZoom, null);
+});
+
+test("TV-Geräte: großer Fernseher bleibt im Wii-4:3- und Overscan-Bereich", () => {
+  const src = readFileSync("src/game/house.ts", "utf8");
+  const tvStart = src.indexOf("private drawTvFullscreen(");
+  const tvText = src.slice(tvStart, src.indexOf("private applyGolCtrl(", tvStart));
+  assert.ok(tvText.includes("rrect(c, 116, 48, 728, 434"), "Wohnzimmer-TV innerhalb 96..864");
+  assert.ok(tvText.includes("rrect(c, 104, 34, 752, 344"), "Dachgeschoss-TV innerhalb 96..864");
+  assert.ok(src.includes("TV_BACK_E") && src.includes("TV_BACK_D"), "Zurück-Tasten definiert");
 });
 
 console.log(`\n${n} Hausgrafik-Tests bestanden.`);
