@@ -314,9 +314,10 @@ function HundeStudio({ id }: { id: HundId }) {
               </a>
               <a
                 href="#studio-mons"
-                className="btn-press rounded-md px-3 py-2 text-[11px] font-medium tracking-wide bg-[#132a33] text-mint-200 ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
+                translate="no"
+                className="notranslate btn-press rounded-md px-3 py-2 text-[11px] font-medium tracking-wide bg-[#132a33] text-mint-200 ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
               >
-                Luni-Mon-Studio
+                Luni-Mon Studio
               </a>
               <a
                 href="#studio"

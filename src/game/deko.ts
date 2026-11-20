@@ -740,6 +740,11 @@ export function drawDeko(c: C, sichtbar: boolean[], t: number) {
   }
 }
 
+/** Ein einzelnes Stück (Türchen 1–24) in Hauskoordinaten zeichnen – für den Deko-Katalog im Studio. */
+export function drawDekoStueck(c: C, tuer: number, t: number) {
+  if (tuer >= 1 && tuer <= MALER.length) MALER[tuer - 1](c, t);
+}
+
 /** Warme Lichtscheine: nach der Nachtabdunkelung zeichnen, damit sie leuchten. */
 export function drawDekoLicht(c: C, sichtbar: boolean[], t: number) {
   const an = (tuer: number) => sichtbar[tuer - 1];

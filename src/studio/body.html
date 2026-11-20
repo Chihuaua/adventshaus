@@ -1,0 +1,167 @@
+<header class="top">
+  <button id="houseBtn" type="button" title="Zur Hausansicht wechseln: das Haus mit allen Luni-Mons">🏠 Hausansicht</button>
+  <button id="dekoBtn" type="button" title="Deko-Katalog öffnen: alle 24 Weihnachtsdeko-Stücke, nummeriert und 4-fach vergrößert">🎄 Deko-Katalog</button>
+  <h1>🎨 LUNI-MON STUDIO</h1>
+  <span class="sub"><span class="nMons">24</span> Mons · Testen, Zoomen, Animationen durchschalten · Version <b id="versionBadge">1.10</b></span>
+  <button id="studioZipBtn" title="Aktuelles Studio + alle 24 Luni-Mons als ZIP herunterladen">⬇ Luni-Mon-Studio-Bundle v1.08 (ZIP)</button>
+  <span id="status">Bereit.</span>
+</header>
+
+<div class="layout">
+  <section class="panel">
+    <h2>Bühne</h2>
+    <canvas id="stage" width="960" height="540"></canvas>
+
+    <div class="row">
+      <button id="playBtn">⏸ Pause</button>
+      <button id="stepBtn" title="Ein Frame (1/60 s)">⏭ Einzelschritt</button>
+      <button id="restartBtn">↺ Animation neu</button>
+      <button id="respawnBtn">🐣 Neu spawnen</button>
+      <button id="addSelBtn" title="Das aktuell auf der Bühne gezeigte Mon in deine Auswahl übernehmen">➕ In Auswahl übernehmen</button>
+      <label>Geschwindigkeit
+        <select id="speedSel">
+          <option value="0.25">0,25×</option>
+          <option value="0.5">0,5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="4">4×</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="row">
+      <label for="zoom">Zoom</label>
+      <input type="range" id="zoom" min="0.5" max="14" step="0.25" value="4" style="flex:1;min-width:120px">
+      <span id="zoomVal">4×</span>
+      <button class="small" data-zoom="1">1×</button>
+      <button class="small" data-zoom="2">2×</button>
+      <button class="small" data-zoom="4">4×</button>
+      <button class="small" data-zoom="8">8×</button>
+      <button class="small" data-zoom="12">12×</button>
+      <span class="sub">(auch Mausrad auf der Bühne, Tasten +/−)</span>
+    </div>
+
+    <div class="row">
+      <label>Hintergrund
+        <select id="bgSel">
+          <option value="checker" selected>Studio (Karo)</option>
+          <option value="hell">Hell / Tag</option>
+          <option value="nacht">Nacht</option>
+          <option value="wohn">Wohnzimmer</option>
+          <option value="aqua">Aquarium</option>
+        </select>
+      </label>
+      <label class="chk"><input type="checkbox" id="optBox" checked> Trefferbox</label>
+      <label class="chk"><input type="checkbox" id="optAnchor" checked> Anker</label>
+      <label class="chk"><input type="checkbox" id="optGround" checked> Bodenlinie</label>
+      <label class="chk"><input type="checkbox" id="optGrid"> Raster (20 px)</label>
+    </div>
+
+    <h2 style="margin-top:14px">Animation testen</h2>
+    <div class="row" id="animBtns"></div>
+    <div class="actWrap"><div id="actBar"></div></div>
+    <div class="actLabel">Fähigkeits-Fortschritt (actT / Dauer) – im Loop-Modus startet die Fähigkeit automatisch neu.</div>
+    <div class="row">
+      <button class="small" id="blinkBtn">👁 Jetzt blinzeln</button>
+      <button class="small" id="emoteHeart">❤ Herz-Emote</button>
+      <button class="small" id="emoteNote">♪ Noten-Emote</button>
+      <button class="small" id="emoteZzz">z Zzz-Emote</button>
+      <button class="small" id="dirL">◀ Blick links</button>
+      <button class="small" id="dirR">Blick rechts ▶</button>
+      <label>Blick (look)
+        <input type="range" id="look" min="-1" max="1" step="0.1" value="0" style="width:110px">
+      </label>
+    </div>
+
+    <h2 style="margin-top:14px">Live-Inspektor</h2>
+    <div class="inspector">
+      <span><b>state</b> <span id="iState">–</span></span>
+      <span><b>idleKey</b> <span id="iIdle">–</span></span>
+      <span><b>actKind</b> <span id="iAct">–</span></span>
+      <span><b>actT</b> <span id="iActT">–</span></span>
+      <span><b>sleep</b> <span id="iSleep">–</span></span>
+      <span><b>blink</b> <span id="iBlink">–</span></span>
+      <span><b>bob</b> <span id="iBob">–</span></span>
+      <span><b>Richtung</b> <span id="iDir">–</span></span>
+      <span><b>look</b> <span id="iLook">–</span></span>
+      <span><b>Position</b> <span id="iPos">–</span></span>
+      <span><b>Emote</b> <span id="iEmote">–</span></span>
+      <span><b>FPS</b> <span id="iFps">–</span></span>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <h2>Detail</h2>
+    <div class="dName" id="dName">–</div>
+    <div class="dMeta" id="dMeta">–</div>
+    <dl>
+      <dt>Herkunft</dt><dd id="dHerkunft">–</dd>
+      <dt>Seltenheit</dt><dd id="dTier">–</dd>
+      <dt>ID</dt><dd id="dId">–</dd>
+      <dt>Vorbild</dt><dd id="dVorbild">–</dd>
+      <dt>Höhe</dt><dd id="dH">–</dd>
+      <dt>Wohnort</dt><dd id="dOrt">–</dd>
+      <dt>Tempo</dt><dd id="dSpeed">–</dd>
+      <dt>Idle</dt><dd id="dIdle">–</dd>
+      <dt>Fähigkeit</dt><dd id="dAct">–</dd>
+    </dl>
+    <p class="ability" id="dAbility"></p>
+    <p class="ability" id="dBeschr" hidden></p>
+
+    <h2 style="margin-top:12px">Auswahl 1–<span class="nMons">24</span></h2>
+    <div class="row">
+      <button id="prevBtn">◀ Zurück</button>
+      <button id="nextBtn">Weiter ▶</button>
+      <button id="randomBtn">🎲 Zufall</button>
+      <button id="favBtn">☆ Favorit</button>
+      <span id="numEcho">Nr. –</span>
+    </div>
+    <form class="row" id="numForm">
+      <label for="numInput">Nummer:</label>
+      <input type="number" id="numInput" min="1" max="24" placeholder="1–24">
+      <button type="submit">Anzeigen</button>
+    </form>
+    <p class="hint">Tastatur: Ziffern tippen (z. B. <kbd>2</kbd><kbd>3</kbd> für Nr. 23), <kbd>←</kbd>/<kbd>→</kbd> blättern, <kbd>Leertaste</kbd> Pause, <kbd>+</kbd>/<kbd>−</kbd> Zoom.</p>
+
+    <h2 style="margin-top:12px">Meine Auswahl</h2>
+    <div id="selList"></div>
+    <div class="row">
+      <span id="selCount" class="sub">0 Mons ausgewählt</span>
+    </div>
+    <div class="row">
+      <button class="small" id="selAllBtn">Alle <span class="nMons">24</span> übernehmen</button>
+      <button class="small" id="selClearBtn">Auswahl leeren</button>
+    </div>
+    <div class="row">
+      <button id="zipBtn">⬇ Auswahl als ZIP herunterladen</button>
+    </div>
+    <p class="hint">Die ZIP enthält pro Mon eine <b>Charakterkarte (PNG)</b>, Sprites in Originalgröße (1×) und groß (6×), einen Kontaktbogen, eine <code>auswahl.json</code> mit allen Spezies-Daten zum Implementieren sowie eine <code>README.md</code> mit Einbau-Anleitung.</p>
+
+    <h2 style="margin-top:12px">Palette (Klick kopiert)</h2>
+    <div id="palette"></div>
+
+    <h2 style="margin-top:12px">Export</h2>
+    <div class="row">
+      <button id="snapBtn">📷 PNG der Bühne</button>
+      <button id="jsonBtn">📋 Spezies-JSON</button>
+    </div>
+  </aside>
+</div>
+
+<section class="panel" id="dekoSec" hidden>
+  <h2>Deko-Katalog – 24 Weihnachtsdeko-Stücke (4-fach vergrößert)</h2>
+  <div id="dekoGrid"></div>
+  <p class="hint">Alle Stücke aus <code>src/game/deko.ts</code>, mit dem Original-Zeichencode gerendert. Die Nummern entsprechen den Türchen 1–24.</p>
+</section>
+
+<section class="panel" id="overviewSec">
+  <h2>Übersicht – Originalgröße (1×, animiert, Idle wechselt alle 3 s)</h2>
+  <div id="overview"></div>
+  <p class="hint">Klick auf eine Karte lädt das Mon auf die Bühne. Oben links steht die Nummer 1–<span class="nMons">24</span> (entspricht der Reihenfolge in dieser Übersicht, nicht dem Türchen-Tag – der steht unter jeder Karte).</p>
+</section>
+
+<footer>
+  Studio für die Luni-Mons aus <code>src/game/lunimons.js</code> und <code>src/game/mons.ts</code> · Jede Karten- und Bühnen-Instanz ist ein eigenes
+  <code>createLuniMons</code> mit genau einem Mon · Zustände werden über die echten internen Felder
+  (<code>state</code>, <code>idleKey</code>, <code>actKind</code>, <code>sleep</code>, <code>blink</code>, <code>emote</code>) gesteuert – keine nachgebauten Sprites. Mons aus dem Spiel zeichnet ihr unveränderter Maler (<code>drawLuniMon</code>).
+</footer>

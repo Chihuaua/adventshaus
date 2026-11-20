@@ -17,7 +17,6 @@ import {
   adventOeffnen, adventRahmen, adventSternVerdient, adventTuer, adventTuerBei, adventTueren, adventWand,
   ladeAdvent, type AdventStand,
 } from "./advent";
-import { dekoSichtbar, drawDeko, drawDekoLicht } from "./deko";
 import { HundeWelt, type HundId } from "./hunde";
 import { HandyAblauf, HANDY_TASCHE_SICHTBAR } from "./handy";
 import {
@@ -5503,8 +5502,6 @@ export class House {
     if (this.welt === "normal") {
       this.adventStandPruefen();
       adventWand(ctx, this.adventStand.offen, this.adventStand.jahr || new Date().getFullYear());
-      // Weihnachtsdeko hinter Luni: sie geht davor vorbei wie vor jedem Möbel.
-      drawDeko(ctx, dekoSichtbar(this.adventStand.offen), this.elapsed);
     }
     this.drawAshtrayTray(ctx);
     // Zigarette im Aschenbecher liegt AUF der Platte: Luni geht davor vorbei
@@ -5558,10 +5555,7 @@ export class House {
 
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) this.drawKesselEffekte(ctx);
 
-    // Warme Lichtscheine der Deko erst nach der Nachtabdunkelung, damit sie leuchten.
-    if (this.welt === "normal") {
-      drawDekoLicht(ctx, dekoSichtbar(this.adventStand.offen), this.elapsed);
-    }
+
     drawWetterStation(ctx, this.wetter, this.wetterAdd, this.wetterHover, this.wetterOffen, this.welt === "normal");
     this.drawHoverLabel(ctx);
     if (this.golFullscreen) this.drawGolFullscreen(ctx);
