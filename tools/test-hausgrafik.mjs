@@ -1243,4 +1243,38 @@ test("Weihnachtsschlitten: Weihnachtsmann mit Schlitten und Rentieren statt UFO 
   assert.ok(offen.texte.some(t => t.inhalt === G.PATCH_ZIP), "Archivname im Menü");
 });
 
+test("Dachgeschoss & Klavier: kein Schornstein-Rechteck, kein Querbalken, kein TV-Bild, Dach vor Seitenwänden, Schemel zentriert", () => {
+  const src = readFileSync("src/game/house.ts", "utf8");
+  const wetterSrc = readFileSync("src/game/wetter.ts", "utf8");
+  // 1) kein überlappendes Schornstein-Rechteck mehr in aussenPfad
+  assert.equal(wetterSrc.includes("c.rect(686, 4, 38, 126)"), false, "kein evenodd-Loch unter dem Schornstein");
+  // 2) kein horizontaler Dachgeschoss-Holzbalken und kein Bild über dem TV
+  assert.equal(src.includes('rect(c, 278, 88, 384, 6, "#5a3d28")'), false, "Querbalken entfernt");
+  assert.equal(src.includes('picture(c, 412, 96, 44, 26, "#ff6f61")'), false, "Bild über dem DG-TV entfernt");
+  // 3) Dach wird nach den linken/rechten Seitenwänden gezeichnet (Dach liegt vorn)
+  const houseFn = src.slice(src.indexOf("function drawHouse("), src.indexOf("/* ==== LAUFENDES SPIEL") > 0 ? src.indexOf("/* ==== LAUFENDES SPIEL") : src.indexOf("type Step ="));
+  const wandLinks = houseFn.indexOf('rect(c, 98, 118, 12');
+  const wandRechts = houseFn.indexOf('rect(c, HR, 118, 12');
+  const dach = houseFn.indexOf("drawRoof(c)");
+  assert.ok(wandLinks > 0 && wandRechts > 0 && dach > wandLinks && dach > wandRechts, "Dach liegt vor linker und rechter Seitenwand");
+  // 4) Schemel zentriert vor dem Klavier (Klavier 545..589 -> Mitte 567, Hocker 554..580 -> Mitte 567)
+  assert.ok(houseFn.includes("pianoStool(c, 554, FD)"), "Klavierschemel mittig bei x=554..580");
+  const klavierSt = G.STATIONS.find(s => s.id === "klavier");
+  assert.equal(klavierSt.x, 567, "Klavier-Station zentriert bei x=567");
+  assert.equal(klavierSt.face, 1);
+  // Luni spielt im normalen Haus mit dem Rücken zum Spieler (back: true)
+  const h = haus({
+    welt: "normal", alpha: 1, lf: 3, lx: 567, lface: 1, cur: null, pending: null, path: [],
+    activity: klavierSt, target: null, asleep: false, sleepPhase: null, lieDown: false,
+    bedEinstieg: null, bedPhase: null, shPhase: null, musikzimmer: null, kessel: { phase: "aus", t: 0 },
+    glassesOn: true, glassesInSink: false, glassesRest: null, glassesInHand: false, glassesFly: null,
+    outfit: "dressed", pyjama: null, elapsed: 1.5, hand: [0, 0], stations: G.STATIONS,
+    walkP: 0, blink: 0, scale: 1, dpr: 1, luniHaende: null, luniKopf: null,
+  });
+  const c = canvas();
+  h.drawLuniNow(c.ctx);
+  assert.equal(head(c), undefined, "Rückenansicht am Klavier: kein Gesicht zum Spieler");
+  assert.ok(c.shapes.some(s => s.color === "#191920"), "Haare am Hinterkopf sichtbar");
+});
+
 console.log(`\n${n} Hausgrafik-Tests bestanden.`);

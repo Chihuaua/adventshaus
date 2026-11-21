@@ -538,9 +538,9 @@ export const STATIONS: Station[] = [
     hits: [[644, 134, 36, 66]],
   },
   {
-    id: "klavier", label: "Klavier", floor: 3, x: 617, face: -1, state: "piano", expr: "happy", yOff: -10,
-    // Korpus und Klaviaturkasten beide exakt 545–589, Hocker 604–630.
-    hits: [[545, 142, 46, 58], [543, 164, 48, 24], [602, 176, 32, 26]],
+    id: "klavier", label: "Klavier", floor: 3, x: 567, face: 1, state: "piano", expr: "happy", yOff: 0,
+    // Korpus und Klaviaturkasten beide exakt 545–589 (Mitte 567), Hocker zentriert 554–580.
+    hits: [[545, 142, 46, 58], [543, 164, 48, 24], [552, 176, 30, 26]],
   },
   { id: "spielregal", label: "Spieleregal", floor: 3, x: 504, face: 1, state: "act", expr: "think", hits: [[486, 126, 38, 74]] },
   {
@@ -2333,16 +2333,35 @@ function drawExterior(c: C) {
 }
 
 function drawRoof(c: C) {
-  rect(c, 690, 8, 30, 92, "#8a4a3a");
-  for (let y = 16; y < 100; y += 8) rect(c, 690, y, 30, 1, "rgba(0,0,0,.25)");
+  poly(c, [[690, 8], [720, 8], [720, roofTop(720) + 4], [690, roofTop(690) + 4]], "#8a4a3a");
+  for (let y = 16; y <= roofTop(690); y += 8) rect(c, 690, y, 30, 1, "rgba(0,0,0,.25)");
   rect(c, 686, 4, 38, 8, "#eef4fa");
-  poly(c, [[86, 128], [86, roofTop(86)], [470, 22], [854, roofTop(854)], [854, 128]], "#2b3a48");
+  // Dachbalken als schräges Sparrenband – innen bleibt die Dachschräge frei,
+  // und außen überlappt das Dach sauber die linke und rechte Seitenwand.
+  poly(
+    c,
+    [
+      [86, 128],
+      [86, roofTop(86)],
+      [470, 22],
+      [854, roofTop(854)],
+      [854, 128],
+      [HR, 128],
+      [HR, atticCeil(HR)],
+      [470, atticCeil(470)],
+      [HL, atticCeil(HL)],
+      [HL, 128],
+    ],
+    "#2b3a48",
+  );
   for (let i = 0; i < 9; i++) {
     const t = i / 9;
     line(c, 90 + t * 380, roofTop(90 + t * 380) + 9, 98 + t * 380, roofTop(98 + t * 380) + 9, "rgba(255,255,255,.07)", 1);
   }
   poly(c, [[84, roofTop(84) + 1], [470, 19], [856, roofTop(856) + 1], [856, 128], [470, 28], [84, 128]], "#f2f7fb");
-  rect(c, 98, 128, 744, 3, "rgba(0,0,0,.25)");
+  // Traufschatten nur an den beiden Seitenwänden (98..110 und 830..842)
+  rect(c, 98, 128, HL - 98, 3, "rgba(0,0,0,.25)");
+  rect(c, HR, 128, 842 - HR, 3, "rgba(0,0,0,.25)");
 }
 
 function partition(c: C, x: number, ceilY: number, F: number) {
@@ -2494,7 +2513,6 @@ function drawHouse(
   tee: { kanne: boolean; tasse: boolean; fill: number } = { kanne: true, tasse: true, fill: 0 },
 ) {
   drawExterior(c);
-  drawRoof(c);
 
   /* ---- Wände ---- */
   // Dachgeschoss (innerhalb der Dachschräge)
@@ -2552,11 +2570,13 @@ function drawHouse(
   // Hexenküche und rechtes Treppenhaus: Bruchstein, Pflaster, Einrichtung.
   if (gr?.kueche) drawHexenkuecheRaum(c);
 
-  /* ---- Außenwände ---- */
+  /* ---- Außenwände (hinter dem Dachüberstand) ---- */
   rect(c, 98, 118, 12, FE + SLAB - 118, "#4a3a33");
   rect(c, 98, 118, 2, FE + SLAB - 118, "rgba(255,255,255,.14)");
   rect(c, HR, 118, 12, FK + 14 - 118, "#4a3a33");
   rect(c, HR + 10, 118, 2, FK + 14 - 118, "rgba(255,255,255,.1)");
+  // Dach liegt vor der linken und rechten Seitenwand
+  drawRoof(c);
   // Türöffnung in der Keller-Außenwand (sonst massiv)
 
   rect(c, CEL_X0 - 12, FE + SLAB, 12, FK + 14 - FE - SLAB, CELLAR_WALL);
@@ -2577,15 +2597,9 @@ function drawHouse(
   if (gr?.kueche) drawEisenBruestung(c, OG_X1 - 12, FO, 12);
   else railing(c, OG_X1 - 12, FO, 12);
 
-  /* ---- Dachbalken ---- */
+  /* ---- Dachbalken (nur Gruselhaus-Raumstation) ---- */
   if (gr?.raumstation) {
-    // Raumstation: Stahlträger bis zur Trennwand, danach der alte Holzbalken
     drawSteelBeam(c, 278, 530, 88, 6);
-    rect(c, 530, 88, 132, 6, "#5a3d28");
-    rect(c, 530, 88, 132, 1.6, "rgba(255,255,255,.18)");
-  } else {
-    rect(c, 278, 88, 384, 6, "#5a3d28");
-    rect(c, 278, 88, 384, 1.6, "rgba(255,255,255,.18)");
   }
 
   /* ---- Fenster ---- */
@@ -2678,13 +2692,12 @@ function drawHouse(
       index: 1,
       item: golOnShelf ? (cc, bx, by, bw, bh) => golCartridge(cc, bx, by, bw, bh) : undefined,
     });
-    picture(c, 412, 96, 44, 26, "#ff6f61");
     picture(c, 276, 108, 22, 30, "#35d6c0");
   }
-  // Das normale Klavier bleibt unveraendert; das Musikzimmer zeichnet sein eigenes.
+  // Das normale Klavier mit zentriertem Hocker davor (Mitte x = 567); das Musikzimmer zeichnet sein eigenes.
   if (!gr) {
     piano(c, 545, FD);
-    pianoStool(c, 604, FD);
+    pianoStool(c, 554, FD);
   }
   saxStand(c, 646, FD);
   // Lautsprecher und Plattenspieler werden dynamisch über draw() gezeichnet,
@@ -6033,10 +6046,15 @@ export class House {
     // Auch der animierte Ofen steht hinter Luni, nicht vor ihrem Laufweg.
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) this.drawHexenofen(ctx);
     this.drawSargPass(ctx, false);
-    // Osterei: der Datenkoffer steht hinter Luni, nicht vor ihrem Laufweg.
-    this.drawKoffer(ctx);
-    if (this.bettRendered) drawBedFront(ctx, 282, FO);
-    this.drawLuniLayered(ctx);
+  // Osterei: der Datenkoffer steht hinter Luni, nicht vor ihrem Laufweg.
+  this.drawKoffer(ctx);
+  if (this.bettRendered) drawBedFront(ctx, 282, FO);
+  this.drawLuniLayered(ctx);
+  // Sitzt Luni im normalen Haus / Weihnachtshaus mit dem Rücken zum Spieler am Klavier,
+  // steht der Hocker vor ihrem Gesäß und ihren Beinen.
+  if (!this.musikzimmer && this.lf === 3 && !this.cur && this.activity?.id === "klavier") {
+    pianoStool(ctx, 554, FD);
+  }
     if (!this.gruselSarg) this.drawBedToss(ctx);
     // Die abgelegte Brille liegt vor Bett und Decke – sie wird nie von der
     // Bettdecke verdeckt und „klebt“ dann scheinbar an ihr.
@@ -9744,6 +9762,18 @@ export class House {
       });
       saxHand = targets[0];
       saxHand2 = targets[1];
+    } else if (!this.musikzimmer && this.lf === 3 && !a && this.activity?.id === "klavier") {
+      // Normales Haus & Weihnachtshaus: zentriert auf dem Schemel vor dem Klavier,
+      // mit dem Rücken zum Spieler und den Händen auf den Tasten (550–584, Mitte 567).
+      pianoPose = 1;
+      state = "piano";
+      expr = "happy";
+      back = true;
+      face = 1;
+      yOff = 0;
+      const hands = klavierHaende(this.elapsed);
+      saxHand = [567 + hands[0].x * 0.5, 169 + hands[0].press * 0.7];
+      saxHand2 = [567 + hands[1].x * 0.5, 169 + hands[1].press * 0.7];
     } else if (this.pianoEscape && this.lf === 3 && !a) {
       state = this.pianoEscapeMoving ? "walk" : "idle";
       expr = "surprised";
