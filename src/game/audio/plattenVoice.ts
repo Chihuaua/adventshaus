@@ -222,6 +222,8 @@ function renderDrum(ctx: BaseAudioContext, pitch: number): AudioBuffer {
 
 type Voice = { source: AudioBufferSourceNode; nodes: AudioNode[] };
 
+import { MUSIK_PEGEL } from "./pegel";
+
 const INST_GAIN: readonly number[] = [0.11, 0.36, 0.19, 0.23, 0.36];
 
 /**
@@ -243,7 +245,7 @@ export class PlattenMusic {
 
   constructor(private readonly ctx: AudioContext, master: AudioNode) {
     this.output = ctx.createGain();
-    this.output.gain.value = 0.68;
+    this.output.gain.value = MUSIK_PEGEL.platten;
     this.warmth = ctx.createBiquadFilter();
     this.warmth.type = "lowpass";
     this.warmth.frequency.value = 6800;

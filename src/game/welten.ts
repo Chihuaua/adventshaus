@@ -17,6 +17,7 @@
    ======================================================================= */
 
 import { loadJson, saveJson } from "./storage";
+import type { TVStand } from "./tv";
 
 export type WeltId = "normal" | "traum" | "gruesel" | "weihnacht";
 
@@ -82,6 +83,10 @@ export interface HausSnapshot {
   ashButts?: number;
   bucketButts?: number;
   lighterOnTable?: boolean;
+  /** Kerzen auf dem Klavier: brennen dauerhaft, Luni schaltet sie um. */
+  kerzenAn?: boolean;
+  /** Senderwahl und Lautstaerke je Fernseher und Hauswelt. */
+  tv?: TVStand;
   /** Positionen von Odin und Apollo im normalen Haus. */
   hunde?: {
     odin?: { x: number; floor: 0 | 1 | 2; face: 1 | -1 };

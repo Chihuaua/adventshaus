@@ -47,6 +47,12 @@ import { sfx } from "./audio";
 import { SaxophonMusic } from "./audio/saxophonVoice";
 import { SAX_DURATION_SECONDS } from "./audio/saxophonNotes";
 import { PlattenMusic, plattenBassPulse } from "./audio/plattenVoice";
+import { KlavierMusik, klavierHaendeAt } from "./audio/klavierVoice";
+import { TVKlang } from "./audio/tvVoice";
+import {
+  drawFernbedienung, leseTVStand, neuerTVStand, tvFernTreffer, tvKanaele, tvNaechsterKanal, TV_FERN_STATIONS,
+  type TVBefehl, type TVId, type TVInhalt, type TVKanal, type TVStand,
+} from "./tv";
 import { PLATTEN_DURATION_SECONDS } from "./audio/plattenNotes";
 import { FroschMusic, froschMundOffen } from "./audio/froschVoice";
 import { FROSCH_DURATION_SECONDS } from "./audio/froschNotes";
@@ -194,7 +200,9 @@ const SAX_SCALE = 0.68 * LUNI_SCALE;
 /** Mundstück-Anker, wenn das Instrument auf dem Stativ steht. Das größere
  *  Instrument steht etwas höher, damit die untere Hand es am Stativ noch
  *  erreicht (Armlänge). */
-const SAX_STAND_X = 652;
+const SAX_STAND_X = 618;
+/** Mikrofonstaender und Gesangsplatz; Saxophon links der Mitte des freien Abstands. */
+const MIC_STAND_X = 652;
 const SAX_STAND_Y = FLOOR_Y[3] - 40;
 /** Mundstück sitzt so viele Einheiten vor der Körpermitte am Mund. */
 const SAX_MOUTH_DX = 1.2;
@@ -534,13 +542,21 @@ export const STATIONS: Station[] = [
     hits: [[294, 170, 60, 30], [404, 134, 66, 66]],
   },
   {
-    id: "saxophon", label: "Saxophon", floor: 3, x: 653, face: -1, state: "sax", expr: "happy",
-    hits: [[644, 134, 36, 66]],
+    id: "saxophon", label: "Saxophon", floor: 3, x: SAX_STAND_X + 1, face: -1, state: "sax", expr: "happy",
+    hits: [[SAX_STAND_X - 8, 134, 28, 66]],
+  },
+  {
+    id: "mikrofon", label: "Mikrofon", floor: 3, x: MIC_STAND_X - 10, face: 1, state: "idle", expr: "happy",
+    hits: [[MIC_STAND_X - 12, 144, 24, 56]],
   },
   {
     id: "klavier", label: "Klavier", floor: 3, x: 567, face: 1, state: "piano", expr: "happy", yOff: 0,
     // Korpus und Klaviaturkasten beide exakt 545–589 (Mitte 567), Hocker zentriert 554–580.
     hits: [[545, 142, 46, 58], [543, 164, 48, 24], [552, 176, 30, 26]],
+  },
+  {
+    id: "kerzen", label: "Kerzen", floor: 3, x: 567, face: 1, state: "reachUp", expr: "focus",
+    hits: [[550, 112, 38, 26]],
   },
   { id: "spielregal", label: "Spieleregal", floor: 3, x: 504, face: 1, state: "act", expr: "think", hits: [[486, 126, 38, 74]] },
   {
@@ -1465,12 +1481,12 @@ function beanbag(c: C, x: number, F: number) {
  */
 function piano(c: C, x: number, F: number) {
   // Korpus und Deckel
-  rrect(c, x, F - 56, 44, 56, 3, "#2a1f1b");
-  rect(c, x - 2, F - 58, 48, 4, "#3a2a24");
-  rect(c, x - 2, F - 58, 48, 1.3, "rgba(255,255,255,.12)");
+  rrect(c, x, F - 56, 44, 56, 3, "#63483a");
+  rect(c, x - 2, F - 58, 48, 4, "#775645");
+  rect(c, x - 2, F - 58, 48, 1.3, "rgba(255,255,255,.20)");
 
   // Notenpult mit aufgelegtem Notenblatt, mittig auf dem 44 Einheiten breiten Korpus (Mitte x+22)
-  rrect(c, x + 9, F - 47, 26, 15, 2, "#241a16");
+  rrect(c, x + 9, F - 47, 26, 15, 2, "#4b3628");
   c.fillStyle = "#efe6cf";
   c.fillRect(x + 11, F - 45, 22, 11);
   c.strokeStyle = "rgba(80,58,34,.45)";
@@ -1483,8 +1499,8 @@ function piano(c: C, x: number, F: number) {
   const kw = 42;
   const kh = 7;
   // Klaviaturkasten, an den Korpus angesetzt
-  rect(c, kx, ky - 2, kw + 2, kh + 5, "#221812");
-  rect(c, kx, ky - 2, kw + 2, 1, "rgba(255,255,255,.14)");
+  rect(c, kx, ky - 2, kw + 2, kh + 5, "#4d382b");
+  rect(c, kx, ky - 2, kw + 2, 1, "rgba(255,255,255,.22)");
   // Die Tastenfläche sitzt exakt mittig vor dem 44 Einheiten breiten Korpus.
   const tw = 34;
   const tx = kx + (kw + 2 - tw) / 2;
@@ -1499,10 +1515,10 @@ function piano(c: C, x: number, F: number) {
     rect(c, tx + (i + 1) * ww - 0.7, ky, 1.4, kh * 0.6, "#141110");
   }
   // vordere Leiste und Wangen links/rechts
-  rect(c, tx - 2, ky + kh, tw + 4, 2.6, "#3a2a24");
-  rect(c, tx - 2, ky + kh, tw + 4, 0.8, "rgba(255,255,255,.1)");
-  rect(c, tx - 2.4, ky - 2, 2.4, kh + 5, "#2f221b");
-  rect(c, tx + tw, ky - 2, 2.4, kh + 5, "#2f221b");
+  rect(c, tx - 2, ky + kh, tw + 4, 2.6, "#7a5a48");
+  rect(c, tx - 2, ky + kh, tw + 4, 0.8, "rgba(255,255,255,.18)");
+  rect(c, tx - 2.4, ky - 2, 2.4, kh + 5, "#5a4133");
+  rect(c, tx + tw, ky - 2, 2.4, kh + 5, "#5a4133");
   c.fillStyle = "#d9a83c";
   c.fillRect(kx + 0.6, ky + kh + 0.7, 1.3, 1.1);
   c.fillRect(kx + kw + 2 - 0.6 - 1.3, ky + kh + 0.7, 1.3, 1.1);
@@ -1520,13 +1536,217 @@ function piano(c: C, x: number, F: number) {
  * Klavierhocker: Sitzfläche mittig unter Lunis Sitzplatz (x=617),
  * vier schmale, leicht nach außen gestellte Beine.
  */
+/**
+ * Höhe der Sitzfläche des Klavierschemels (Oberkante über dem Boden). In der
+ * Sitzpose liegt Lunis Hüfte 10 über dem Boden; sie sitzt also auf der Fläche.
+ */
+export const SCHEMEL_HOEHE = 9;
+/** Dicke der Sitzfläche. */
+const SCHEMEL_DICKE = 4.5;
+/** Der Schemel ist 18 breit; links bündig bei x=558 liegt er mittig vor dem Klavier (Mitte 567). */
+export const SCHEMEL_X = 558;
+
+/** Klavier-Ausklang in Sekunden: Klang wird leiser, dann Nachklang, Aufstehen, Drehen, Verbeugung. */
+const KLAVIER_AUSKLINGEN = 4;
+const KLAVIER_NACHKLANG = 1.2;
+const KLAVIER_AUFSTEHEN = 0.9;
+const KLAVIER_DREHEN = 0.6;
+const KLAVIER_VERBEUGUNG = 1.8;
+
+/** Niedriger Klavierschemel, auf dem Luni beim Spielen wirklich sitzt. */
 function pianoStool(c: C, x: number, F: number) {
-  rrect(c, x, F - 22, 26, 6, 3, "#6b3f2a");
-  rect(c, x + 2, F - 17, 22, 1.1, "rgba(217,168,60,.55)");
-  line(c, x + 4, F - 16, x + 2, F, "#4a2a1c", 1.6);
-  line(c, x + 21, F - 16, x + 23, F, "#4a2a1c", 1.6);
-  line(c, x + 6, F - 16, x + 5, F, "#4a2a1c", 1.2);
-  line(c, x + 19, F - 16, x + 20, F, "#4a2a1c", 1.2);
+  const oben = F - SCHEMEL_HOEHE; // Oberkante der Sitzfläche = Sitzhöhe
+  rrect(c, x, oben, 18, SCHEMEL_DICKE, 2, "#6b3f2a");
+  rect(c, x + 1.5, oben + 1, 15, 1, "rgba(217,168,60,.55)");
+  const beine = oben + SCHEMEL_DICKE - 0.5;
+  line(c, x + 2.5, beine, x + 1.5, F, "#4a2a1c", 1.5);
+  line(c, x + 15.5, beine, x + 16.5, F, "#4a2a1c", 1.5);
+  line(c, x + 6.5, beine, x + 6, F, "#4a2a1c", 1.1);
+  line(c, x + 11.5, beine, x + 12, F, "#4a2a1c", 1.1);
+}
+
+/** Lage der drei Kerzen auf dem Klavierdeckel (relativ zur Klaviermitte). */
+const KLAVIER_KERZEN = [-11, 0, 11] as const;
+
+/**
+ * Kleiner Weihnachtsbogen aus Tannengrün auf dem Klavierdeckel, mit drei
+ * Kerzen. `t` treibt das ruhige Flackern (kein Blinken), `stark` 0..1 dämpft
+ * es beim Ausklingen. Reine Canvas-Primitive, keine Bild- oder Fontdatei.
+ */
+export function pianoBogen(c: C, x: number, F: number, t: number, stark = 1, an = true) {
+  const mx = x + 22; // Mitte des 44 breiten Korpus
+  const y0 = F - 58; // Oberkante des Deckels
+  c.save();
+  // sanfter Bogen aus zwei gebogenen Zweigen
+  for (const sgn of [-1, 1] as const) {
+    c.strokeStyle = "#2f6b3c";
+    c.lineWidth = 3.2;
+    c.lineCap = "round";
+    c.beginPath();
+    c.moveTo(mx + sgn * 17, y0 - 0.5);
+    c.quadraticCurveTo(mx + sgn * 14, y0 - 9, mx + sgn * 4, y0 - 11.5);
+    c.stroke();
+    // Nadeln als kleine dunkle Striche entlang des Zweigs
+    c.strokeStyle = "#1f5230";
+    c.lineWidth = 0.9;
+    for (let i = 0; i < 7; i++) {
+      const q = i / 6;
+      const bx = (1 - q) * (1 - q) * (mx + sgn * 17) + 2 * (1 - q) * q * (mx + sgn * 14) + q * q * (mx + sgn * 4);
+      const by = (1 - q) * (1 - q) * (y0 - 0.5) + 2 * (1 - q) * q * (y0 - 9) + q * q * (y0 - 11.5);
+      c.beginPath();
+      c.moveTo(bx, by);
+      c.lineTo(bx + sgn * 0.6, by + 2.4);
+      c.stroke();
+    }
+  }
+  // kleine rote Beeren und ein Goldband in der Mitte
+  c.fillStyle = "#c9302f";
+  for (const [bx, by] of [[-12, -6.5], [-7, -9.6], [7, -9.6], [12, -6.5], [0, -12.4]] as const) {
+    c.beginPath();
+    c.arc(mx + bx, y0 + by, 1.1, 0, Math.PI * 2);
+    c.fill();
+  }
+  c.strokeStyle = "#e8c46a";
+  c.lineWidth = 1;
+  c.beginPath();
+  c.moveTo(mx - 15, y0 - 3.2);
+  c.quadraticCurveTo(mx, y0 - 7.5, mx + 15, y0 - 3.2);
+  c.stroke();
+
+  // drei Kerzen auf kleinen Haltern
+  KLAVIER_KERZEN.forEach((dx, i) => {
+    const kx = mx + dx;
+    const ky = y0 - (i === 1 ? 13 : 10.5);
+    c.fillStyle = "#d9a441";
+    c.fillRect(kx - 2.2, ky + 5.6, 4.4, 1.2);
+    c.fillStyle = "#f4ecd8";
+    c.fillRect(kx - 1.5, ky, 3, 6);
+    c.fillStyle = "rgba(120,90,50,.25)";
+    c.fillRect(kx + 0.7, ky, 0.8, 6);
+    // Docht
+    c.strokeStyle = "#2a211c";
+    c.lineWidth = 0.6;
+    c.beginPath();
+    c.moveTo(kx, ky);
+    c.lineTo(kx, ky - 1.2);
+    c.stroke();
+    if (!an) return; // ausgeschaltet: nur der Docht, keine Flamme
+    // Flamme: ruhig atmend, sie wird beim Ausklingen kleiner und kühler
+    const fl = 0.78 + 0.22 * Math.sin(t * 5.1 + i * 2.1) * Math.sin(t * 3.3 + i);
+    const h = (3.4 + 0.9 * fl) * (0.35 + 0.65 * stark);
+    const w = 1.5 * (0.5 + 0.5 * stark);
+    const g = c.createLinearGradient(kx, ky - 1.2 - h, kx, ky - 1.2);
+    g.addColorStop(0, `rgba(255,236,160,${0.95 * stark + 0.05})`);
+    g.addColorStop(0.55, `rgba(255,178,64,${0.95 * stark + 0.05})`);
+    g.addColorStop(1, `rgba(255,120,40,${0.6 * stark})`);
+    c.fillStyle = g;
+    c.beginPath();
+    c.moveTo(kx, ky - 1.2 - h);
+    c.quadraticCurveTo(kx + w, ky - 1.2 - h * 0.45, kx, ky - 1.1);
+    c.quadraticCurveTo(kx - w, ky - 1.2 - h * 0.45, kx, ky - 1.2 - h);
+    c.closePath();
+    c.fill();
+  });
+  c.restore();
+}
+
+/** Farbe des Kerzenlichts auf Luni (Silhouette, additiv). */
+const KERZEN_LICHT = "#ffb864";
+/** Das Kerzenlicht reicht nur bis zur Ellenbogenhöhe (28 über dem Boden), nicht tiefer. */
+const KERZEN_REICHWEITE = 28;
+
+/**
+ * Schein der drei Kerzen auf Flammen, Klavierfront und Wand. Dieser Teil wird
+ * VOR Luni gezeichnet, damit das warme Licht nicht als Schleier über ihrem
+ * Kopf liegt. Es reicht nur bis zur Ellenbogenhöhe.
+ */
+function kerzenSchein(c: C, x: number, F: number, stark: number) {
+  if (stark <= 0.01) return;
+  const mx = x + 22;
+  const y0 = F - 58;
+  const grenze = F - KERZEN_REICHWEITE;
+  c.save();
+  c.beginPath();
+  c.rect(0, 0, W, grenze);
+  c.clip();
+  c.globalCompositeOperation = "lighter";
+  // warmer Schein um die Flammen
+  for (const dx of KLAVIER_KERZEN) {
+    const cx = mx + dx;
+    const cy = y0 - 16;
+    const g = c.createRadialGradient(cx, cy, 1, cx, cy, 30);
+    g.addColorStop(0, `rgba(255,200,120,${0.22 * stark})`);
+    g.addColorStop(1, "rgba(255,170,80,0)");
+    c.fillStyle = g;
+    c.beginPath();
+    c.arc(cx, cy, 30, 0, Math.PI * 2);
+    c.fill();
+  }
+  // Klavierfront: warmer Verlauf von oben, nur bis zur Ellenbogenhöhe
+  const front = c.createLinearGradient(0, y0, 0, grenze);
+  front.addColorStop(0, `rgba(255,190,110,${0.26 * stark})`);
+  front.addColorStop(1, "rgba(255,170,80,0)");
+  c.fillStyle = front;
+  c.fillRect(545, y0, 44, grenze - y0);
+  c.restore();
+}
+
+/**
+ * Kerzenlicht der drei Kerzen. Es erhellt die Klavierfront und hebt Luni (wenn
+ * `da`) mit einer warmen Silhouette vom dunklen Klavier ab. Alles wird unterhalb
+ * der Ellenbogenhöhe abgeschnitten, damit das Licht nicht bis zum Boden geht.
+ */
+function drawKerzenlicht(
+  c: C,
+  stark: number,
+  puffer: HTMLCanvasElement,
+  luni: () => void,
+  da: boolean,
+) {
+  if (stark <= 0.01) return;
+  c.save();
+  c.beginPath();
+  c.rect(0, 0, W, FD - KERZEN_REICHWEITE);
+  c.clip();
+  if (da) {
+    // Luni als warme Silhouette: Form in den Puffer, mit Licht füllen, additiv darüber.
+    // Derselbe Pixelmassstab wie das Bild; sonst erscheint eine Miniatur im Himmel.
+    if (puffer.width !== c.canvas.width || puffer.height !== c.canvas.height) {
+      puffer.width = c.canvas.width;
+      puffer.height = c.canvas.height;
+    }
+    const pw = puffer.width;
+    const ph = puffer.height;
+    const k = pw / W;
+    const bc = puffer.getContext("2d");
+    if (bc) {
+      bc.setTransform(1, 0, 0, 1, 0, 0);
+      bc.globalCompositeOperation = "source-over";
+      bc.clearRect(0, 0, pw, ph);
+      bc.setTransform(k, 0, 0, k, 0, 0);
+      luni();
+      // Randlicht: die Form in Gerätepixeln versetzt nachzeichnen (wirkt als Kontur)
+      const v = Math.max(1, Math.round(0.5 * k)); // nur eine halbe Einheit: eine feine Kontur
+      c.save();
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.globalAlpha = 0.5 * stark;
+      for (const [dx, dy] of [[v, 0], [-v, 0], [0, -v], [0, v]] as const) c.drawImage(puffer, dx, dy);
+      c.restore();
+      // Form mit Kerzenlicht füllen; nur ein Hauch auf der Fläche, Farben bleiben erkennbar
+      bc.setTransform(1, 0, 0, 1, 0, 0);
+      bc.globalCompositeOperation = "source-in";
+      bc.fillStyle = KERZEN_LICHT;
+      bc.fillRect(0, 0, pw, ph);
+      bc.globalCompositeOperation = "source-over";
+      c.save();
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      // Nur ein Hauch auf der Fläche: die schwarzen Haare bleiben schwarz.
+      c.globalAlpha = 0.05 * stark;
+      c.drawImage(puffer, 0, 0);
+      c.restore();
+    }
+  }
+  c.restore();
 }
 
 function lowboardTV(c: C, x: number, F: number) {
@@ -2134,6 +2354,14 @@ function saxStand(c: C, x: number, F: number) {
   line(c, x - 6, F - 14, x + 6, F - 14, "#2a2420", 1.8);
 }
 
+/** Mikrofonstaender: Stange, Fuss und Mikrofonkopf am Gesangsplatz. */
+function micStand(c: C, x: number, F: number) {
+  line(c, x, F, x, F - 44, "#2a2420", 2);
+  line(c, x - 7, F - 1, x + 7, F - 1, "#2a2420", 2.2);
+  rrect(c, x - 2.6, F - 52, 5.2, 9, 2.4, "#3a3430");
+  rect(c, x - 2.6, F - 50, 5.2, 1, "rgba(255,255,255,.22)");
+}
+
 /** Zigarette in der Hand, mit glimmender Spitze */
 function cigarette(c: C, x: number, y: number, face: 1 | -1, burn: number, frac = 1, winkel = -0.42) {
   c.save();
@@ -2358,10 +2586,178 @@ function drawRoof(c: C) {
     const t = i / 9;
     line(c, 90 + t * 380, roofTop(90 + t * 380) + 9, 98 + t * 380, roofTop(98 + t * 380) + 9, "rgba(255,255,255,.07)", 1);
   }
-  poly(c, [[84, roofTop(84) + 1], [470, 19], [856, roofTop(856) + 1], [856, 128], [470, 28], [84, 128]], "#f2f7fb");
+  schneedecke(c);
   // Traufschatten nur an den beiden Seitenwänden (98..110 und 830..842)
   rect(c, 98, 128, HL - 98, 3, "rgba(0,0,0,.25)");
   rect(c, HR, 128, 842 - HR, 3, "rgba(0,0,0,.25)");
+}
+
+/** Untere Kante der Schneeauflage (V-Form: Traufe links und rechts, First in der Mitte). */
+function dachKante(x: number): number {
+  return 128 - (1 - Math.abs(x - 470) / 386) * 100;
+}
+
+/** Breite, ruhige Schneepolster statt einer geraden, duennen Dachkante. */
+function schneeProfil(x: number): { oben: number; unten: number } {
+  const first = 22 + 0.25 * Math.sqrt((x - 470) ** 2 + 14 ** 2);
+  const polster = 13 + 3 * Math.sin(x / 27) + 1.5 * Math.sin(x / 11 + 0.7);
+  return {
+    oben: first - polster,
+    unten: dachKante(x) + 1.2 + 1.25 * Math.sin(x / 11) + 0.65 * Math.sin(x / 5 + 2),
+  };
+}
+
+/** Glatte Kurve durch die Stuetzpunkte, ohne Zacken oder rueckwaerts laufende Segmente. */
+function schneeKurve(c: C, punkte: Pt[]) {
+  for (let i = 0; i < punkte.length - 1; i++) {
+    const a = punkte[Math.max(0, i - 1)], b = punkte[i];
+    const d = punkte[i + 1], e = punkte[Math.min(punkte.length - 1, i + 2)];
+    c.bezierCurveTo(
+      b[0] + (d[0] - a[0]) / 6, b[1] + (d[1] - a[1]) / 6,
+      d[0] - (e[0] - b[0]) / 6, d[1] - (e[1] - b[1]) / 6,
+      d[0], d[1],
+    );
+  }
+}
+
+/** Flauschige Schneedecke mit runden Polstern, blauen Unterschatten und Eiszapfen. */
+export function schneedecke(c: C) {
+  const rand = (i: number) => hash(i * 13 + 7);
+  const oben: Pt[] = [], unten: Pt[] = [];
+  for (let x = 84; x <= 852; x += 8) {
+    const p = schneeProfil(x);
+    oben.push([x, p.oben]);
+    unten.push([x, p.unten]);
+  }
+  oben.push([856, schneeProfil(856).oben]);
+  unten.push([856, schneeProfil(856).unten]);
+  const ende = oben.length - 1;
+  c.save();
+  c.beginPath();
+  c.moveTo(...oben[0]);
+  schneeKurve(c, oben);
+  c.quadraticCurveTo(861, (oben[ende][1] + unten[ende][1]) / 2, ...unten[ende]);
+  schneeKurve(c, [...unten].reverse());
+  c.quadraticCurveTo(79, (oben[0][1] + unten[0][1]) / 2, ...oben[0]);
+  c.closePath();
+  const g = c.createLinearGradient(0, 6, 0, 140);
+  g.addColorStop(0, "#fffefa");
+  g.addColorStop(0.55, "#f2f7fb");
+  g.addColorStop(1, "#dce8f1");
+  c.fillStyle = g;
+  c.fill();
+  // Lichtsaum und blauer Unterschatten bleiben innerhalb der Schneeflaeche.
+  c.save();
+  c.clip();
+  c.strokeStyle = "rgba(146,173,196,.28)";
+  c.lineWidth = 4.5;
+  c.lineCap = "round";
+  c.beginPath();
+  c.moveTo(...unten[0]);
+  schneeKurve(c, unten);
+  c.stroke();
+  const licht: Pt[] = oben.map(([x, y]) => [x, y + 1.8]);
+  c.strokeStyle = "rgba(255,255,255,.72)";
+  c.lineWidth = 3.4;
+  c.beginPath();
+  c.moveTo(...licht[0]);
+  schneeKurve(c, licht);
+  c.stroke();
+  c.restore();
+  // Eiszapfen: verschiedene Dicke und Länge, von der Schneekante nach unten
+  for (let x = 90; x < 852; x += 6 + Math.round(rand(x) * 5)) {
+    const r = rand(x * 2 + 1);
+    if (r < 0.34) continue;
+    const breite = 1.1 + r * 2.2;
+    const laenge = 2.5 + rand(x * 5 + 3) * 13;
+    const y0 = schneeProfil(x).unten - 0.5;
+    const g2 = c.createLinearGradient(x - breite, y0, x + breite, y0 + laenge);
+    g2.addColorStop(0, "#f2f9fe");
+    g2.addColorStop(0.5, "#d5e7f4");
+    g2.addColorStop(1, "#a9c6dc");
+    c.fillStyle = g2;
+    c.beginPath();
+    c.moveTo(x - breite / 2, y0);
+    c.lineTo(x + breite / 2, y0);
+    c.quadraticCurveTo(x + breite * 0.22, y0 + laenge * 0.55, x, y0 + laenge);
+    c.quadraticCurveTo(x - breite * 0.22, y0 + laenge * 0.55, x - breite / 2, y0);
+    c.closePath();
+    c.fill();
+    c.strokeStyle = "rgba(255,255,255,.75)";
+    c.lineWidth = 0.45;
+    c.beginPath();
+    c.moveTo(x - breite * 0.22, y0 + 0.6);
+    c.quadraticCurveTo(x - breite * 0.1, y0 + laenge * 0.5, x - 0.15, y0 + laenge * 0.85);
+    c.stroke();
+    if (rand(x * 11) > 0.62) {
+      c.fillStyle = "rgba(214,236,250,.9)";
+      c.beginPath();
+      c.arc(x, y0 + laenge + 1.1, 0.75, 0, Math.PI * 2);
+      c.fill();
+    }
+  }
+  c.restore();
+}
+
+/**
+ * Weihnachtliche Tapete für das Musikzimmer (Dachgeschoss): dunkles Grün mit
+ * cremefarbenem Rautenmuster, kleinen Tännchen und goldenen Punkten, unten eine
+ * Bordüre. Reine Canvas-Primitive, keine Bilddatei.
+ */
+export function weihnachtsTapete(c: C, x0: number, x1: number, yTop: number, yBot: number, rot = false) {
+  const grund = rot ? "#56323b" : "#2c4638";
+  const creme = "rgba(240,232,205,.28)";
+  const gold = "rgba(240,203,112,.5)";
+  rect(c, x0, yTop, x1 - x0, yBot - yTop, grund);
+  c.globalAlpha = 0.05;
+  for (let x = x0 + 8; x < x1; x += 22) rect(c, x, yTop, 9, yBot - yTop, "#ffffff");
+  c.globalAlpha = 1;
+  // Rautenmuster mit Tännchen
+  const breite = 28, hoehe = 32;
+  let reihe = 0;
+  for (let y = yTop + 12; y < yBot - 8; y += hoehe, reihe++) {
+    const versatz = (reihe % 2) * (breite / 2);
+    for (let x = x0 + 10 + versatz; x < x1 - 6; x += breite) {
+      c.strokeStyle = creme;
+      c.lineWidth = 0.55;
+      c.beginPath();
+      c.moveTo(x, y - hoehe * 0.4);
+      c.lineTo(x + breite * 0.4, y);
+      c.lineTo(x, y + hoehe * 0.4);
+      c.lineTo(x - breite * 0.4, y);
+      c.closePath();
+      c.stroke();
+      c.fillStyle = "rgba(238,230,203,.34)";
+      const tx = x, ty = y + 3.4;
+      c.beginPath();
+      c.moveTo(tx, ty - 5.2);
+      c.lineTo(tx - 2.5, ty - 1.2);
+      c.lineTo(tx + 2.5, ty - 1.2);
+      c.closePath();
+      c.fill();
+      c.beginPath();
+      c.moveTo(tx, ty - 2.6);
+      c.lineTo(tx - 3.4, ty + 1.6);
+      c.lineTo(tx + 3.4, ty + 1.6);
+      c.closePath();
+      c.fill();
+      c.fillStyle = gold;
+      c.beginPath();
+      c.arc(tx, ty - 5.6, 0.75, 0, Math.PI * 2);
+      c.fill();
+    }
+  }
+  // Bordüre oben und unten
+  rect(c, x0, yTop, x1 - x0, 2.4, "rgba(240,203,112,.45)");
+  const bord = 26;
+  rect(c, x0, yBot - bord, x1 - x0, bord, rot ? "#40232c" : "#22382d");
+  rect(c, x0, yBot - bord, x1 - x0, 1.4, "rgba(240,203,112,.45)");
+  for (let x = x0 + 10; x < x1 - 6; x += 22) {
+    c.fillStyle = "rgba(240,203,112,.35)";
+    c.beginPath();
+    c.arc(x, yBot - bord / 2, 1.1, 0, Math.PI * 2);
+    c.fill();
+  }
 }
 
 function partition(c: C, x: number, ceilY: number, F: number) {
@@ -2511,6 +2907,7 @@ function drawHouse(
   bettBelegt = false,
   /** Gesundheitstee: was Luni gerade in der Hand hält, fehlt auf der Zeile */
   tee: { kanne: boolean; tasse: boolean; fill: number } = { kanne: true, tasse: true, fill: 0 },
+  weihnacht = false,
 ) {
   drawExterior(c);
 
@@ -2537,8 +2934,10 @@ function drawHouse(
   c.closePath();
   c.clip();
   if (gr?.raumstation) drawMetalWall(c, DG_X0, 530, 30, FD, atticCeil);
+  else if (weihnacht && !gr) weihnachtsTapete(c, DG_X0, 530, 30, FD, true);
   else wallBand(c, DG_X0, 530, 30, FD, "#4a4f92", "#383d7c", 30);
-  wallBand(c, 530, HR, 30, FD, "#9a5750", "#7e433e", 30);
+  if (weihnacht && !gr) weihnachtsTapete(c, 530, HR, 30, FD);
+  else wallBand(c, 530, HR, 30, FD, "#9a5750", "#7e433e", 30);
   c.restore();
 
   // 1. Stock
@@ -2697,9 +3096,9 @@ function drawHouse(
   // Das normale Klavier mit zentriertem Hocker davor (Mitte x = 567); das Musikzimmer zeichnet sein eigenes.
   if (!gr) {
     piano(c, 545, FD);
-    pianoStool(c, 554, FD);
+    pianoStool(c, SCHEMEL_X, FD);
   }
-  saxStand(c, 646, FD);
+  saxStand(c, SAX_STAND_X, FD);
   // Lautsprecher und Plattenspieler werden dynamisch über draw() gezeichnet,
   // damit sich Platte, Tonarm und Tieftöner bewegen, ohne das Hintergrundbild
   // in jedem Frame neu aufbauen zu müssen.
@@ -2963,6 +3362,7 @@ export class House {
   private doorOpen = 0;
   private doorWant = false;
   private hover: Station | null = null;
+  private stationFokus: Station | null = null;
 
   /* ------------------------------ Hauswelt ------------------------------- */
   private welt: "normal" | "gruesel" | "weihnacht" = "normal";
@@ -3098,6 +3498,11 @@ export class House {
   private tvZoom: "tv_e" | "tv_d" | null = null;
   /** Manuelles Ein-/Ausschalten am großen TV (null = folgt Lunis Nutzung). */
   private tvManual: Record<"tv_e" | "tv_d", boolean | null> = { tv_e: null, tv_d: null };
+  private tvStand: TVStand | null = null;
+  private tvKlang: Partial<Record<TVId, TVKlang>> = {};
+  private tvFernHover: TVBefehl | null = null;
+  private tvFernFokus: TVBefehl | null = null;
+  private get tvDaten(): TVStand { return this.tvStand ??= neuerTVStand(); }
   private get golFullscreen() {
     return this.tvZoom === "tv_d" && this.tvContent("tv_d") === "gol";
   }
@@ -3226,6 +3631,21 @@ export class House {
   private plattenEndFrom = 1;
   private plattenBass = 0;
   private plattenMusic: PlattenMusic | null = null;
+  /** Klavierlied („ssm“): Luni spielt es, solange sie am Klavier sitzt. */
+  private klavierMusik: KlavierMusik | null = null;
+  private klavierSitzt = false;
+  private klavierSpielt = false;
+  private klavierFertig = false;
+  private klavierPausiert: number | null = null;
+  private klavierVorbereitung: Promise<void> | null = null;
+  /** Nach dem Lied: 0 = spielt noch, dann Ausklingen, Aufstehen, Blick zum Spieler, Verbeugung, Ende. */
+  private klavierOutro: "klang" | "aufstehen" | "drehen" | "verbeugung" | null = null;
+  private klavierOutroT = 0;
+  /** Kerzen auf dem Klavier: brennen dauerhaft; Luni schaltet sie an der Station um. */
+  private kerzenAn = true;
+  private kerzenLauft = false;
+  private kerzenGeschaltet = false;
+  private kerzenT = 0;
   private plattenReady = false;
   private plattenPreparing = false;
   private plattenStarted = false;
@@ -3381,7 +3801,7 @@ export class House {
       if (GRUSELRAEUME.badezimmer) st = badezimmerStationen(st);
       // Ofen heißt im Gruselhaus Ofen; der Kessel ist eine eigene Station.
       st = st
-        .filter((x) => x.id !== "kessel")
+        .filter((x) => x.id !== "kessel" && x.id !== "kerzen" && x.id !== "mikrofon")
         .map((x) => (x.id === "herd" ? { ...x, label: "Ofen" } : x));
       st = [...st, baseKessel()];
       if (GRUSELRAEUME.kueche) st = kuechenStationen(st);
@@ -3421,6 +3841,7 @@ export class House {
   /* ------------------------------ Lebenszyklus --------------------------- */
 
   mount() {
+    this.canvas.tabIndex = 0;
     this.ro = new ResizeObserver(() => this.resize());
     if (this.canvas.parentElement) this.ro.observe(this.canvas.parentElement);
     window.addEventListener("resize", this.resize);
@@ -3444,8 +3865,16 @@ export class House {
     this.saxMusic?.dispose();
     this.saxMusic = null;
     this.saxReady = false;
+    this.stopSing();
+    this.singMusic?.dispose();
+    this.singMusic = null;
+    this.singReady = false;
     this.stopPlatten();
     this.plattenMusic?.dispose();
+    this.klavierMusik?.dispose();
+    this.klavierMusik = null;
+    this.tvKlang.tv_e?.dispose();
+    this.tvKlang.tv_d?.dispose();
     this.plattenMusic = null;
     this.plattenReady = false;
     this.musikzimmer?.destroy();
@@ -3533,6 +3962,8 @@ export class House {
       ashButts: this.ashButts,
       bucketButts: this.bucketButts,
       lighterOnTable: this.lightAufTisch,
+      kerzenAn: this.kerzenAn,
+      tv: this.tvDaten,
       hunde: this.istNormalHaus ? this.hunde.snapshot() : undefined,
     };
   }
@@ -3575,6 +4006,8 @@ export class House {
     this.ashButts = typeof s.ashButts === "number" ? Math.max(0, Math.round(s.ashButts)) : 0;
     this.bucketButts = typeof s.bucketButts === "number" ? Math.max(0, Math.round(s.bucketButts)) : 0;
     this.lightAufTisch = s.lighterOnTable === true;
+    this.kerzenAn = s.kerzenAn !== false;
+    this.tvStand = leseTVStand(s.tv);
     if (this.istNormalHaus && s.hunde) this.hunde.wiederherstellen(s.hunde);
     const vi = s.vampir;
     this.vampirStil = typeof vi === "number" && vi >= 0 && vi < VAMPIR_OUTFITS.length ? vi : null;
@@ -3636,6 +4069,7 @@ export class House {
   }
 
   private onDown = (e: PointerEvent) => {
+    this.stationFokus = null;
     sfx.ensure();
     const [x, y] = this.toWorld(e);
     // UFO oben rechts: Overlay mit den Patch-Dateien der aktuellen Sitzung
@@ -3703,6 +4137,7 @@ export class House {
 
   private onMove = (e: PointerEvent) => {
     if (e.pointerType === "touch") return;
+    this.stationFokus = null;
     const [x, y] = this.toWorld(e);
     if (this.adventFullscreen) {
       this.hover = null;
@@ -3725,7 +4160,8 @@ export class House {
       const onCtrl = this.golFullscreen && !!golCtrlAt(x, y);
       const v = this.golFullscreen && this.golState ? golView(this.golState) : null;
       const onGrid = !!v && x >= v.x && x <= v.x + v.w && y >= v.y && y <= v.y + v.h;
-      this.canvas.style.cursor = inBox(back) || inBox(pwr) || onCtrl || onGrid ? "pointer" : "default";
+      this.tvFernHover = tvFernTreffer(x, y);
+      this.canvas.style.cursor = this.tvFernHover || inBox(back) || inBox(pwr) || onCtrl || onGrid ? "pointer" : "default";
       return;
     }
     this.ufoZeile = this.ufoOffen ? ufoZeileBei(x, y, PATCH_EINTRAEGE.length) : -1;
@@ -3746,6 +4182,7 @@ export class House {
 
   private onLeave = () => {
     this.hover = null;
+    this.tvFernHover = null;
     this.wetterHover = null;
     this.ufoHover = false;
     this.canvas.style.cursor = "default";
@@ -3759,6 +4196,7 @@ export class House {
   command(request: LuniCommand) {
     const id = typeof request === "string" ? request : request.id;
     const find = (k: string) => this.stations.find((s) => s.id === k) ?? null;
+    if (id === "mikrofon" && !this.istNormalHaus) return;
     if (id === "laufziel" && (this.bedPhase || this.sleepPhase)) return;
     if (id === "adventskalender" && !this.istNormalHaus) return;
     if ((id === "odin" || id === "apollo") && !this.istNormalHaus) return;
@@ -3806,7 +4244,7 @@ export class House {
       }
       this.pianoEscape = false;
       this.pianoEscapeMoving = false;
-      if (["saxophon", "platten", "gitarre"].includes(id)) this.musikzimmer.otherMusicRequested();
+      if (["saxophon", "platten", "mikrofon"].includes(id)) this.musikzimmer.otherMusicRequested();
     }
 
     // Läuft „Paulchen“, beendet jede andere Anweisung die Musik sofort.
@@ -3821,13 +4259,13 @@ export class House {
     }
     // Sie singt gerade: jede andere Anweisung beendet den Gesang sauber.
     if (this.singPhase) {
-      if (id === "gitarre") return;
+      if (id === "mikrofon") return;
       this.stopSing();
     }
     // Schon beim Klick die Tonpuffer berechnen: dann ist die Musik am Mund bereit.
     if (id === "saxophon") this.prepareSax();
     if (id === "platten") this.preparePlatten();
-    if (id === "gitarre") this.prepareSing();
+    if (id === "mikrofon") this.prepareSing();
 
     // Duschen: hinter dem Vorhang wird nichts unterbrochen. Auf dem Weg
     // dorthin bricht ein anderer Wunsch den Ablauf ab.
@@ -4518,6 +4956,7 @@ export class House {
 
   private update(dt: number, roomDt = dt, live = false) {
     this.elapsed += dt;
+    this.updateTVAudio();
     this.updateHarvest(dt);
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) {
       this.kessel.update(dt);
@@ -4628,7 +5067,7 @@ export class House {
     if (!music) return false;
     music.setPaused(document.visibilityState === "hidden");
     this.pianoRefusal = Math.max(0, this.pianoRefusal - dt);
-    const musical = (s: Station | null) => !!s && ["saxophon", "platten", "gitarre"].includes(s.id);
+    const musical = (s: Station | null) => !!s && ["saxophon", "platten", "mikrofon"].includes(s.id);
     const approachingPiano = this.pending?.id === "klavier" || (this.target?.id === "klavier" && this.activity?.id !== "klavier");
     const busy = musical(this.activity) || musical(this.target) || musical(this.pending) || !!this.saxPhase || !!this.plattenPhase || this.asleep || approachingPiano;
     const appearing = music.update(roomDt, busy, live);
@@ -5289,6 +5728,26 @@ export class House {
       }
     }
 
+    if (act?.id === "kerzen") {
+      // Luni streckt sich zu den Kerzen, schaltet sie um und tritt zurück.
+      if (!this.kerzenLauft) {
+        this.kerzenLauft = true;
+        this.kerzenT = 0;
+        this.kerzenGeschaltet = false;
+      }
+      this.kerzenT += dt;
+      if (!this.kerzenGeschaltet && this.kerzenT >= 0.9) {
+        this.kerzenGeschaltet = true;
+        this.kerzenAn = !this.kerzenAn;
+        sfx.ui();
+      }
+      if (this.kerzenT >= 1.8) {
+        this.kerzenLauft = false;
+        this.kerzenT = 0;
+        this.finishActivity();
+      }
+      return;
+    }
     if (act?.id === "tabak") {
       // Eine einzelne Zigarette vom Tisch mitnehmen (Schachtel ist leer)
       if (this.takeMove) {
@@ -5404,6 +5863,7 @@ export class House {
     this.updateSax(dt);
     this.updateSing(dt);
     this.updatePlatten(dt);
+    this.updateKlavier(dt);
     if (this.welt === "gruesel") this.raumFx.update(dt);
     // Alle paar Sekunden sichern, damit ein Absturz nichts kostet.
     this.saveT += dt;
@@ -5481,6 +5941,7 @@ export class House {
   /** Aktuelle Aktion beenden und den nächsten Befehl der Kette starten */
   private finishActivity() {
     this.activity = null;
+    this.kerzenLauft = false;
     this.target = null;
     this.smokeRequested = false;
     this.handy = null;
@@ -5649,10 +6110,8 @@ export class House {
         if (this.target.id === "platten" && !this.plattenPhase) {
           this.startPlatten();
         }
-        // An der Gitarre angekommen: das Froschlied singen.
-        if (this.target.id === "gitarre" && !this.singPhase) {
-          this.startSing();
-        }
+        // Erst am Mikrofon singen, nicht schon auf dem Weg dorthin.
+        if (this.target.id === "mikrofon" && !this.singPhase) this.startSing();
       }
       return;
     }
@@ -5821,6 +6280,7 @@ export class House {
       this.welt === "gruesel" ? GRUSELRAEUME : null,
       this.bettRendered,
       { kanne: !this.teaKanneWeg, tasse: !this.teaTasseWeg, fill: this.teaFuellung },
+      this.welt === "weihnacht",
     );
     // Raum 02 wird als eigene Canvas-Szene über die frühere Musikzimmerfläche
     // gemalt. Der Bereich beginnt hinter der Trennwand; kein Nachbarraum ändert sich.
@@ -5964,6 +6424,13 @@ export class House {
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(this.bg, 0, 0, W, H);
 
+    // Weihnachtsbogen mit Kerzen auf dem Klavier (normales Haus & Weihnachtshaus).
+    // Der Schein der Kerzen liegt VOR Luni, das Licht auf Luni kommt danach.
+    this.drawKlavierBogen(ctx);
+    if (this.istNormalHaus && this.welt !== "gruesel" && this.kerzenAn) {
+      kerzenSchein(ctx, 545, FD, this.klavierOutro === "klang" ? 0.55 + 0.45 * (1 - this.klavierOutroT / KLAVIER_AUSKLINGEN) : 1);
+    }
+
     // Wetter früh, damit Fenstermaske, Truhe und Luni danach sauber darüber liegen.
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) {
       // Der Wetterpfad zeichnet am Schornstein durch die Even-Odd-Regel zwei
@@ -6052,8 +6519,9 @@ export class House {
   this.drawLuniLayered(ctx);
   // Sitzt Luni im normalen Haus / Weihnachtshaus mit dem Rücken zum Spieler am Klavier,
   // steht der Hocker vor ihrem Gesäß und ihren Beinen.
-  if (!this.musikzimmer && this.lf === 3 && !this.cur && this.activity?.id === "klavier") {
-    pianoStool(ctx, 554, FD);
+  if (!this.musikzimmer && this.lf === 3 && !this.cur && this.activity?.id === "klavier"
+    && (!this.klavierOutro || this.klavierOutro === "klang" || this.klavierOutro === "aufstehen")) {
+    pianoStool(ctx, SCHEMEL_X, FD);
   }
     if (!this.gruselSarg) this.drawBedToss(ctx);
     // Die abgelegte Brille liegt vor Bett und Decke – sie wird nie von der
@@ -6078,7 +6546,17 @@ export class House {
     // Abzug durch die Gartentür: Schwaden ziehen sichtbar nach draußen
     this.drawVentSmoke(ctx);
 
-    if (this.night > 0.03) {
+    // Kerzenlicht auf Luni: hält ihre Silhouette warm, damit sie sich vom Klavier abhebt.
+  if (this.istNormalHaus && this.welt !== "gruesel" && this.kerzenAn && this.lf === 3 && !this.tvZoom) {
+    const nah = Math.abs(this.lx - 567) < 95;
+    drawKerzenlicht(ctx, 1, this.silBuf, () => {
+      const sc = this.silBuf.getContext("2d");
+      if (sc) this.drawLuniNow(sc);
+    }, nah);
+  }
+  // Auch nach dem Lichtpuffer bleibt der Staender vor Luni sichtbar.
+  if (this.istNormalHaus) micStand(ctx, MIC_STAND_X, FD);
+  if (this.night > 0.03) {
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalCompositeOperation = "multiply";
@@ -6098,6 +6576,7 @@ export class House {
     } else {
       drawUfo(ctx, this.elapsed, this.ufoOffen, this.ufoOffen ? this.ufoZeile : -1, PATCH_EINTRAEGE, this.ufoHover);
     }
+    this.drawStationFokus(ctx);
     this.drawHoverLabel(ctx);
     if (this.tvZoom) this.drawTvFullscreen(ctx);
     if (this.adventFullscreen || this.adventZoomT > 0) this.drawAdventskalender(ctx);
@@ -6371,7 +6850,7 @@ export class House {
       void music
         .prepare()
         .then(() => {
-          this.singReady = true;
+          if (!this.destroyed && this.singMusic === music) this.singReady = true;
         })
         .catch(() => {
           this.singReady = false;
@@ -6384,9 +6863,9 @@ export class House {
     }
   }
 
-  /** An der Gitarre angekommen: stehen bleiben und das Froschlied singen. */
+  /** Am Mikrofon angekommen: stehen bleiben und das vorhandene Froschlied singen. */
   private startSing() {
-    if (this.singPhase) return;
+    if (this.singPhase || !this.istNormalHaus || this.activity?.id !== "mikrofon") return;
     this.singPhase = "sing";
     this.singT = 0;
     this.singStarted = false;
@@ -6408,9 +6887,12 @@ export class House {
   }
 
   private updateSing(dt: number) {
-    if (!this.singPhase) return;
+    if (!this.singPhase || this.singPausedAt !== null) return;
+    if (!this.singStarted) {
+      this.tryStartSingPlayback();
+      if (!this.singStarted) return;
+    }
     this.singT += dt;
-    if (!this.singStarted) this.tryStartSingPlayback();
     const mt = this.singStarted ? (this.singMusic?.currentTime ?? 0) : this.singT;
     if (mt >= FROSCH_DURATION_SECONDS) {
       this.singMusic?.stop();
@@ -6444,6 +6926,101 @@ export class House {
       armTurn: this.plattenArmTurn,
     });
     speaker(c, 754, FD, this.plattenBass);
+  }
+
+  /** Klavierlied: Luni spielt es, solange sie am Klavier sitzt (normales Haus und Weihnachtshaus). */
+  private updateKlavier(dt: number) {
+    const sitzt = this.istNormalHaus && this.activity?.id === "klavier" && !this.cur && !this.pending
+      && this.path.length === 0 && this.lf === 3;
+    if (!sitzt) {
+      this.stopKlavier();
+      return;
+    }
+    this.klavierSitzt = true;
+    const musik = this.klavierMusik;
+    if (this.klavierSpielt && musik) {
+      // Letzte Sekunden des Lieds: der Klang klingt langsam aus.
+      if (!this.klavierOutro && musik.currentTime >= musik.dauer - KLAVIER_AUSKLINGEN) {
+        this.klavierOutro = "klang";
+        this.klavierOutroT = 0;
+        musik.blendeAuf(0, KLAVIER_AUSKLINGEN);
+      }
+      if (this.klavierOutro && musik.currentTime >= musik.dauer) {
+        musik.stop();
+        this.klavierSpielt = false;
+        this.klavierPausiert = null;
+        this.klavierOutroT = 0;
+      }
+      return;
+    }
+    if (this.klavierOutro) {
+      this.updateKlavierOutro(dt);
+      return;
+    }
+    if (this.klavierFertig) return;
+    const shared = sfx.getSharedAudio();
+    if (!shared) return;
+    if (!this.klavierMusik) this.klavierMusik = new KlavierMusik(shared.ctx, shared.master);
+    const m = this.klavierMusik;
+    if (!m.bereit) {
+      if (!this.klavierVorbereitung) {
+        this.klavierVorbereitung = m.prepare().catch(() => undefined).finally(() => {
+          this.klavierVorbereitung = null;
+        });
+      }
+      return;
+    }
+    try {
+      m.start(this.klavierPausiert ?? 0);
+      this.klavierSpielt = true;
+      this.klavierPausiert = null;
+    } catch {
+      // Audio noch gesperrt – im nächsten Bild erneut versuchen.
+    }
+  }
+
+  /**
+   * Ausklang am Klavier: nach dem letzten Ton steht Luni auf, dreht sich zum
+   * Spieler und verbeugt sich dankend. Danach ist die Aktivität beendet.
+   */
+  private updateKlavierOutro(dt: number) {
+    this.klavierOutroT += dt;
+    const ph = this.klavierOutro;
+    if (ph === "klang" && this.klavierOutroT >= KLAVIER_NACHKLANG) {
+      this.klavierOutro = "aufstehen";
+      this.klavierOutroT = 0;
+    } else if (ph === "aufstehen" && this.klavierOutroT >= KLAVIER_AUFSTEHEN) {
+      this.klavierOutro = "drehen";
+      this.klavierOutroT = 0;
+    } else if (ph === "drehen" && this.klavierOutroT >= KLAVIER_DREHEN) {
+      this.klavierOutro = "verbeugung";
+      this.klavierOutroT = 0;
+    } else if (ph === "verbeugung" && this.klavierOutroT >= KLAVIER_VERBEUGUNG) {
+      // Verbeugung beendet: Luni steht aufrecht da und ist wieder frei.
+      this.klavierOutro = null;
+      this.klavierOutroT = 0;
+      this.klavierFertig = true;
+      this.klavierSitzt = false;
+      this.finishActivity();
+    }
+  }
+
+  /** Weihnachtsbogen auf dem Klavier; die Flammen brennen, solange `kerzenAn` gilt. */
+  private drawKlavierBogen(c: C) {
+    if (!this.istNormalHaus || this.welt === "gruesel") return;
+    pianoBogen(c, 545, FD, this.elapsed, 1, this.kerzenAn);
+  }
+
+  private stopKlavier() {
+    if (this.klavierSitzt || this.klavierSpielt) {
+      this.klavierMusik?.stop();
+    }
+    this.klavierSitzt = false;
+    this.klavierSpielt = false;
+    this.klavierFertig = false;
+    this.klavierPausiert = null;
+    this.klavierOutro = null;
+    this.klavierOutroT = 0;
   }
 
   private preparePlatten() {
@@ -7308,6 +7885,9 @@ export class House {
     disc(c, x + w * 0.12 + Math.sin(t * 0.9) * 2, y + h * 0.72, 1.8, "#ffe9a8");
     disc(c, x + w * 0.88 + Math.cos(t * 0.7) * 2, y + h * 0.24, 1.5, "#ffd166");
 
+    // Die Roehrenstreifen gehoeren hinter den Saenger, nicht ueber sein Gesicht.
+    this.drawTVScanlines(c, x, y, w, h);
+
     // Sänger: wiegt sich im Takt, Mikro auf Stativ davor
     const sway = Math.sin(t * 2.4) * 1.6;
     const bob = Math.abs(Math.sin(t * 4.8)) * 1.1;
@@ -7365,13 +7945,60 @@ export class House {
   }
 
   /** Welcher Inhalt aktuell auf einem der beiden TV-Geräte läuft. */
-  private tvContent(which: "tv_e" | "tv_d"): "off" | "cozy" | "console" | "gol" {
+  private tvContent(which: TVId): TVInhalt {
     if (this.tvManual[which] === false) return "off";
+    const gewaehlt = this.tvDaten[which].kanal;
+    if (gewaehlt && ((this.activity?.screen === which && !this.cur) || this.tvManual[which] === true)) {
+      return tvKanaele(which, this.golInserted).includes(gewaehlt) ? gewaehlt : "garten";
+    }
     if (which === "tv_d" && this.golInserted && this.tvMode === "gol" && this.golState) return "gol";
     if ((this.activity?.screen === which && !this.cur) || this.tvManual[which] === true) {
       return which === "tv_d" && this.tvMode === "console" ? "console" : "cozy";
     }
     return "off";
+  }
+
+  private tvKanal(which: TVId): TVKanal {
+    const inhalt = this.tvContent(which);
+    if (inhalt === "cozy") return this.harvestClock % TV_CYCLE < TV_RICK_AT ? "garten" : "musik";
+    if (inhalt === "console") return "konsole";
+    if (inhalt === "off") return this.tvDaten[which].kanal ?? "garten";
+    return inhalt;
+  }
+
+  private tvBefehl(id: TVBefehl) {
+    const which = this.tvZoom;
+    if (!which) return;
+    sfx.ensure();
+    const daten = this.tvDaten[which];
+    if (id === "power") this.toggleTvPower(which);
+    else if (id === "kanal_hoch" || id === "kanal_runter") {
+      daten.kanal = tvNaechsterKanal(which, this.tvKanal(which), id === "kanal_hoch" ? 1 : -1, this.golInserted);
+      this.tvManual[which] = true;
+      if (daten.kanal === "gol" && !this.golState) this.golState = createState();
+    } else daten.lautstaerke = clamp(daten.lautstaerke + (id === "lauter" ? 10 : -10), 0, 100);
+    this.updateTVAudio();
+    this.speichern();
+    sfx.ui();
+  }
+
+  private updateTVAudio() {
+    const shared = sfx.peekSharedAudio();
+    if (!shared) return;
+    if (document.visibilityState === "hidden") {
+      this.tvKlang.tv_e?.stop(); this.tvKlang.tv_d?.stop();
+      return;
+    }
+    for (const id of ["tv_e", "tv_d"] as const) {
+      const an = this.tvContent(id) !== "off";
+      if (an && !this.tvKlang[id]) this.tvKlang[id] = new TVKlang(shared.ctx, shared.master);
+      this.tvKlang[id]?.setze(an ? this.tvKanal(id) : null, this.tvDaten[id].lautstaerke, this.harvestClock);
+    }
+  }
+
+  private drawTVScanlines(c: C, x: number, y: number, w: number, h: number) {
+    c.fillStyle = "rgba(0,0,0,.12)";
+    for (let i = 0; i < h; i += 3) c.fillRect(x, y + i, w, 1);
   }
 
   /** Läuft auf den beiden Fernsehern im Haus (klein) und in der Vergrößerung (groß). */
@@ -7397,15 +8024,15 @@ export class House {
   }
 
   /** Zeichnet das aktive TV-Bild (Harvest/Musikvideo, Konsole oder Spiel des Lebens) in den Bereich (x, y, w, h). */
-  private drawTvProgram(c: C, x: number, y: number, w: number, h: number, mode: "cozy" | "console" | "gol") {
-    const cozy = mode === "cozy";
+  private drawTvProgram(c: C, x: number, y: number, w: number, h: number, mode: Exclude<TVInhalt, "off">) {
+    const cozy = mode === "cozy" || mode === "garten" || mode === "musik";
     const t = cozy ? this.harvestClock : this.elapsed;
 
     if (cozy) {
       // Wohnzimmer-Kanäle: Harvest-Spiel und Musikvideo im Wechsel,
       // dazwischen kurz Umschalt-Statik wie bei einem echten Röhren-TV.
-      const tt = t % TV_CYCLE;
-      const inStatic = tt < TV_STATIC_LEN || (tt >= TV_RICK_AT && tt < TV_RICK_AT + TV_STATIC_LEN);
+      const tt = mode === "garten" ? 1 : mode === "musik" ? TV_RICK_AT + 1 : t % TV_CYCLE;
+      const inStatic = mode === "cozy" && (tt < TV_STATIC_LEN || (tt >= TV_RICK_AT && tt < TV_RICK_AT + TV_STATIC_LEN));
       if (inStatic) {
         this.drawTVStatic(c, x, y, w, h, Math.floor(t * 12));
       } else if (tt < TV_RICK_AT) {
@@ -7566,12 +8193,13 @@ export class House {
       c.font = '700 4px "Silkscreen", monospace';
       c.fillText("LV 3", x + 2.5, y + h * 0.14);
     }
-    // Scanlines
-    c.fillStyle = "rgba(0,0,0,.12)";
-    for (let i = 0; i < h; i += 3) c.fillRect(x, y + i, w, 1);
+    const musikvideo = mode === "musik" || (mode === "cozy" && t % TV_CYCLE >= TV_RICK_AT);
+    if (!musikvideo) this.drawTVScanlines(c, x, y, w, h);
   }
 
   private onKey = (e: KeyboardEvent) => {
+    const ziel = e.target as HTMLElement | null;
+    if (ziel !== this.canvas && ziel?.closest?.("input, textarea, select, button, a, [contenteditable='true']")) return;
     if (e.code === "KeyM") this.musikzimmer?.unlock();
     if (this.adventFullscreen) {
       // Jeder Adventskalender lässt sich komplett ohne Maus bedienen.
@@ -7592,9 +8220,46 @@ export class House {
       e.preventDefault();
       return;
     }
-    if ((e.code === "Enter" || e.code === "Space") && this.tvZoom) {
-      this.toggleTvPower(this.tvZoom);
-      sfx.ui();
+    if (this.tvZoom) {
+      const direkt: Record<string, TVBefehl> = {
+        ArrowUp: "kanal_hoch", ArrowDown: "kanal_runter", ArrowLeft: "leiser", ArrowRight: "lauter",
+      };
+      if (direkt[e.code]) {
+        this.tvFernFokus = direkt[e.code];
+        this.tvBefehl(this.tvFernFokus);
+      } else if (e.code === "Tab") {
+        const i = TV_FERN_STATIONS.findIndex(b => b.id === this.tvFernFokus);
+        const n = TV_FERN_STATIONS.length;
+        const next = i < 0 ? (e.shiftKey ? n - 1 : 0) : (i + (e.shiftKey ? -1 : 1) + n) % n;
+        this.tvFernFokus = TV_FERN_STATIONS[next].id;
+      } else if (e.code === "Enter" || e.code === "Space") {
+        if (!e.repeat) this.tvBefehl(this.tvFernFokus ?? "power");
+      } else return;
+      e.preventDefault();
+      return;
+    }
+    if (this.ufoOffen) return;
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.code)) {
+      // Dieselben benannten Ziele wie beim Zeiger; verdeckte/entfernte Ziele auslassen.
+      const ziele = [...this.steinStationen, ...this.stations].filter(st =>
+        this.steinStationen.includes(st) || st.hits.some(([x, y, w, h]) => this.pick(x + w / 2, y + h / 2) === st));
+      if (!ziele.length) return;
+      const alt = ziele.indexOf(this.stationFokus ?? this.hover as Station);
+      const zurueck = e.code === "ArrowLeft" || e.code === "ArrowUp";
+      const index = alt < 0 ? (zurueck ? ziele.length - 1 : 0) : (alt + (zurueck ? -1 : 1) + ziele.length) % ziele.length;
+      this.stationFokus = ziele[index];
+      this.hover = this.stationFokus;
+      this.canvas.focus({ preventScroll: true });
+      e.preventDefault();
+    } else if ((e.code === "Enter" || e.code === "Space") && this.stationFokus) {
+      e.preventDefault();
+      if (e.repeat) return;
+      sfx.ensure();
+      if (this.steinStationen.includes(this.stationFokus)) this.steinWechsel(this.stationFokus);
+      else this.command(this.stationFokus.id);
+    } else if (e.code === "Escape" && this.stationFokus) {
+      this.stationFokus = null;
+      this.hover = null;
       e.preventDefault();
     }
   };
@@ -7608,6 +8273,8 @@ export class House {
       this.last = performance.now();
     }
     if (document.visibilityState === "hidden") {
+      this.tvKlang.tv_e?.stop();
+      this.tvKlang.tv_d?.stop();
       this.speichern();
       if (this.saxPhase === "play" && this.saxStarted && this.saxMusic) {
         this.saxPausedAt = this.saxMusic.pause();
@@ -7616,6 +8283,10 @@ export class House {
       if (this.plattenPhase === "play" && this.plattenStarted && this.plattenMusic) {
         this.plattenPausedAt = this.plattenMusic.pause();
         this.plattenStarted = false;
+      }
+      if (this.klavierSpielt && this.klavierMusik) {
+        this.klavierPausiert = this.klavierMusik.pause();
+        this.klavierSpielt = false;
       }
       if (this.singPhase === "sing" && this.singStarted && this.singMusic) {
         this.singPausedAt = this.singMusic.pause();
@@ -7675,6 +8346,8 @@ export class House {
   private openTvZoom(which: "tv_e" | "tv_d") {
     this.tvZoom = which;
     this.hover = null;
+    this.tvFernHover = null;
+    this.tvFernFokus = null;
     sfx.ui();
   }
 
@@ -8837,6 +9510,7 @@ export class House {
       if (this.golAnimT >= 0.75) {
         this.golInserted = true;
         this.tvMode = "gol";
+        this.tvDaten.tv_d.kanal = "gol";
         if (!this.golState) this.golState = createState();
         sfx.ui();
         this.golPhase = "watch";
@@ -9188,6 +9862,7 @@ export class House {
       c.font = '700 12px "Silkscreen", monospace';
       c.fillText("zurück", TV_BACK_E.x + TV_BACK_E.w / 2, TV_BACK_E.y + 22);
       c.textAlign = "left";
+      drawFernbedienung(c, this.tvKanal(which), this.tvDaten[which].lautstaerke, an, this.tvFernHover, this.tvFernFokus);
       return;
     }
 
@@ -9273,7 +9948,19 @@ export class House {
       c.fillText("REGELN", GOL_X, ry);
       c.fillStyle = "#dfe9e4";
       c.font = '600 11px "Silkscreen", monospace';
-      GOL_RULES.forEach((rule, i) => c.fillText(rule, GOL_X, ry + 18 + i * 16));
+      // Die Fernbedienung bleibt rechts frei; Regeln behalten ihre Schriftgroesse.
+      let regelY = ry + 18;
+      for (const regel of GOL_RULES) {
+        let zeile = "";
+        for (const wort of regel.split(" ")) {
+          const probe = zeile ? `${zeile} ${wort}` : wort;
+          if (zeile && c.measureText(probe).width > 490) {
+            c.fillText(zeile, GOL_X, regelY); regelY += 16;
+            zeile = wort;
+          } else zeile = probe;
+        }
+        c.fillText(zeile, GOL_X, regelY); regelY += 16;
+      }
     } else {
       rrect(c, TV_BACK_D.x, TV_BACK_D.y, TV_BACK_D.w, TV_BACK_D.h, 5, "#0d1820");
       c.strokeStyle = "#f2f7f4";
@@ -9285,6 +9972,7 @@ export class House {
       c.fillText("zurück", TV_BACK_D.x + TV_BACK_D.w / 2, TV_BACK_D.y + 22);
       c.textAlign = "left";
     }
+    drawFernbedienung(c, this.tvKanal(which), this.tvDaten[which].lautstaerke, an, this.tvFernHover, this.tvFernFokus);
   }
 
   /** Zellenzahl, Geschwindigkeit und Neustart. */
@@ -9312,6 +10000,12 @@ export class House {
   private onTvFullscreenClick(x: number, y: number) {
     const which = this.tvZoom;
     if (!which) return;
+    const fern = tvFernTreffer(x, y);
+    if (fern) {
+      this.tvFernFokus = fern;
+      this.tvBefehl(fern);
+      return;
+    }
     const inBox = (b: { x: number; y: number; w: number; h: number }) =>
       x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
     const back = which === "tv_e" ? TV_BACK_E : (this.golFullscreen ? GOL_BTN : TV_BACK_D);
@@ -9691,16 +10385,19 @@ export class House {
     let pianoPose: number | undefined;
     let walkPhase = this.walkP;
     // Tanz: zurückgelegter Weg des Abschnitts (Moonwalk läuft nie auf der Stelle)
-    // Gesang an der Gitarre: Mundöffnung aus der Gesangszeit
+    // Gesang am Mikrofon: Mundoeffnung aus der Gesangszeit
     let singOpen = 0;
+    let gesangsBewegung: number | undefined;
 
-    // Gesang an der Gitarre: beschwingt wiegen, Mund singt passend mit.
+    // Gesang am Mikrofon: beschwingt wiegen, Mund singt passend mit.
     if (this.singPhase && this.lf === 3 && !a) {
       face = this.lface;
       state = "danceSway";
       expr = "sing";
       const mt = this.singStarted ? (this.singMusic?.currentTime ?? 0) : this.singT;
       singOpen = froschMundOffen(mt);
+      // Ruhiges Wiegen ueber acht Schlaege; Mund und Lied behalten ihr echtes Tempo.
+      gesangsBewegung = mt / 4;
     }
 
     // Plattenspieler: Anlage einschalten, dann wegtreten. Während des Liedes
@@ -9744,6 +10441,22 @@ export class House {
       }
     }
 
+    // Kerzen: Luni streckt sich auf die Zehenspitzen und schaltet sie um.
+    if (this.activity?.id === "kerzen" && !a && this.kerzenLauft) {
+      state = "reachUp";
+      expr = "focus";
+      face = 1;
+      back = false;
+      posePhase = clamp(this.kerzenT / 1.8, 0, 1);
+      // Luni steigt auf den Klavierschemel (Sitzhöhe 9), streckt sich dort zu den
+      // Kerzen und steigt danach wieder ab. Im Stand reicht die Hand nicht hinauf.
+      const t = this.kerzenT;
+      const glatt = (v: number) => v * v * (3 - 2 * v);
+      const hoch = t < 0.4 ? glatt(t / 0.4) : t > 1.4 ? 1 - glatt((t - 1.4) / 0.4) : 1;
+      // Im Höhepunkt auf den Zehenspitzen (3,5 mehr): die Hand erreicht den Kerzenhalter.
+      const zehen = Math.sin(clamp(t / 1.8, 0, 1) * Math.PI) * 3.5;
+      yOff = -(SCHEMEL_HOEHE + zehen) * hoch;
+    }
     if (this.musikzimmer && this.lf === 3 && !a && (this.activity?.id === "klavier" || this.pianoRise > 0)) {
       pianoPose = this.pianoSeat;
       state = this.pianoRise > 0 ? "standup" : "piano";
@@ -9762,6 +10475,24 @@ export class House {
       });
       saxHand = targets[0];
       saxHand2 = targets[1];
+    } else if (!this.musikzimmer && this.lf === 3 && !a && this.activity?.id === "klavier" && this.klavierOutro === "verbeugung") {
+      // Nach dem Klavierlied: Luni steht vor dem Klavier, schaut zum Spieler und verbeugt sich dankend.
+      state = "bow";
+      expr = "happy";
+      back = false;
+      face = 1;
+      posePhase = Math.min(1, this.klavierOutroT / KLAVIER_VERBEUGUNG);
+      this.lastPose = "bow";
+    } else if (!this.musikzimmer && this.lf === 3 && !a && this.activity?.id === "klavier" && (this.klavierOutro === "aufstehen" || this.klavierOutro === "drehen")) {
+      // Nach dem Klavierlied: vom Schemel aufstehen und sich zum Spieler drehen.
+      const p = this.klavierOutro === "aufstehen" ? Math.min(1, this.klavierOutroT / KLAVIER_AUFSTEHEN) : 1;
+      const d = this.klavierOutro === "drehen" ? Math.min(1, this.klavierOutroT / KLAVIER_DREHEN) : 0;
+      state = p < 1 ? "standup" : "idle";
+      expr = "happy";
+      back = d < 0.5;
+      face = 1;
+      posePhase = p;
+      this.lastPose = state;
     } else if (!this.musikzimmer && this.lf === 3 && !a && this.activity?.id === "klavier") {
       // Normales Haus & Weihnachtshaus: zentriert auf dem Schemel vor dem Klavier,
       // mit dem Rücken zum Spieler und den Händen auf den Tasten (550–584, Mitte 567).
@@ -9771,9 +10502,16 @@ export class House {
       back = true;
       face = 1;
       yOff = 0;
-      const hands = klavierHaende(this.elapsed);
-      saxHand = [567 + hands[0].x * 0.5, 169 + hands[0].press * 0.7];
-      saxHand2 = [567 + hands[1].x * 0.5, 169 + hands[1].press * 0.7];
+      // Beim Klavierlied folgen die Hände den gerade klingenden Tönen, sonst der Spielbewegung.
+      const lied = this.klavierSpielt && this.klavierMusik ? klavierHaendeAt(this.klavierMusik.currentTime * 1000) : null;
+      if (lied && lied.links !== null && lied.rechts !== null) {
+        saxHand = [clamp(lied.links, 558, 576), 169 + lied.pressL * 0.7];
+        saxHand2 = [clamp(lied.rechts, 558, 576), 169 + lied.pressR * 0.7];
+      } else {
+        const hands = klavierHaende(this.elapsed);
+        saxHand = [567 + hands[0].x * 0.5, 169 + hands[0].press * 0.7];
+        saxHand2 = [567 + hands[1].x * 0.5, 169 + hands[1].press * 0.7];
+      }
     } else if (this.pianoEscape && this.lf === 3 && !a) {
       state = this.pianoEscapeMoving ? "walk" : "idle";
       expr = "surprised";
@@ -9970,9 +10708,9 @@ export class House {
       armsInFront: !!this.saxPhase,
       eyeRoll,
       // Musikzeit für den Plattentanz: alle Tanzposen laufen im Takt, in jedem Stockwerk
-      beatT: this.plattenPhase === "play"
+      beatT: gesangsBewegung ?? (this.plattenPhase === "play"
         ? (this.plattenStarted ? (this.plattenMusic?.currentTime ?? 0) : this.plattenT)
-        : undefined,
+        : undefined),
       // Smoothe Tanzwechsel: alte Pose zublenden, neue unsichtbar ersetzen
       blendFrom: this.danceBlendFrom ?? undefined,
       blendK: this.danceBlendFrom ? Math.min(1, this.danceBlendT / 0.35) : undefined,
@@ -10103,6 +10841,19 @@ export class House {
       rect(c, bx + 3, FO - 30, 392 - bx - 8, 2, inSarg ? "#c9a46a" : "rgba(255,255,255,.35)");
     }
     if (st?.zzz) drawZzz(c, x - 22, y - 58, this.elapsed, 1);
+    c.restore();
+  }
+
+  private drawStationFokus(c: C) {
+    if (!this.stationFokus || this.tvZoom || this.adventFullscreen) return;
+    c.save();
+    c.strokeStyle = "#f2cf68";
+    c.lineWidth = 1.6;
+    for (const [x, y, w, h] of this.stationFokus.hits) {
+      c.beginPath();
+      c.roundRect(x - 2, y - 2, w + 4, h + 4, 5);
+      c.stroke();
+    }
     c.restore();
   }
 

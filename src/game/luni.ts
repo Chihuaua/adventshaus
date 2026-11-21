@@ -85,6 +85,7 @@ export type LuniState =
   | "phone"
   | "call"
   | "standup"
+  | "bow"
   | "pack"
   | "undress"
   | "wrap"
@@ -1034,6 +1035,37 @@ function buildRig(state: LuniState, t: number, walkP: number, phase: number, rea
       r.legFar = leg([8, -19], [10, -9.5]);
       r.legNear = leg([9.5, -19], [12, -9.5]);
       r.hairFlow = 0.4;
+      break;
+    }
+
+    case "bow": {
+      // Dankende Verbeugung zum Spieler (von vorn). Schultern und Kopf sinken um
+      // GENAU denselben Betrag, so bleibt der Kopf auf dem Hals. Die Arme hängen an
+      // den Schultern; Ober- und Unterarm behalten ihre Längen (aufLaenge).
+      // `phase` 0 = aufrecht, 0.5 = tiefster Punkt, 1 = wieder aufrecht.
+      const k = Math.sin(phase * Math.PI);
+      const tief = ease(k);
+      const D = 8 * tief; // Absenkung von Schultern und Kopf (gleich viel)
+      r.rootY = 2.4 * tief; // die Knie geben nach
+      r.hipY = HIP_Y + 0.9 * tief;
+      r.shoulderY = SHOULDER_Y + D;
+      r.headY = HEAD_Y + D;
+      r.neckBend = 0.14 * tief;
+      r.headTilt = 0.06 + 0.16 * tief;
+      r.hairFlow = -1.2 * tief;
+      const sy = r.shoulderY + 2;
+      const nahS: V = [r.schulterX, sy];
+      const fernS: V = [-r.schulterX, sy];
+      // Ziele: hängend an der Seite (phase 0) bzw. vor der Brust gefaltet (phase 0.5)
+      const nahE = aufLaenge(nahS, [lerp(6.4, nahS[0] + 3, tief), lerp(-29, sy + 9, tief)], UPPER_ARM);
+      const nahH = aufLaenge(nahE, [lerp(7.6, 1.4, tief), lerp(-21.5, sy + 12, tief)], FORE_ARM);
+      const fernE = aufLaenge(fernS, [lerp(-6.4, fernS[0] - 3, tief), lerp(-29, sy + 9, tief)], UPPER_ARM);
+      const fernH = aufLaenge(fernE, [lerp(-7.6, -1.4, tief), lerp(-21.5, sy + 12, tief)], FORE_ARM);
+      r.armNear = { elbow: nahE, hand: nahH };
+      r.armFar = { elbow: fernE, hand: fernH };
+      // Füße bleiben am Boden, Knie leicht gebeugt
+      r.legNear = leg(gangKnie([2.6, r.hipY], [4.4, -r.rootY]), [4.4, -r.rootY]);
+      r.legFar = leg(gangKnie([-2.6, r.hipY], [-4.4, -r.rootY]), [-4.4, -r.rootY]);
       break;
     }
 
@@ -2977,8 +3009,9 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     upperLean(() => drawUmhangSeite(ctx, r, u, umhang));
   }
 
+  const klavierHaareVorn = back && (state === "piano" || pianoSeat !== undefined);
   /* --- Haare hinten (beim Vorbeugen hängen sie am Kopf, siehe dort) --- */
-  if (r.bend < 0.7) upperLean(() => drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen));
+  if (r.bend < 0.7 && !klavierHaareVorn) upperLean(() => drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen));
 
   /* Beine tauschen: das helle Bein steht jetzt hinten, das dunkle vorn. Jedes Bein behält
      Gelenk, Gangphase, Socke und Farbe; nur die Zeichenreihenfolge ändert sich. */
@@ -3129,7 +3162,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     if (!bedCover && (!arms.behind || armeVorn)) drawArms(false);
     if (vampir?.umhang && oberteil === "dressed" && umhang > 0.01) drawUmhangRuecken(ctx, r, vampir.umhang, umhang);
     // Die langen Haare liegen über Rücken und Schultern.
-    drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen * (wet > 0.3 ? 0.94 : 1), true);
+    if (!klavierHaareVorn) drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen * (wet > 0.3 ? 0.94 : 1), true);
   } else {
     // Tanz: ein Arm, der hinter dem Körper durchschwingt (Floss), wird vor dem
     // Rumpf gezeichnet und dadurch von ihm verdeckt.
@@ -3199,6 +3232,8 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     ctx.translate(0, r.shoulderY); ctx.rotate(r.neckBend); ctx.translate(0, -r.shoulderY);
   }
   if (headShake) ctx.translate(headShake * 1.8, 0);
+  // Der Kopf folgt dem Hals: Versatz gegenüber der Grundlage (nur Verbeugung/Aufstehen)
+  ctx.translate(0, r.headY - HEAD_Y);
   ctx.translate(0, r.headY);
   ctx.rotate(r.headTilt + headShake * .12);
   ctx.translate(0, -r.headY);
@@ -3317,6 +3352,22 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     if (!r.armNearHinten) drawBackArm();
     if (!r.armFarHinten) drawFrontArm();
   }
+
+  // Am Klavier kommt der ganze Haarumriss zuletzt, auch die linke Seitenstraehne.
+  // So kann die Schulter nicht durch den zuvor hinten gezeichneten Haarteil treten.
+  if (klavierHaareVorn) upperLean(() => {
+    ctx.save();
+    if (r.neckBend) {
+      ctx.translate(0, r.shoulderY); ctx.rotate(r.neckBend); ctx.translate(0, -r.shoulderY);
+    }
+    ctx.translate(headShake * 1.8, r.headY - HEAD_Y);
+    ctx.translate(0, r.headY);
+    ctx.rotate(r.headTilt + headShake * 0.12);
+    ctx.translate(0, -r.headY);
+    drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen);
+    drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen * (wet > 0.3 ? 0.94 : 1), true);
+    ctx.restore();
+  });
 
   ctx.restore();
 
