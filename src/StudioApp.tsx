@@ -31,8 +31,17 @@ const GROUPS: { title: string; items: { k: LuniState; label: string }[] }[] = [
       { k: "danceDisco", label: "Disco" },
       { k: "danceMoonwalk", label: "Moonwalk" },
       { k: "danceStep", label: "Step-Touch" },
-      { k: "danceKick", label: "Kick" },
       { k: "danceSlide", label: "Knie-Rutscher" },
+      { k: "danceHeadnod", label: "Kopfnicken" },
+      { k: "danceTap", label: "Fuß tippt" },
+      { k: "danceArmUp", label: "Ein Arm hoch" },
+      { k: "danceArmsUp", label: "Beide Arme hoch" },
+      { k: "danceFortnite", label: "Floss" },
+      { k: "danceClap", label: "Klatschen" },
+      { k: "danceRobot", label: "Roboter" },
+      { k: "danceWave", label: "Armwelle" },
+      { k: "danceHeart", label: "Herz" },
+      { k: "danceSchritt", label: "Schritt-Tanz" },
     ],
   },
   {
@@ -212,6 +221,18 @@ export default function StudioApp() {
                 className="notranslate btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-amber-glow ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
               >
                 Luni-Mon Studio
+              </a>
+              <a
+                href="#studio-tanz"
+                className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-teal ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
+              >
+                Tanz-Studio
+              </a>
+              <a
+                href="#patch"
+                className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-amber-glow ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
+              >
+                Patch / ZIP
               </a>
             </div>
           </div>

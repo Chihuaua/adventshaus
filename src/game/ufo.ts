@@ -241,7 +241,10 @@ export function drawUfo(
   c.restore();
 
   if (!offen) return;
+  drawPatchMenue(c, zeile, dateien);
+}
 
+function drawPatchMenue(c: C, zeile: number, dateien: readonly string[]) {
   // Menü: Archiv der Sitzung
   const { x, y, w, hoehe } = UFO_MENUE;
   const h = hoehe * dateien.length;
@@ -278,4 +281,299 @@ export function drawUfo(
   });
   c.textBaseline = "alphabetic";
   c.restore();
+}
+
+/** Einzelnes Rentier im Flug nach links (lokal um [rx, ry]). */
+function drawRentier(
+  c: C,
+  rx: number,
+  ry: number,
+  t: number,
+  phase: number,
+  fell: string,
+  bauch: string,
+  leitTier: boolean,
+) {
+  const lauf = Math.sin(t * 2.6 + phase);
+  c.save();
+  c.translate(rx, ry);
+
+  // Hintere Läufe (etwas dunkler)
+  const dunkel = "#4b2e1b";
+  strich(c, -5, 2.5, -9 - lauf * 2.2, 8.5, dunkel, 1.5);
+  strich(c, -9 - lauf * 2.2, 8.5, -11.5 - lauf * 2.8, 7.2, dunkel, 1.3);
+  strich(c, 5.5, 2.5, 9 + lauf * 2.2, 8.2, dunkel, 1.5);
+  strich(c, 9 + lauf * 2.2, 8.2, 11.8 + lauf * 2.5, 9.4, dunkel, 1.3);
+
+  // Rumpf & Brust
+  c.fillStyle = fell;
+  c.beginPath();
+  c.ellipse(0, 0.5, 8.8, 4.3, -0.06, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = bauch;
+  c.beginPath();
+  c.ellipse(-2.5, 2.1, 5.6, 1.9, -0.05, 0, Math.PI * 2);
+  c.fill();
+
+  // Kleines helles Schwänzchen rechts
+  poly(c, [[7.8, -1.2], [11.2, -2.8], [9.6, 0.8]], "#e9decb");
+
+  // Hals & Kopf (nach links blickend)
+  poly(c, [[-5.6, -1.2], [-9.6, -8.4], [-6.2, -9.2], [-2.6, -1.6]], fell);
+  c.fillStyle = fell;
+  c.beginPath();
+  c.ellipse(-10.2, -8.8, 4.4, 2.6, 0.22, 0, Math.PI * 2);
+  c.fill();
+
+  // Ohr
+  poly(c, [[-7.2, -10.4], [-5.2, -13.2], [-5.8, -9.8]], fell);
+
+  // Geweih (verzweigtes helles Geweih)
+  strich(c, -8.4, -10.8, -7.2, -16.8, "#dec79c", 1.25);
+  strich(c, -7.7, -14.2, -10.2, -16.2, "#dec79c", 1.05);
+  strich(c, -7.4, -15.4, -5.0, -17.0, "#dec79c", 1.05);
+  strich(c, -9.6, -10.6, -9.2, -15.2, "#cfb487", 1.05);
+
+  // Auge
+  c.fillStyle = "#181210";
+  c.beginPath();
+  c.arc(-10.6, -9.3, 0.75, 0, Math.PI * 2);
+  c.fill();
+
+  // Nase (Leit-Rentier mit ruhiger roter Leuchtnase, sonst dunkel)
+  if (leitTier) {
+    const gn = c.createRadialGradient(-14.3, -8.0, 0.3, -14.3, -8.0, 4.2);
+    gn.addColorStop(0, "rgba(255,70,60,.45)");
+    gn.addColorStop(1, "rgba(255,70,60,0)");
+    c.fillStyle = gn;
+    c.beginPath();
+    c.arc(-14.3, -8.0, 4.2, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = "#ef342c";
+    c.beginPath();
+    c.arc(-14.3, -8.0, 1.45, 0, Math.PI * 2);
+    c.fill();
+  } else {
+    c.fillStyle = "#2b1b14";
+    c.beginPath();
+    c.arc(-14.2, -8.0, 1.0, 0, Math.PI * 2);
+    c.fill();
+  }
+
+  // Vordere Läufe im ruhigen Galopp-Schwung
+  strich(c, -6.2, 2.6, -11.2 + lauf * 2.4, 7.8, fell, 1.6);
+  strich(c, -11.2 + lauf * 2.4, 7.8, -13.6 + lauf * 2.6, 6.4, fell, 1.35);
+  strich(c, 5.2, 2.6, 8.8 - lauf * 2.4, 8.6, fell, 1.6);
+  strich(c, 8.8 - lauf * 2.4, 8.6, 11.2 - lauf * 2.2, 9.6, fell, 1.35);
+
+  // Rotes Brustgeschirr mit goldenem Glöckchen
+  strich(c, -7.6, -5.8, -4.2, 1.6, "#c92a32", 1.5);
+  c.fillStyle = "#f2cf68";
+  c.beginPath();
+  c.arc(-6.3, -1.6, 1.25, 0, Math.PI * 2);
+  c.fill();
+
+  c.restore();
+}
+
+/**
+ * Weihnachtsmann mit Schlitten und Rentieren am Himmel (Ersatz fürs UFO im
+ * Weihnachtshaus – identische Trefferfläche, identische Menü-Funktion).
+ */
+export function drawWeihnachtsschlitten(
+  c: C,
+  t: number,
+  offen: boolean,
+  zeile: number,
+  dateien: readonly string[],
+  hover = false,
+) {
+  const schweb = Math.sin(t * 1.05) * 1.1;
+  const neig = Math.sin(t * 0.65) * 0.012;
+  const [mx, my0] = UFO_MITTE;
+  const my = my0 + schweb;
+
+  c.save();
+  // Warmer goldener Lichtschein nach unten, solange das Menü offen ist
+  if (offen) {
+    const g = c.createLinearGradient(mx, my + 8, mx, my + 118);
+    g.addColorStop(0, "rgba(245,211,108,.22)");
+    g.addColorStop(1, "rgba(245,211,108,0)");
+    c.fillStyle = g;
+    c.beginPath();
+    c.moveTo(mx - 16, my + 8);
+    c.lineTo(mx + 16, my + 8);
+    c.lineTo(mx + 60, my + 118);
+    c.lineTo(mx - 60, my + 118);
+    c.closePath();
+    c.fill();
+  }
+
+  c.translate(mx, my);
+  c.rotate(neig);
+
+  // Dezenter Sternenglanz hinter dem Schlitten (und stärker bei Hover)
+  const glanz = c.createRadialGradient(16, 0, 2, 16, 0, hover || offen ? 38 : 28);
+  glanz.addColorStop(0, hover || offen ? "rgba(255,222,130,.26)" : "rgba(255,214,120,.14)");
+  glanz.addColorStop(1, "rgba(255,214,120,0)");
+  c.fillStyle = glanz;
+  c.beginPath();
+  c.arc(16, 0, hover || offen ? 38 : 28, 0, Math.PI * 2);
+  c.fill();
+
+  // Zwei Rentiere im Gespann (links vor dem Schlitten)
+  drawRentier(c, -15, -2.5, t, 1.3, "#6e462a", "#9c704d", false);
+  drawRentier(c, -39, 0.5, t, 0, "#8d5b37", "#bd8f67", true);
+
+  // Geschwungene goldene Kufen des Schlittens
+  c.strokeStyle = hover || offen ? "#ffe082" : "#dfb655";
+  c.lineWidth = 1.8;
+  c.lineCap = "round";
+  c.beginPath();
+  c.moveTo(52, 12.5);
+  c.lineTo(6, 12.5);
+  c.quadraticCurveTo(-1.2, 12.5, -0.8, 6.2);
+  c.quadraticCurveTo(-0.4, 2.2, 4.5, 2.4);
+  c.stroke();
+  // Stützen zwischen Kufe und Schlittenwanne
+  strich(c, 12, 12.5, 13, 7.5, "#c79d3e", 1.5);
+  strich(c, 28, 12.5, 28, 7.5, "#c79d3e", 1.5);
+  strich(c, 43, 12.5, 42, 7.5, "#c79d3e", 1.5);
+
+  // Geschenkesack & Päckchen hinten im Schlitten
+  c.fillStyle = "#8f6339";
+  c.beginPath();
+  c.ellipse(39, -5.5, 8.2, 7.6, 0.2, 0, Math.PI * 2);
+  c.fill();
+  poly(c, [[35, -12], [39, -15.5], [43, -12.2]], "#a87749");
+  strich(c, 36, -11.8, 41.8, -11.8, "#d9383a", 1.3);
+  // Grünes Geschenk mit Goldband schaut aus dem Sack
+  c.save();
+  c.translate(31.5, -10.5);
+  c.rotate(-0.14);
+  rr(c, -3.5, -3.5, 7, 7, 1);
+  c.fillStyle = "#2b7a45";
+  c.fill();
+  strich(c, 0, -3.3, 0, 3.3, "#f5d36c", 1.2);
+  strich(c, -3.3, 0, 3.3, 0, "#f5d36c", 1.2);
+  c.restore();
+
+  // Weihnachtsmann im Schlitten (Oberkörper, Bart, Gesicht, Mütze)
+  // Roter Mantel
+  c.fillStyle = "#c9262e";
+  c.beginPath();
+  c.ellipse(20.5, -4.5, 6.8, 6.5, 0.08, 0, Math.PI * 2);
+  c.fill();
+  // Weißer Pelzkragen / Mantelleiste
+  strich(c, 15.2, -8.2, 16.5, 0.5, "#f4f7fa", 2.1);
+  // Gürtel
+  strich(c, 14.5, -2.5, 25.5, -2.2, "#1f1c1d", 1.6);
+  c.fillStyle = "#f2cf68";
+  c.fillRect(16.2, -3.5, 2.2, 2.2);
+
+  // Kopf & rosige Wange
+  c.fillStyle = "#f4c9a0";
+  c.beginPath();
+  c.arc(19.5, -12.2, 3.6, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = "#1d1a1e";
+  c.beginPath();
+  c.arc(17.8, -12.7, 0.65, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = "rgba(235,105,95,.45)";
+  c.beginPath();
+  c.arc(18.2, -11.3, 1.0, 0, Math.PI * 2);
+  c.fill();
+
+  // Weißer Vollbart
+  c.fillStyle = "#f6f8fb";
+  c.beginPath();
+  c.moveTo(16.2, -11.2);
+  c.quadraticCurveTo(13.8, -8.2, 16.4, -5.6);
+  c.quadraticCurveTo(19.5, -4.8, 21.8, -7.8);
+  c.quadraticCurveTo(21.5, -10.8, 19.2, -11.2);
+  c.closePath();
+  c.fill();
+
+  // Rote Zipfelmütze mit weißem Pelzrand und Bommel
+  poly(c, [[16.2, -14.4], [23.2, -13.8], [26.8, -16.8], [21.2, -17.8]], "#d42b33");
+  strich(c, 15.8, -14.2, 23.2, -13.6, "#f6f8fb", 2.2);
+  c.fillStyle = "#f6f8fb";
+  c.beginPath();
+  c.arc(27.2, -16.6, 1.65, 0, Math.PI * 2);
+  c.fill();
+
+  // Schlittenkorpus (tiefrot mit geschwungener Lehne und Goldleiste)
+  poly(
+    c,
+    [
+      [4, 2.2],
+      [8.5, -3.5],
+      [14, -1.8],
+      [34, -2.2],
+      [43, -8.5],
+      [48.5, -6.5],
+      [45.5, 8.2],
+      [7, 8.2],
+    ],
+    "#ab1f27",
+  );
+  poly(
+    c,
+    [
+      [6.5, 2.6],
+      [9.5, -1.8],
+      [14.5, -0.5],
+      [35, -0.8],
+      [43.2, -6.2],
+      [45.6, -5.0],
+      [43.5, 6.8],
+      [8, 6.8],
+    ],
+    "#c92a32",
+  );
+  // Goldene Zierkante am Schlittenrand
+  c.strokeStyle = "#f2cf68";
+  c.lineWidth = 1.25;
+  c.beginPath();
+  c.moveTo(4.5, 2.2);
+  c.lineTo(8.5, -3.4);
+  c.lineTo(14, -1.8);
+  c.lineTo(34, -2.2);
+  c.lineTo(43, -8.4);
+  c.lineTo(48.2, -6.5);
+  c.stroke();
+
+  // Arm & Handschuh des Weihnachtsmanns + goldene Zügel zu den Rentieren
+  strich(c, 18.5, -7.2, 12.2, -5.4, "#c9262e", 2.4);
+  c.fillStyle = "#3a261a";
+  c.beginPath();
+  c.arc(11.4, -5.3, 1.4, 0, Math.PI * 2);
+  c.fill();
+
+  c.strokeStyle = hover || offen ? "#ffe28a" : "rgba(242,207,104,.85)";
+  c.lineWidth = 1.0;
+  c.beginPath();
+  c.moveTo(11.2, -5.2);
+  c.quadraticCurveTo(-4, -1.5, -21, -5.2);
+  c.moveTo(11.2, -5.2);
+  c.quadraticCurveTo(-14, 0.5, -45, -3.5);
+  c.stroke();
+
+  // Drei ruhige goldene Sternfunken hinter dem Schlitten (konstant, kein Blinken)
+  for (const [sx, sy, sr] of [
+    [53, -3, 1.3],
+    [57, 3, 1.0],
+    [51, 5.5, 0.9],
+  ] as const) {
+    c.fillStyle = hover || offen ? "#ffe89e" : "#f2cf68";
+    c.beginPath();
+    c.arc(sx, sy, sr, 0, Math.PI * 2);
+    c.fill();
+  }
+
+  c.restore();
+
+  if (!offen) return;
+  drawPatchMenue(c, zeile, dateien);
 }
