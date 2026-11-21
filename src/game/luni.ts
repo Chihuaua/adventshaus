@@ -60,6 +60,9 @@ export type LuniState =
   | "danceTwist"
   | "danceDisco"
   | "danceMoonwalk"
+  | "danceGlide"
+  | "danceStep"
+  | "danceKick"
   | "danceSlide"
   | "handstand"
   | "cartwheel"
@@ -102,6 +105,7 @@ export type LuniExpr =
   | "annoyed"
   | "love"
   | "talk"
+  | "sing"
   | "focus";
 
 export interface LuniOpts {
@@ -176,6 +180,8 @@ export interface LuniOpts {
   bedSitzen?: number;
   /** Nur Bett: Arme und Beine liegen unter der Decke und werden nicht gezeichnet. */
   bedCover?: boolean;
+  /** Nur Gesang (expr "sing"): Mundöffnung 0..1 aus der Gesangszeit. */
+  singOpen?: number;
   /** Nur Musikzimmer: frontaler Hocker, 0 = stehen, 1 = sitzen. */
   pianoSeat?: number;
   /** Verneinende Kopfbewegung, ohne die laufende Koerperpose zu ersetzen. */
@@ -1063,49 +1069,124 @@ function buildRig(state: LuniState, t: number, walkP: number, phase: number, rea
     }
 
     case "danceMoonwalk": {
-      // Moonwalk: ein Fuß gleitet flach zurück, der andere steht auf der Spitze;
-      // die Arme bleiben lässig angewinkelt (Ellenbogen außen, Hüfthöhe).
-      const cyc = ((t * 2.0) % 2 + 2) % 2;
-      const first = cyc < 1;
-      const p = first ? cyc : cyc - 1;
-      const flatX = lerp(5.5, -5.5, p);
-      const toeX = lerp(-5.5, 5.5, ease(p));
-      const ab = p < 0.12 ? 1 - p / 0.12 : p > 0.88 ? (p - 0.88) / 0.12 : 0;
-      const flatY = -ab * 1.8;
-      const flatAng = ab * 0.48;
-      const toeY = -1.8;
-      const toeAng = 0.48;
-      r.rootY = 0.8 + Math.sin(p * Math.PI) * 0.5;
-      const nearFoot: V = [first ? flatX : toeX, (first ? flatY : toeY) - r.rootY];
-      const farFoot: V = [first ? toeX : flatX, (first ? toeY : flatY) - r.rootY];
+      // Moonwalk: jeder Fuß bleibt auf seiner Seite – die Socken wechseln nie
+      // hin und her. Ein Fuß gleitet flach zurück, der andere tippt auf der
+      // Zehe nach vorn, halbperiodisch versetzt. Das Rückwärtsgleiten selbst
+      // kommt aus der Bewegung (sie läuft rückwärts gerichtet).
+      const cyc = ((t * 1.9) % 1 + 1) % 1;
+      const fuss = (phase: number): { x: number; y: number; ang: number } => {
+        if (phase < 0.5) {
+          // flach auf dem Boden, gleitet zurück
+          const q = ease(phase / 0.5);
+          return { x: lerp(2.3, -2.3, q), y: 0, ang: 0 };
+        }
+        // auf der Zehe, tippt leicht nach vorn
+        const q = ease((phase - 0.5) / 0.5);
+        const hub = Math.sin(q * Math.PI);
+        return { x: lerp(-2.3, 2.3, q), y: -1.7 * hub, ang: 0.42 * hub };
+      };
+      const nah = fuss(cyc);
+      const fern = fuss((cyc + 0.5) % 1);
+      r.rootY = 0.7;
+      const nearFoot: V = [3.7 + nah.x, nah.y - r.rootY];
+      const farFoot: V = [-3.7 + fern.x, fern.y - r.rootY];
       r.legNear = leg(gangKnie([2.6, r.hipY], nearFoot), nearFoot);
       r.legFar = leg(gangKnie([-2.6, r.hipY], farFoot), farFoot);
-      r.footNearAng = first ? flatAng : toeAng;
-      r.footFarAng = first ? toeAng : flatAng;
-      const bob = Math.sin(t * 4.0) * 0.7;
+      r.footNearAng = nah.ang;
+      r.footFarAng = fern.ang;
+      const bob = Math.sin(t * 3.8) * 0.7;
+      // Arme lässig angewinkelt, Ellenbogen außen
       r.armNear = { elbow: [9, -27 + bob * 0.3], hand: [7, -22 - bob] };
       r.armFar = { elbow: [-9, -26 - bob * 0.3], hand: [-6.5, -23 + bob] };
-      r.headTilt = 0.12 + Math.sin(t * 2.0) * 0.03;
+      r.headTilt = 0.12 + Math.sin(t * 1.9) * 0.03;
       r.hairFlow = 1.2;
       break;
     }
 
+    case "danceStep": {
+      // Lockerer Step-Touch: das Gewicht pendelt seicht von Seite zu Seite,
+      // die Füße tippen abwechselnd, die Arme schwingen lose mit.
+      const s = Math.sin(t * 3.0);
+      const tapR = Math.max(0, Math.sin(t * 6.0));
+      const tapL = Math.max(0, -Math.sin(t * 6.0));
+      r.rootX = s * 2.1;
+      r.rootY = 0.6;
+      r.headTilt = s * 0.09;
+      const nearFoot: V = [4.4 + s * 0.8, -tapR * 1.5 - r.rootY];
+      const farFoot: V = [-4.4 + s * 0.8, -tapL * 1.5 - r.rootY];
+      r.legNear = leg(gangKnie([2.6, r.hipY], nearFoot), nearFoot);
+      r.legFar = leg(gangKnie([-2.6, r.hipY], farFoot), farFoot);
+      r.footNearAng = tapR * 0.18;
+      r.footFarAng = -tapL * 0.18;
+      r.armNear = { elbow: [8.4 - s, -28], hand: [6.5 - s * 2.2, -23 + tapR] };
+      r.armFar = { elbow: [-8.4 - s, -27], hand: [-6.5 - s * 2.2, -24 + tapL] };
+      r.hairFlow = -s * 1.8;
+      break;
+    }
+
+    case "danceKick": {
+      // Leichter Kick: abwechselnd ein kleiner, niedriger Kick nach vorn,
+      // die Arme schwingen gegen – locker und flockig, ohne zu hüpfen.
+      const cyc = ((t * 1.4) % 1 + 1) % 1;
+      const kickN = Math.pow(Math.max(0, Math.sin(cyc * Math.PI * 2)), 2);
+      const kickF = Math.pow(Math.max(0, Math.sin(cyc * Math.PI * 2 + Math.PI)), 2);
+      r.rootY = 0.8;
+      r.rootX = (kickN - kickF) * 0.8;
+      r.headTilt = 0.05;
+      const nearFoot: V = [4.2 + kickN * 7.5, -kickN * 6.5 - r.rootY];
+      const farFoot: V = [-4.2 - kickF * 0.5, -kickF * 0.8 - r.rootY];
+      r.legNear = leg(gangKnie([2.6, r.hipY], nearFoot), nearFoot);
+      r.legFar = leg(gangKnie([-2.6, r.hipY], farFoot), farFoot);
+      r.footNearAng = -kickN * 0.35;
+      r.armNear = { elbow: [8.6, -28 - kickF * 2], hand: [7, -23 - kickF * 3] };
+      r.armFar = { elbow: [-8.6, -28 - kickN * 2], hand: [-7.5, -24 - kickN * 4] };
+      r.hairFlow = -(kickN - kickF) * 1.6;
+      break;
+    }
+
+    case "danceGlide": {
+      // Gleitender Tanz: wippende, langsame Tanzschritte mit angewinkelten
+      // Armen. Sie tanzt dabei weiter (kein Stillstand, kein Rennen).
+      const schritt = ((t * 1.35) % 1 + 1) % 1;
+      const wippe = Math.sin(schritt * Math.PI);
+      const seite = Math.sin(t * 0.68);
+      r.rootX = seite * 1.8;
+      r.rootY = 0.6 + wippe * 1.5;
+      r.headTilt = seite * 0.1 + wippe * 0.04;
+      const vorn: V = [4.6 + wippe * 1.4, -r.rootY];
+      const hinten: V = [-4.6 - wippe * 1.2, -r.rootY + wippe * 0.6];
+      r.legNear = leg(gangKnie([2.6, r.hipY], vorn), vorn);
+      r.legFar = leg(gangKnie([-2.6, r.hipY], hinten), hinten);
+      r.footNearAng = -wippe * 0.12;
+      r.footFarAng = wippe * 0.1;
+      const bob = Math.sin(t * 2.7) * 0.8;
+      r.armNear = { elbow: [8.8 + seite, -27 + bob * 0.35], hand: [6.2 + seite * 2, -22 - bob] };
+      r.armFar = { elbow: [-8.8 + seite, -26 - bob * 0.35], hand: [-6 + seite * 2, -23 + bob] };
+      r.hairFlow = -seite * 1.6;
+      break;
+    }
+
     case "danceSlide": {
-      // Tom-Cruise-Rutscher auf dem Knie: ein Bein vorgestreckt auf der Ferse,
-      // das andere kniet; Oberkörper leicht zurück, Arme zum Gleichgewicht.
-      const wob = Math.sin(t * 6) * 1.2;
-      r.rootY = 9.4 + Math.sin(t * 8) * 0.3;
+      // Torjubel: nach kurzem Anlauf rutscht sie AUF BEIDEN KNIEN ins
+      // Wohnzimmer – Knie auf dem Boden, Unterschenkel schleifen hinten,
+      // Oberkörper aufrecht und leicht zurückgelehnt, Arme weit ausgebreitet.
+      const wob = Math.sin(t * 5.2) * 1.0;
+      const fedder = Math.sin(t * 6.4) * 0.35;
+      r.rootY = 8 + fedder;
       r.rootRot = -0.12;
-      r.pivotY = -10;
-      r.headTilt = 0.08;
-      r.armNear = { elbow: [10, -32], hand: [14.5, -38 + wob] };
-      r.armFar = { elbow: [-9, -28], hand: [-13, -23 - wob] };
-      r.legNear = leg([9.5, -15.5], [15, -9.4]);
-      r.legFar = leg([-2, -9.4], [-11, -11.5]);
-      r.footNearAng = -0.18;
+      r.pivotY = r.hipY;
+      r.headTilt = -0.1 + Math.sin(t * 3.1) * 0.03;
+      // Arme breit zum Jubel (einer hoch, einer weit zur Seite)
+      r.armNear = { elbow: [7, -30], hand: [11.5, -41 + wob] };
+      r.armFar = { elbow: [-8, -29], hand: [-13.5, -36 - wob] };
+      // Beide Knie tragen auf dem Boden, die Schienbeine schleifen hinterher
+      r.legNear = leg([7.5, -8], [-4.5, -8.4]);
+      r.legFar = leg([5.5, -8], [-7, -8.4]);
+      r.footNearDir = -1;
+      r.footNearAng = -0.4;
       r.footFarDir = -1;
       r.footFarAng = -0.4;
-      r.hairFlow = -3.0;
+      r.hairFlow = -2.8;
       break;
     }
 
@@ -1287,7 +1368,7 @@ function drawEyeRoll(ctx: C, p: number) {
 
 /* ------------------------------ Gesicht -------------------------------- */
 
-function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = true, gaze = 0, queasy = 0) {
+function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = true, gaze = 0, queasy = 0, singOpen = 0) {
   // Krank (grünes Gesicht): kein fröhliches Augenkneifen mehr.
   const closed =
     blink > 0.5 || expr === "sleep" ||
@@ -1516,6 +1597,21 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
       ctx.ellipse(mx, mY - 0.25, 1.35, 0.52 + Math.abs(Math.sin(t * 7)) * 0.6, 0, 0, Math.PI * 2);
       ctx.fill();
       break;
+    case "sing": {
+      // Mitsingen: bei geschlossenem Mund (Pausen und zwischen den Noten) ein
+      // geschlossenes Lächeln, bei aktivem Ton öffnet sich der Mund passend.
+      const o = clamp01(singOpen);
+      if (o < 0.08) {
+        ctx.beginPath();
+        ctx.arc(mx, mY - 1.4, 2.4, Math.PI * 0.14, Math.PI * 0.86);
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.ellipse(mx, mY - 0.25, 0.95 + o * 1.1, 0.28 + o * 1.55, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    }
     case "surprised":
       ctx.beginPath();
       ctx.ellipse(mx, mY, 1.2, 1.6, 0, 0, Math.PI * 2);
@@ -2224,6 +2320,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     bedLean = 0,
     bedSitzen,
     bedCover = false,
+    singOpen = 0,
     pianoSeat,
     headShake = 0,
     gaze = 0,
@@ -2510,8 +2607,10 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
       }
       drawHand(ctx, armBehind.elbow, armBehind.hand, K.skinShade, mixCol(K.skinShade, "#8f5940", 0.3));
     });
-  // Beim Tragen eines Instruments liegt der Arm vor dem Korpus, nicht dahinter.
-  if (!bedCover && !back && !armsInFront && !armeVorne) drawBackArm();
+  // Beim Tragen eines Instruments und beim Tanzen liegt der Arm vor dem Korpus,
+  // nicht dahinter – Arme und Hände verschwinden so nie hinter dem Körper.
+  const tanztFrueh = state.startsWith("dance");
+  if (!bedCover && !back && !armsInFront && !armeVorne && !tanztFrueh) drawBackArm();
 
   /* --- vorderes Bein (das dunkle, unverdreht) --- */
   if (!bedCover) {
@@ -2610,12 +2709,15 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     // Ohne diese Reihenfolge verdeckt der Saxophon-Korpus beide Arme, und das
     // Instrument hängt scheinbar frei in der Luft.
     betweenBodyAndArms?.();
+    // Beim Tanzen kommen beide Arme erst ganz zum Schluss (vor die Haare) –
+    // sonst verschwinden sie hinter dem Körper.
+    const tanzt = state.startsWith("dance");
     if (!bedCover && (armsInFront || armeVorne)) drawBackArm();
     else if (!bedCover && handVorRumpf) drawBackArm(true);
 
     /* --- vorderer Arm (früher der hintere) --- */
     // Beim Vorbeugen erst nach dem Kopf, damit die Bürstenhand vor den Haaren liegt.
-    if (!bedCover && !bent) drawFrontArm();
+    if (!bedCover && !bent && !tanzt) drawFrontArm();
   }
 
   /* --- Hals: in der Rückansicht vollständig von den Haaren verdeckt --- */
@@ -2672,7 +2774,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   } else if (r.bend >= 0.7) {
     // Vorgebeugt: Gesicht zeigt zum Boden. Haare bedecken den Hinterkopf und
     // hängen senkrecht herunter, bis knapp über den Boden.
-    drawFace(ctx, expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0);
+    drawFace(ctx, expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0, singOpen);
     ctx.fillStyle = LUNI_COLORS.hair;
     ctx.beginPath();
     ctx.arc(-1.4, HEAD_Y - 1.6, HEAD_R + 0.6, 0, Math.PI * 2);
@@ -2728,7 +2830,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
       drawHairAside(ctx, k);
       ctx.restore();
     }
-    drawFace(ctx, eyeRoll > 0.01 ? "annoyed" : expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0);
+    drawFace(ctx, eyeRoll > 0.01 ? "annoyed" : expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0, singOpen);
     if (eyeRoll > 0.01) drawEyeRoll(ctx, eyeRoll);
   }
   if (wet > 0.02 && r.bend < 0.7) {
@@ -2759,6 +2861,13 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   });
 
   if (!bedCover && bent && !back) drawFrontArm();
+
+  // Beim Tanzen liegen beide Arme ganz vorn – auch vor Haaren und Kopf,
+  // damit sie nie hinter dem Körper verschwinden.
+  if (!bedCover && !back && !bent && state.startsWith("dance")) {
+    drawBackArm();
+    drawFrontArm();
+  }
 
   ctx.restore();
 

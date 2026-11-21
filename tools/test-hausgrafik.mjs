@@ -8,7 +8,7 @@ import { build } from "esbuild";
 const source = readFileSync("src/game/house.ts", "utf8");
 const bundle = await build({
   stdin: {
-    contents: source + '\nexport { piano, bed, drawBedScene, drawBlanket, drawBedFront, drawBedEntryBlanket, bedBlanketPose, bedBlanketPushHand, recordPlayer, speaker, SAX_GRIP_UP, SAX_GRIP_LOW, sfx };\nexport { drawLuni } from "./luni";\nexport { drawUfo, ufoTreffer, ufoZeileBei, UFO_MENUE } from "./ufo";\nexport { PATCH_DATEIEN, PATCH_EINTRAEGE, PATCH_ZIP, PATCH_KURZ, PATCH_NUMMER } from "./patch";\nexport { zipErzeugen } from "./zip";\nexport { PLATTEN_NOTES, PLATTEN_DURATION_SECONDS, PLATTEN_TICKS_PER_SECOND } from "./audio/plattenNotes";\nexport { plattenBassPulse } from "./audio/plattenVoice";',
+    contents: source + '\nexport { piano, bed, drawBedScene, drawBlanket, drawBedFront, drawBedEntryBlanket, bedBlanketPose, bedBlanketPushHand, recordPlayer, speaker, PLATTEN_TOUR, SAX_GRIP_UP, SAX_GRIP_LOW, sfx };\nexport { drawLuni } from "./luni";\nexport { drawUfo, ufoTreffer, ufoZeileBei, UFO_MENUE } from "./ufo";\nexport { PATCH_DATEIEN, PATCH_EINTRAEGE, PATCH_ZIP, PATCH_KURZ, PATCH_NUMMER } from "./patch";\nexport { zipErzeugen } from "./zip";\nexport { PLATTEN_NOTES, PLATTEN_DURATION_SECONDS, PLATTEN_TICKS_PER_SECOND } from "./audio/plattenNotes";\nexport { plattenBassPulse } from "./audio/plattenVoice";\nexport { FROSCH_NOTES, FROSCH_DURATION_SECONDS, FROSCH_TICKS_PER_SECOND } from "./audio/froschNotes";\nexport { froschMundOffen, renderSilbe } from "./audio/froschVoice";',
     resolveDir: path.resolve("src/game"), loader: "ts",
   },
   bundle: true, write: false, format: "esm", platform: "node",
@@ -42,7 +42,7 @@ function canvas() {
     moveTo(x, y) { points.push(point(x, y)); }, lineTo(x, y) { points.push(point(x, y)); },
     quadraticCurveTo(x1, y1, x2, y2) { points.push(point(x1, y1), point(x2, y2)); },
     bezierCurveTo(x1, y1, x2, y2, x3, y3) { points.push(point(x1, y1), point(x2, y2), point(x3, y3)); },
-    rect(x, y, w, h) { points.push(point(x, y), point(x+w, y), point(x+w, y+h), point(x, y+h)); },
+    rect(x, y, w, h) { points = [point(x, y), point(x+w, y), point(x+w, y+h), point(x, y+h)]; },
     roundRect(x, y, w, h) { methods.rect(x, y, w, h); },
     fillRect(x, y, w, h) { record([point(x, y), point(x+w, y), point(x+w, y+h), point(x, y+h)], { kind: "rect" }); },
     arc(x, y, r) {
@@ -812,7 +812,7 @@ test("Tanzposen: Ellenbogen außen, kein Hüpfen und keine Drehungen", () => {
   const quelle = readFileSync("src/game/luni.ts", "utf8");
   assert.ok(!quelle.includes('"danceHop"'), "Hüpfen entfernt");
   assert.ok(!quelle.includes('"danceSpin"'), "Drehen entfernt");
-  const posen = ["danceSway", "danceTwist", "danceDisco", "danceMoonwalk", "danceSlide"];
+  const posen = ["danceSway", "danceTwist", "danceDisco", "danceMoonwalk", "danceGlide", "danceSlide"];
   for (const p of posen) assert.ok(quelle.includes(`case "${p}"`), p);
   for (const p of posen) {
     const c = canvas();
@@ -828,6 +828,81 @@ test("Tanzposen: Ellenbogen außen, kein Hüpfen und keine Drehungen", () => {
         `${p}: Ellenbogen liegt außen (${ellbogen[0].toFixed(1)} bei Schulter ${schulter[0].toFixed(1)})`,
       );
     }
+    // Arme und Hände liegen VOR dem Rumpf: sie werden nach dem Torso gezeichnet
+    const torsoIdx = c.shapes.findIndex(z => z.color === "#dcc9a5" && z.kind !== "stroke");
+    const armIdx = c.shapes.findIndex(z => z.kind === "stroke" && ["#dcc9a5", "#c4ad84"].includes(z.color));
+    assert.ok(torsoIdx >= 0 && armIdx > torsoIdx, `${p}: Arme liegen vor dem Körper`);
+  }
+});
+
+test("Moonwalk: keine Socken-Wechsel, Füße bleiben auf ihrer Seite", () => {
+  const fussPos = t => {
+    const c = canvas();
+    G.drawLuni(c.ctx, 0, 0, { state: "danceMoonwalk", t, face: 1, shadow: false, scale: 1 });
+    const rot = c.shapes.filter(z => z.color === "#ff6f61").map(z => (z.left + z.right) / 2);
+    const tuerkis = c.shapes.filter(z => z.color === "#35d6c0").map(z => (z.left + z.right) / 2);
+    return { rot, tuerkis };
+  };
+  // Über einen vollen Zyklus: die türkise Socke bleibt vorn, die rote hinten
+  for (const t of [0, 0.13, 0.26, 0.4, 0.53, 0.66, 0.8, 0.95]) {
+    const f = fussPos(t);
+    assert.equal(f.rot.length, 1, "eine rote Socke");
+    assert.equal(f.tuerkis.length, 1, "eine türkise Socke");
+    assert.ok(f.tuerkis[0] > f.rot[0] + 2, `Socken wechseln nicht die Seite (t=${t})`);
+  }
+  // Die Pose bewegt sich über die Zeit (Gleiten), steht also nie still
+  const a = fussPos(0.1), b = fussPos(0.35);
+  assert.ok(Math.abs(a.tuerkis[0] - b.tuerkis[0]) > 0.5, "Füße gleiten");
+  // Tour: Moonwalk-Segmente sind reine Bewegungssegmente (nie auf der Stelle)
+  const tour = readFileSync("src/game/house.ts", "utf8");
+  const segs = [...tour.matchAll(/\{ floor: \d, x: \d+, stil: "danceMoonwalk", dauer: (\d+), tempo: \d+ \}/g)];
+  assert.ok(segs.length >= 2, "Moonwalk in der Tour");
+  for (const mSeg of segs) assert.equal(mSeg[1], "0", "Moonwalk-Segment gleitet durch (dauer 0)");
+});
+
+test("Torjubel: Anlauf mit Blick nach links, dann Rutscher auf beiden Knien ins Wohnzimmer", () => {
+  const quelle = readFileSync("src/game/house.ts", "utf8");
+  const tour = quelle.slice(quelle.indexOf("PLATTEN_TOUR"), quelle.indexOf("PLATTEN_RUECKKEHR"));
+  // Anlauf: schnelles Lauf-Segment direkt vor dem Rutscher
+  const segs = [...tour.matchAll(/\{ floor: (\d), x: (\d+), stil: "([a-zA-Z]+)", dauer: (\d+), tempo: (\d+) \}/g)]
+    .map(mm => ({ floor: +mm[1], x: +mm[2], stil: mm[3], dauer: +mm[4], tempo: +mm[5] }));
+  const rutsch = segs.findIndex(z => z.stil === "danceSlide");
+  assert.ok(rutsch >= 1, "Rutscher in der Tour");
+  const anlauf = segs[rutsch - 1];
+  assert.equal(anlauf.stil, "run", "direkt davor: Anlauf");
+  assert.ok(anlauf.tempo >= 95, "Anlauf ist schneller");
+  assert.ok(anlauf.x > segs[rutsch].x, "Anlauf läuft nach links");
+  assert.equal(segs[rutsch].floor, 1, "Rutscher im Erdgeschoss (Wohnzimmer)");
+  assert.ok(quelle.includes('if (state === "danceSlide") face = -1;'), "Blick beim Rutschen nach links");
+  // Pose: beide Knie auf dem Boden (Welt y ≈ 0), Füße schleifen hinten
+  const pose = readFileSync("src/game/luni.ts", "utf8");
+  const abschnitt = pose.slice(pose.indexOf('case "danceSlide"'), pose.indexOf('case "handstand"'));
+  assert.ok(abschnitt.includes("Torjubel"), "Kommentar: Torjubel");
+  assert.ok(abschnitt.includes("r.rootY = 8"), "Hüfte auf Knieshöhe");
+  assert.ok(abschnitt.includes("r.footNearDir = -1;") && abschnitt.includes("r.footFarDir = -1;"), "Füße zeigen nach hinten");
+  const c = canvas();
+  G.drawLuni(c.ctx, 0, 0, { state: "danceSlide", t: 0.5, face: -1, shadow: false, scale: 1 });
+  const socken = c.shapes.filter(z => ["#ff6f61", "#35d6c0"].includes(z.color)).map(z => z.bottom);
+  assert.equal(socken.length, 2, "beide Füße sichtbar");
+  // Fußpunkte bei y≈0; die Sockenform selbst darf durch die Drehung etwas reichen
+  assert.ok(socken.every(v => v > -2 && v < 4), `Knie/Füße am Boden: ${socken.map(v => v.toFixed(1))}`);
+});
+
+/** Aktuelles Tour-Segment (auch beim Rückweg, das dann danceGlide ist). */
+const PLATTEN_SEG = h => (h.danceRueck
+  ? { floor: 3, x: 668, stil: "danceGlide", dauer: 0, tempo: 34 }
+  : G.PLATTEN_TOUR[Math.min(h.danceSeg, G.PLATTEN_TOUR.length - 1)]);
+
+test("Tanzen: Arme und Hände liegen vor Körper und Haaren", () => {
+  for (const p of ["danceSway", "danceDisco", "danceStep", "danceKick", "danceSlide"]) {
+    const c = canvas();
+    G.drawLuni(c.ctx, 0, 0, { state: p, t: 0.9, face: 1, shadow: false, scale: 1 });
+    const arme = c.shapes.filter(z => z.kind === "stroke" && ["#dcc9a5", "#c4ad84"].includes(z.color));
+    const haare = c.shapes.filter(z => z.color === "#191920");
+    assert.ok(arme.length >= 2 && haare.length >= 2, `${p}: Arme und Haare gezeichnet`);
+    const letzterArm = c.shapes.lastIndexOf(arme[arme.length - 1]);
+    const letztesHaar = c.shapes.lastIndexOf(haare[haare.length - 1]);
+    assert.ok(letzterArm > letztesHaar, `${p}: Arme kommen nach den Haaren (liegen vorn)`);
   }
 });
 
@@ -842,25 +917,136 @@ test("Tanz-Tour: beschwingt durchs Haus, Knie-Rutscher ins Wohnzimmer, Rückkehr
     danceTreppe: false, danceTreppeT: 0, danceTreppeStair: null, danceTreppeDir: 1,
     activity: null, target: null, cur: null, path: [],
   });
+  // Musikzeit simulieren (echte Zeitachse), damit die Tour bis zum Ende läuft
+  let zeit = 0;
   const etagen = [];
   let rutscher = false;
   let moonwalk = false;
+  let gleiten = false;
+  let treppenTanz = false;
+  let anlauf = false;
+  const neueMoves = new Set();
   let maxFeder = 0;
-  for (let i = 0; i < 3200; i++) {
+  for (let i = 0; i < 6000; i++) {
+    zeit += 0.05;
+    h.plattenStarted = true;
+    h.plattenMusic = { currentTime: zeit, stop() {} };
     h.updatePlatten(0.05);
     if (h.plattenPhase !== "play") break;
     if (!etagen.includes(h.lf)) etagen.push(h.lf);
-    if (h.lf === 1 && h.danceStil === "danceSlide") rutscher = true;
+    // Der Rutscher läuft als aktuelles Segment im Wohnzimmer (EG)
+    if (h.lf === 1 && PLATTEN_SEG(h).stil === "danceSlide") rutscher = true;
     if (h.danceStil === "danceMoonwalk") moonwalk = true;
+    if (h.danceStil === "danceGlide" && h.danceTreppe) treppenTanz = true;
+    if (h.danceStil === "danceGlide") gleiten = true;
+    if (h.danceStil === "run") anlauf = true;
+    if (h.danceStil === "danceStep" || h.danceStil === "danceKick") neueMoves.add(h.danceStil);
     if (h.plattenBass > maxFeder) maxFeder = h.plattenBass;
   }
   assert.deepEqual(etagen, [3, 2, 1], "alle drei Etagen besucht");
   assert.ok(rutscher, "Knie-Rutscher im Wohnzimmer (danceSlide)");
   assert.ok(moonwalk, "Moonwalk dabei");
+  assert.ok(gleiten, "gleitende Tanzschritte statt Stillstand");
+  assert.ok(treppenTanz, "Treppen werden mitgetanzt");
+  assert.ok(anlauf, "Anlauf (run) vor dem Rutscher");
+  assert.ok(neueMoves.has("danceStep") && neueMoves.has("danceKick"), "neue Tanz-Moves dabei");
   assert.ok(maxFeder > 0.6, "Boxen pulsieren zum Bass");
   assert.ok(h.danceRueck, "Rückweg zur Anlage eingeleitet");
   assert.equal(h.lf, 3, "zurück im Dachgeschoss");
   assert.ok(Math.abs(h.lx - 668) < 3, `zurück an der Anlage (x=${h.lx.toFixed(1)})`);
+});
+
+test("Froschlied: 53 Noten aus der MIDI, einstimmig, Mund passend zum Ton", () => {
+  assert.equal(G.FROSCH_NOTES.length, 53);
+  assert.equal(G.FROSCH_TICKS_PER_SECOND, 1920);
+  assert.ok(Math.abs(G.FROSCH_DURATION_SECONDS - 30.85) < 0.01);
+  assert.deepEqual(G.FROSCH_NOTES[0].slice(0, 2), [0, 422]);
+  for (const n of G.FROSCH_NOTES) assert.equal(n[3], 100, "einheitlicher Anschlag");
+  for (let i = 1; i < G.FROSCH_NOTES.length; i++) {
+    const vor = G.FROSCH_NOTES[i - 1];
+    assert.ok(G.FROSCH_NOTES[i][0] >= vor[0] + vor[1], `Note ${i} überlappt nicht`);
+  }
+  assert.equal(G.froschMundOffen(-0.1), 0, "vor dem ersten Ton geschlossen");
+  assert.ok(G.froschMundOffen(0.08) > 0.5, "zur ersten Note offen");
+  // Zwischen aufeinanderfolgenden nahtlosen Noten schließt sich der Mund sichtbar
+  assert.equal(G.froschMundOffen(0.20), 0, "schließt am Ende der ersten Note vor dem Übergang");
+  assert.ok(G.froschMundOffen(0.35) > 0.5, "öffnet wieder zur zweiten Note");
+  assert.equal(G.froschMundOffen(6.7), 0, "in der Pause geschlossen");
+  assert.equal(G.froschMundOffen(99), 0, "nach dem Lied geschlossen");
+  // Über das gesamte Lied bewegt sich der Mund: viele geschlossene UND offene Momente
+  let offenZahl = 0, zuZahl = 0;
+  for (let t = 0; t < G.FROSCH_DURATION_SECONDS; t += 0.04) {
+    const o = G.froschMundOffen(t);
+    if (o > 0.45) offenZahl++;
+    if (o < 0.08) zuZahl++;
+  }
+  assert.ok(offenZahl > 100 && zuZahl > 100, `Mund bewegt sich (${offenZahl} offen, ${zuZahl} zu)`);
+  const c0 = canvas();
+  G.drawLuni(c0.ctx, 0, 0, { state: "danceSway", expr: "sing", singOpen: 0, t: 0, shadow: false });
+  const c1 = canvas();
+  G.drawLuni(c1.ctx, 0, 0, { state: "danceSway", expr: "sing", singOpen: 1, t: 0, shadow: false });
+  const mund0 = c0.shapes.find(z => z.color === "#a35f4a");
+  const mund1 = c1.shapes.find(z => z.color === "#a35f4a");
+  assert.ok(mund0 && mund1, "singender Mund gezeichnet");
+  assert.equal(mund0.kind, "stroke", "bei singOpen=0 geschlossener Strich");
+  assert.equal(mund1.kind, "ellipse", "bei singOpen=1 offenes Oval");
+});
+
+test("Gesang an der Gitarre: hingehen, singen, Mund bewegt sich, danach aufräumen", () => {
+  const h = haus({
+    stations: G.STATIONS, lf: 3, lx: 800, lface: 1,
+    singPhase: null, singT: 0, singMusic: null, singReady: false, singPreparing: false,
+    singStarted: false, singPausedAt: null, musikzimmer: null,
+    activity: G.STATIONS.find(z => z.id === "gitarre"), target: null, cur: null, path: [],
+  });
+  h.prepareSing = () => {};
+  h.startSing();
+  assert.equal(h.singPhase, "sing");
+  for (let i = 0; i < 10; i++) h.updateSing(0.05);
+  assert.equal(h.singPhase, "sing", "Lied läuft noch");
+  h.singT = G.FROSCH_DURATION_SECONDS;
+  h.updateSing(0.02);
+  assert.equal(h.singPhase, null, "nach dem Lied ist Ruhe");
+  assert.equal(h.activity, null);
+  assert.equal(h.target, null);
+});
+
+test("Frosch-Töne: exakte MIDI-Tonhöhen, saubere Dauer, kein Clipping", () => {
+  const quelle = readFileSync("src/game/audio/froschVoice.ts", "utf8");
+  assert.ok(quelle.includes("`${pitch}:${durTicks}`"), "Cache unterscheidet nach Tonhöhe und Dauer");
+  const sr = 24000;
+  const fakeCtx = {
+    sampleRate: sr,
+    createBuffer: (ch, n) => {
+      const daten = new Float32Array(n);
+      return { length: n, duration: n / sr, getChannelData: () => daten };
+    },
+  };
+  const f0 = (daten, start) => {
+    const seg = daten.slice(start, start + 1024);
+    let bestLag = 0, bestVal = -Infinity;
+    const minLag = Math.floor(sr / 450), maxLag = Math.floor(sr / 90);
+    for (let lag = minLag; lag <= maxLag; lag++) {
+      let sum = 0;
+      for (let i = 0; i + lag < seg.length; i++) sum += seg[i] * seg[i + lag];
+      if (sum > bestVal) { bestVal = sum; bestLag = lag; }
+    }
+    return sr / bestLag;
+  };
+  for (const [pitch, erwartetHz] of [[57, 220], [60, 261.63], [64, 329.63]]) {
+    const buf = G.renderSilbe(fakeCtx, pitch, 0, 1920);
+    const d = buf.getChannelData(0);
+    const gemessen = f0(d, Math.floor(0.25 * sr));
+    assert.ok(Math.abs(gemessen - erwartetHz) / erwartetHz < 0.015, `MIDI ${pitch}: ${gemessen.toFixed(1)} statt ${erwartetHz} Hz`);
+    let maxAbs = 0;
+    for (let i = 0; i < d.length; i++) maxAbs = Math.max(maxAbs, Math.abs(d[i]));
+    assert.ok(maxAbs > 0.25 && maxAbs <= 0.9, `sauberer Pegel ohne Clipping (${maxAbs.toFixed(2)})`);
+  }
+  // Kurze und lange Note auf demselben Ton behalten ihre exakte MIDI-Dauer
+  const kurz = G.renderSilbe(fakeCtx, 60, 0, 557);
+  const lang = G.renderSilbe(fakeCtx, 60, 0, 3264);
+  assert.ok(Math.abs(kurz.duration - 557 / 1920) < 0.01, "kurze Note 0.29s");
+  assert.ok(Math.abs(lang.duration - 3264 / 1920) < 0.01, "lange Note 1.70s");
 });
 
 console.log(`\n${n} Hausgrafik-Tests bestanden.`);
