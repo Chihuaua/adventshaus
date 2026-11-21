@@ -157,11 +157,27 @@ const PALETTE: Record<Jahreszeit, [string, string]> = {
 function aussenPfad(c: CanvasRenderingContext2D) {
   c.beginPath();
   c.rect(0, 0, 960, 600);
-  // Haus mit Dach, Schornstein und Außenwänden als Aussparung
-  c.moveTo(98, 600); c.lineTo(98, 128); c.lineTo(86, 128); c.lineTo(86, 118);
-  c.lineTo(470, 22); c.lineTo(854, 118); c.lineTo(854, 128); c.lineTo(842, 128);
-  c.lineTo(842, 600); c.closePath();
-  c.rect(686, 4, 38, 126);
+  // Haus mit Dach, Schornstein und Außenwänden als geschlossene Aussparung
+  // (ohne inneres Überlappen am Dach, sonst würde evenodd ein helles Rechteck
+  // unter dem Schornstein bis ins Dachgeschoss stanzen).
+  c.moveTo(98, 600);
+  c.lineTo(98, 128);
+  c.lineTo(86, 128);
+  c.lineTo(86, 118);
+  c.lineTo(470, 22);
+  c.lineTo(690, 77);
+  c.lineTo(690, 12);
+  c.lineTo(686, 12);
+  c.lineTo(686, 4);
+  c.lineTo(724, 4);
+  c.lineTo(724, 12);
+  c.lineTo(720, 12);
+  c.lineTo(720, 84.5);
+  c.lineTo(854, 118);
+  c.lineTo(854, 128);
+  c.lineTo(842, 128);
+  c.lineTo(842, 600);
+  c.closePath();
 }
 /** Nur die Fensterflächen; Wetter scheint dort durch, nicht durch Wände. */
 function fensterPfad(c: CanvasRenderingContext2D) {
