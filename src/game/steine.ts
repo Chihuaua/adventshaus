@@ -1,12 +1,13 @@
 /* =======================================================================
    WECHSELSTEINE
 
-   Drei Steine, drei Hauswelten – jeder Stein sieht anders aus:
-     Wachstein   (Sonne, warmes Grün)       -> normales Haus
-     Traumstein  (Mondsichel, kühles Blau)  -> Traumhaus
-     Horrorstein (Totenkopf, Schwarz/Glut)  -> Gruselhaus
+   Vier Steine, vier Hauswelten – jeder Stein sieht anders aus:
+     Wachstein       (Sonne, warmes Grün)         -> normales Haus
+     Traumstein      (Mondsichel, kühles Blau)    -> Traumhaus
+     Horrorstein     (Totenkopf, Schwarz/Glut)    -> Gruselhaus
+     Weihnachtsstein (Tannenbaum/Stern, Rot/Gold) -> Weihnachtshaus
 
-   In jeder Welt stehen die zwei Steine der jeweils anderen Welten. Sie sind
+   In jeder Welt stehen die drei Steine der jeweils anderen Welten. Sie sind
    halb in die Erde links neben dem Keller eingelassen, sichtbare und
    ausreichend große Ziele (kein verstecktes Pixelportal).
    ======================================================================= */
@@ -16,7 +17,7 @@ import type { WeltId } from "./welten";
 type C = CanvasRenderingContext2D;
 type Rect4 = [number, number, number, number];
 
-export type SteinArt = "wach" | "traum" | "horror";
+export type SteinArt = "wach" | "traum" | "horror" | "weihnacht";
 
 /** Platz A: der ursprüngliche Steinplatz (unverändert). */
 export const STEIN: { x: number; y: number; hit: Rect4 } = {
@@ -25,23 +26,32 @@ export const STEIN: { x: number; y: number; hit: Rect4 } = {
   hit: [254, 506, 48, 58],
 };
 
-/** Platz B: direkt daneben, ebenfalls in der Erde. */
+/** Platz B: links daneben, ebenfalls in der Erde. */
 export const STEIN_B: { x: number; y: number; hit: Rect4 } = {
   x: 222,
   y: 540,
   hit: [198, 510, 48, 58],
 };
 
+/** Platz C: rechts daneben im Erdreich (mit Luft vor der Kellerwand). */
+export const STEIN_C: { x: number; y: number; hit: Rect4 } = {
+  x: 316,
+  y: 541,
+  hit: [303, 511, 34, 56],
+};
+
 const ZIEL_ART: Record<WeltId, SteinArt> = {
   normal: "wach",
   traum: "traum",
   gruesel: "horror",
+  weihnacht: "weihnacht",
 };
 
 export const STEIN_NAMEN: Record<SteinArt, string> = {
   wach: "Wachstein",
   traum: "Traumstein",
   horror: "Horrorstein",
+  weihnacht: "Weihnachtsstein",
 };
 
 export interface SteinSlot {
@@ -56,13 +66,13 @@ export interface SteinSlot {
 
 /**
  * Die Steine einer Welt: alle Welten außer der eigenen, in fester Reihenfolge
- * (normal, traum, gruesel). Der erste belegt den alten Platz A, der zweite B.
- * So bleibt der Traumstein im normalen Haus und der Wachstein im Traumhaus
- * genau dort, wo sie schon immer standen.
+ * (normal, traum, gruesel, weihnacht). Der erste belegt Platz A, der zweite B,
+ * der dritte C. So bleiben Traumstein, Wachstein und Horrorstein an ihren
+ * gewohnten Plätzen.
  */
 export function steinSlots(welt: WeltId): SteinSlot[] {
-  const reihenfolge: WeltId[] = ["normal", "traum", "gruesel"];
-  const plaetze = [STEIN, STEIN_B];
+  const reihenfolge: WeltId[] = ["normal", "traum", "gruesel", "weihnacht"];
+  const plaetze = [STEIN, STEIN_B, STEIN_C];
   return reihenfolge
     .filter((w) => w !== welt)
     .map((ziel, i) => ({
@@ -96,6 +106,7 @@ const FARBEN: Record<SteinArt, { main: string; edge: string; glow: string }> = {
   traum: { main: "#4e5b88", edge: "#a7b5ef", glow: "rgba(153,181,255,.2)" },
   wach: { main: "#758b60", edge: "#e6d58a", glow: "rgba(255,224,139,.18)" },
   horror: { main: "#2b1a26", edge: "#ff6a3c", glow: "rgba(255,98,52,.26)" },
+  weihnacht: { main: "#7a242c", edge: "#f5d36c", glow: "rgba(255,210,110,.26)" },
 };
 
 /** Halb eingegrabener Stein; Symbol und Farbe zeigen eindeutig, wohin er führt. */
@@ -152,6 +163,38 @@ export function drawStein(c: C, kind: SteinArt, t = 0, px: number = STEIN.x, py:
       c.moveTo(x + Math.cos(a) * 6.2, y - 9 + Math.sin(a) * 6.2);
       c.lineTo(x + Math.cos(a) * 8.8, y - 9 + Math.sin(a) * 8.8);
       c.stroke();
+    }
+  } else if (kind === "weihnacht") {
+    // geschmückter Tannenbaum mit goldenem Stern auf der Spitze
+    c.fillStyle = "#5a3822";
+    c.fillRect(x - 1.4, y - 4.2, 2.8, 3.6);
+    poly(c, [[x, y - 16.5], [x - 5.2, y - 10.6], [x + 5.2, y - 10.6]], "#2f7d47");
+    poly(c, [[x, y - 12.8], [x - 6.6, y - 6.8], [x + 6.6, y - 6.8]], "#276c3d");
+    poly(c, [[x, y - 9.2], [x - 7.8, y - 3.6], [x + 7.8, y - 3.6]], "#215c34");
+    // kleiner Goldstern an der Spitze
+    c.fillStyle = edge;
+    c.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      const r = i % 2 === 0 ? 2.5 : 1.05;
+      const sx = x + Math.cos(a) * r;
+      const sy = y - 17.6 + Math.sin(a) * r;
+      if (i === 0) c.moveTo(sx, sy);
+      else c.lineTo(sx, sy);
+    }
+    c.closePath();
+    c.fill();
+    // kleine Christbaumkugeln
+    for (const [bx, by, col] of [
+      [x - 2.6, y - 8.4, "#ff5b52"],
+      [x + 2.8, y - 6.2, "#f5d36c"],
+      [x - 3.6, y - 4.8, "#f5d36c"],
+      [x + 1.4, y - 11.2, "#ff5b52"],
+    ] as const) {
+      c.fillStyle = col;
+      c.beginPath();
+      c.arc(bx, by, 1.05, 0, Math.PI * 2);
+      c.fill();
     }
   } else {
     // Totenkopf mit Glutaugen

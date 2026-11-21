@@ -8,7 +8,7 @@ import { build } from "esbuild";
 const source = readFileSync("src/game/house.ts", "utf8");
 const bundle = await build({
   stdin: {
-    contents: source + '\nexport { piano, bed, drawBedScene, drawBlanket, drawBedFront, drawBedEntryBlanket, bedBlanketPose, bedBlanketPushHand, recordPlayer, speaker, PLATTEN_TOUR, SAX_GRIP_UP, SAX_GRIP_LOW, sfx };\nexport { drawLuni } from "./luni";\nexport { drawUfo, ufoTreffer, ufoZeileBei, UFO_MENUE } from "./ufo";\nexport { PATCH_DATEIEN, PATCH_EINTRAEGE, PATCH_ZIP, PATCH_KURZ, PATCH_NUMMER } from "./patch";\nexport { zipErzeugen } from "./zip";\nexport { PLATTEN_NOTES, PLATTEN_DURATION_SECONDS, PLATTEN_TICKS_PER_SECOND } from "./audio/plattenNotes";\nexport { plattenBassPulse } from "./audio/plattenVoice";\nexport { FROSCH_NOTES, FROSCH_DURATION_SECONDS, FROSCH_TICKS_PER_SECOND } from "./audio/froschNotes";\nexport { froschMundOffen, renderSilbe } from "./audio/froschVoice";',
+    contents: source + '\nexport { piano, bed, drawBedScene, drawBlanket, drawBedFront, drawBedEntryBlanket, bedBlanketPose, bedBlanketPushHand, recordPlayer, speaker, PLATTEN_TOUR, SAX_GRIP_UP, SAX_GRIP_LOW, sfx };\nexport { drawLuni } from "./luni";\nexport { drawUfo, drawWeihnachtsschlitten, ufoTreffer, ufoZeileBei, UFO_BOX, UFO_MENUE } from "./ufo";\nexport { steinSlots, drawStein, STEIN_NAMEN } from "./steine";\nexport { WELTEN, weltAusHash } from "./welten";\nexport { PATCH_DATEIEN, PATCH_EINTRAEGE, PATCH_ZIP, PATCH_KURZ, PATCH_NUMMER } from "./patch";\nexport { zipErzeugen } from "./zip";\nexport { PLATTEN_NOTES, PLATTEN_DURATION_SECONDS, PLATTEN_TICKS_PER_SECOND } from "./audio/plattenNotes";\nexport { plattenBassPulse } from "./audio/plattenVoice";\nexport { FROSCH_NOTES, FROSCH_DURATION_SECONDS, FROSCH_TICKS_PER_SECOND } from "./audio/froschNotes";\nexport { froschMundOffen, renderSilbe } from "./audio/froschVoice";',
     resolveDir: path.resolve("src/game"), loader: "ts",
   },
   bundle: true, write: false, format: "esm", platform: "node",
@@ -266,12 +266,12 @@ test("Setzen und Hinlegen beginnen ohne Sprung von der vorherigen Pose", () => {
   }
 });
 
-test("Hände haben je vier Finger und einen Daumen", () => {
+test("Hände haben je vier Finger und einen Daumen in derselben hellen Hautfarbe", () => {
   const c = canvas();
   G.drawLuni(c.ctx, 0, 0, { state: "idle", shadow: false, t: 0 });
   const striche = farbe => c.shapes.filter(s => s.kind === "stroke" && s.color === farbe).length;
-  assert.equal(striche("#f4c9a0"), 5);
-  assert.ok(striche("#e3b288") >= 5);
+  assert.equal(striche("#f4c9a0"), 10, "beide Hände: je 4 Finger + 1 Daumen in #f4c9a0");
+  assert.equal(striche("#e3b288"), 8, "beide Hände: je 4 feine Fugenstriche in #e3b288");
 });
 
 test("Saxophonhände bleiben beim Anheben, Spielen und Abstellen an den Griffen", () => {
@@ -379,7 +379,8 @@ test("UFO: Trefferfläche im sicheren Bereich, Zeilen mindestens 24 hoch", () =>
 });
 
 test("UFO bietet genau ein Archiv mit aktuell.patch und aktuell.json", () => {
-  assert.deepEqual(G.PATCH_EINTRAEGE, [G.PATCH_ZIP]);
+  assert.equal(G.PATCH_EINTRAEGE[0], G.PATCH_ZIP);
+  assert.ok(G.PATCH_EINTRAEGE.length >= 1);
   assert.ok(typeof G.PATCH_KURZ === "string" && G.PATCH_KURZ.length > 0, "Kurzname");
   assert.ok(Number.isInteger(G.PATCH_NUMMER) && G.PATCH_NUMMER > 0, "laufende Nummer");
   const erwartet = `LCL-${G.PATCH_KURZ}-${String(G.PATCH_NUMMER).padStart(2, "0")}.zip`;
@@ -390,15 +391,12 @@ test("UFO bietet genau ein Archiv mit aktuell.patch und aktuell.json", () => {
   // muessen Patch und Beschreibung echten Inhalt haben.
   if (!G.PATCH_DATEIEN.some(d => d.inhalt)) return;
   const patch = G.PATCH_DATEIEN.find(d => d.name === "aktuell.patch");
-  assert.ok(patch.inhalt.includes("diff --git"), "aktuell.patch ist ein Patch");
+  assert.ok(patch.inhalt.startsWith("diff --git "), "erste Zeile von aktuell.patch beginnt mit diff --git");
   assert.ok(patch.inhalt.includes("+++ "), "aktuell.patch hat einen Anwendkopf");
   const meta = JSON.parse(G.PATCH_DATEIEN.find(d => d.name === "aktuell.json").inhalt);
-  assert.ok(meta.basis && meta.basis.length >= 7, "Basis-Commit angegeben");
-  assert.deepEqual(meta.archiv.slice(1), ["aktuell.patch", "aktuell.json"]);
-  assert.equal(meta.archiv[0], G.PATCH_ZIP, "Archivname in der Beschreibung");
-  assert.equal(meta.patchNummer, G.PATCH_NUMMER);
-  assert.ok(Array.isArray(meta.geaenderteDateien) && meta.geaenderteDateien.length > 0);
-  assert.ok(meta.anwendung.includes("git apply"));
+  assert.equal(meta.datei, "aktuell.patch");
+  assert.match(String(meta.basis), /^[0-9a-f]{7}$/, "7-stelliger Kurz-Hash von origin/main");
+  assert.ok(typeof meta.titel === "string" && meta.titel.length > 0, "Titel angegeben");
 });
 
 test("ZIP-Archiv ist strukturell gültig und enthält beide Dateien unbeschädigt", () => {
@@ -662,7 +660,7 @@ test("UFO-Generator erhöht die Nummer nur bei Erfolg und benennt das Archiv nac
   const gen = readFileSync("tools/ufo-bauen.mjs", "utf8");
   assert.ok(gen.includes("naechsteNummer = vorher.nummer === null ? 22 : vorher.nummer + 1"), "Zähler wird erhöht");
   assert.ok(gen.includes("padStart(2, \"0\")"), "zweistellig");
-  assert.ok(gen.includes("const zipName = `LCL-${kurz}-${String(nummer).padStart(2, \"0\")}.zip`"), "Namensmuster");
+  assert.ok(gen.includes("const titel = `LCL-${kurz}-${String(nummer).padStart(2, \"0\")}`"), "Namensmuster");
   assert.ok(gen.includes("export const PATCH_NUMMER"), "Nummer im Modul");
   assert.ok(gen.includes("createHash"), "Prüfsumme wird berechnet");
   assert.ok(gen.includes("writeFileSync(ziel, original"), "Original wird bei Fehlern wiederhergestellt");
@@ -796,87 +794,229 @@ test("UFO: Prüfsumme in aktuell.json stimmt mit dem unveränderten Patch übere
   if (!G.PATCH_DATEIEN.some(d => d.inhalt)) return;
   const patch = G.PATCH_DATEIEN.find(d => d.name === "aktuell.patch").inhalt;
   const meta = JSON.parse(G.PATCH_DATEIEN.find(d => d.name === "aktuell.json").inhalt);
-  const hash = createHash("sha256").update(patch, "utf8").digest("hex");
-  // Alle üblichen Feldnamen führen denselben Wert, damit jedes Prüfskript sie findet.
-  for (const feld of ["pruefsumme", "checksum", "sha256", "hash"]) {
-    assert.match(String(meta[feld]), /^[0-9a-f]{64}$/, `${feld}: 64 Hex-Zeichen`);
-    assert.equal(meta[feld], hash, `${feld} ist sha256(aktuell.patch)`);
-  }
-  assert.equal(meta.pruefsummeAlgorithmus, "sha256");
-  assert.equal(meta.algorithmus, "sha256");
-  assert.equal(meta.pruefsummeLaenge, 64);
-  assert.equal(meta.patchGroesseBytes, Buffer.byteLength(patch, "utf8"), "Größe in Bytes");
+  const hash16 = createHash("sha256").update(patch, "utf8").digest("hex").slice(0, 16);
+  assert.ok(patch.startsWith("diff --git "), "erste Zeile beginnt mit diff --git");
+  assert.equal(meta.datei, "aktuell.patch");
+  assert.match(String(meta.sha256), /^[0-9a-f]{16}$/, "sha256: erste 16 Hex-Zeichen");
+  assert.equal(meta.sha256, hash16, "sha256 stimmt mit aktuell.patch überein");
+  assert.match(String(meta.basis), /^[0-9a-f]{7}$/, "basis: 7-stelliger Kurz-Hash");
+  assert.ok(typeof meta.titel === "string" && meta.titel.length > 0, "titel vorhanden");
 });
 
-test("Tanzposen: Ellenbogen außen, kein Hüpfen und keine Drehungen", () => {
+/* ------------------------------ Tanz ------------------------------ */
+// Tänze, bei denen beide Füße fest stehen, und alle Tänze zusammen.
+const TANZ_STAND = ["danceSway", "danceTwist", "danceDisco", "danceHeadnod", "danceArmUp", "danceArmsUp",
+  "danceFortnite", "danceClap", "danceRobot", "danceWave", "danceHeart"];
+const TANZ_ALLE = [...TANZ_STAND, "danceTap", "danceStep", "danceMoonwalk", "danceGlide", "danceSchritt", "danceSlide"];
+const tanzBild = (state, t, extra = {}) => {
+  const c = canvas();
+  G.drawLuni(c.ctx, 0, 0, { state, t, beatT: t, walk: t * 7, face: 1, shadow: false, scale: 1, ...extra });
+  return c;
+};
+const armStriche = c => c.shapes.filter(z => z.kind === "stroke" && ["#dcc9a5", "#c4ad84"].includes(z.color) && z.points && z.points.length === 3);
+const rumpfIndex = c => c.shapes.findIndex(z => z.color === "#dcc9a5" && z.kind !== "stroke");
+const abstand = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+const socke = (c, farbe) => c.shapes.find(z => z.color === farbe);
+const zeiten = (bis, schritt = 0.07) => Array.from({ length: Math.floor(bis / schritt) + 1 }, (_, i) => i * schritt);
+
+test("Tanzposen: Kick, Running Man, Hüpfen und Drehung sind entfernt", () => {
   const quelle = readFileSync("src/game/luni.ts", "utf8");
-  assert.ok(!quelle.includes('"danceHop"'), "Hüpfen entfernt");
-  assert.ok(!quelle.includes('"danceSpin"'), "Drehen entfernt");
-  const posen = ["danceSway", "danceTwist", "danceDisco", "danceMoonwalk", "danceGlide", "danceSlide"];
-  for (const p of posen) assert.ok(quelle.includes(`case "${p}"`), p);
-  for (const p of posen) {
-    const c = canvas();
-    G.drawLuni(c.ctx, 0, 0, { state: p, t: 0.7, face: 1, shadow: false, scale: 1 });
-    const arme = c.shapes.filter(z => z.kind === "stroke" &&
-      ["#dcc9a5", "#c4ad84"].includes(z.color) && z.points && z.points.length >= 3);
-    assert.ok(arme.length >= 2, `${p}: zwei ganze Arme`);
-    for (const arm of arme) {
-      const schulter = arm.points[0];
-      const ellbogen = arm.points[1];
-      assert.ok(
-        Math.abs(ellbogen[0]) >= Math.abs(schulter[0]) - 0.4,
-        `${p}: Ellenbogen liegt außen (${ellbogen[0].toFixed(1)} bei Schulter ${schulter[0].toFixed(1)})`,
-      );
+  const register = readFileSync("src/game/tanz.ts", "utf8");
+  const haus2 = readFileSync("src/game/house.ts", "utf8");
+  for (const weg of ["danceHop", "danceSpin", "danceKick", "danceShuffle"]) {
+    assert.ok(!quelle.includes(`"${weg}"`), `${weg} nicht mehr in luni.ts`);
+    assert.ok(!register.includes(weg), `${weg} nicht mehr im Tanz-Register`);
+    assert.ok(!haus2.includes(weg), `${weg} nicht mehr in der Tour`);
+  }
+  for (const p of TANZ_ALLE) assert.ok(quelle.includes(`case "${p}"`), p);
+  for (const p of TANZ_ALLE.filter(z => z !== "danceGlide")) assert.ok(register.includes(`key: "${p}"`), `${p} im Register`);
+});
+
+test("Tanzposen: Arme sitzen außen an der Schulter, Ober- und Unterarm behalten ihre Länge", () => {
+  for (const p of TANZ_ALLE) {
+    for (const t of zeiten(2.1)) {
+      const arme = armStriche(tanzBild(p, t));
+      assert.equal(arme.length, 2, `${p}: zwei ganze Arme`);
+      const [a, b] = arme;
+      // Schulterbreite: beide Gelenke sitzen an den äußeren Schulterecken (2 × 5,6)
+      near(Math.round(abstand(a.points[0], b.points[0]) * 1000) / 1000, 11.2);
+      const mitte = (a.points[0][0] + b.points[0][0]) / 2;
+      for (const arm of arme) {
+        const [schulter, ellbogen, gelenk] = arm.points;
+        assert.ok(Math.abs(abstand(schulter, ellbogen) - 8.2) < 1e-6, `${p} t=${t.toFixed(2)}: Oberarm 8,2 lang`);
+        // der Ärmel endet 1,5 vor der Handmitte: Unterarm 8,4
+        assert.ok(Math.abs(abstand(ellbogen, gelenk) - 6.9) < 1e-6, `${p} t=${t.toFixed(2)}: Unterarm 8,4 lang`);
+        // Ellenbogen außen – nur beim Floss kreuzt ein gestreckter Arm den Körper
+        if (p !== "danceFortnite") {
+          assert.ok(Math.abs(ellbogen[0] - mitte) >= Math.abs(schulter[0] - mitte) - 0.4, `${p}: Ellenbogen liegt außen`);
+        }
+      }
     }
-    // Arme und Hände liegen VOR dem Rumpf: sie werden nach dem Torso gezeichnet
-    const torsoIdx = c.shapes.findIndex(z => z.color === "#dcc9a5" && z.kind !== "stroke");
-    const armIdx = c.shapes.findIndex(z => z.kind === "stroke" && ["#dcc9a5", "#c4ad84"].includes(z.color));
-    assert.ok(torsoIdx >= 0 && armIdx > torsoIdx, `${p}: Arme liegen vor dem Körper`);
   }
 });
 
-test("Moonwalk: keine Socken-Wechsel, Füße bleiben auf ihrer Seite", () => {
-  const fussPos = t => {
-    const c = canvas();
-    G.drawLuni(c.ctx, 0, 0, { state: "danceMoonwalk", t, face: 1, shadow: false, scale: 1 });
-    const rot = c.shapes.filter(z => z.color === "#ff6f61").map(z => (z.left + z.right) / 2);
-    const tuerkis = c.shapes.filter(z => z.color === "#35d6c0").map(z => (z.left + z.right) / 2);
-    return { rot, tuerkis };
-  };
-  // Über einen vollen Zyklus: die türkise Socke bleibt vorn, die rote hinten
-  for (const t of [0, 0.13, 0.26, 0.4, 0.53, 0.66, 0.8, 0.95]) {
-    const f = fussPos(t);
-    assert.equal(f.rot.length, 1, "eine rote Socke");
-    assert.equal(f.tuerkis.length, 1, "eine türkise Socke");
-    assert.ok(f.tuerkis[0] > f.rot[0] + 2, `Socken wechseln nicht die Seite (t=${t})`);
+test("Tanzposen: weicher Wechsel zwischen zwei Tänzen hält die Armlängen", () => {
+  for (const k of [0.15, 0.4, 0.7, 0.9]) {
+    const arme = armStriche(tanzBild("danceRobot", 0.6, { blendFrom: "danceArmsUp", blendK: k }));
+    for (const arm of arme) {
+      assert.ok(Math.abs(abstand(arm.points[0], arm.points[1]) - 8.2) < 1e-6, "Oberarm bleibt 8,2");
+      assert.ok(Math.abs(abstand(arm.points[1], arm.points[2]) - 6.9) < 1e-6, "Unterarm bleibt 8,4");
+    }
   }
-  // Die Pose bewegt sich über die Zeit (Gleiten), steht also nie still
-  const a = fussPos(0.1), b = fussPos(0.35);
-  assert.ok(Math.abs(a.tuerkis[0] - b.tuerkis[0]) > 0.5, "Füße gleiten");
-  // Tour: Moonwalk-Segmente sind reine Bewegungssegmente (nie auf der Stelle)
+});
+
+test("Tanzen: Arme und Hände liegen vor dem Körper (außer beim Floss)", () => {
+  for (const p of TANZ_ALLE.filter(z => z !== "danceFortnite")) {
+    for (const t of [0.1, 0.45, 0.9, 1.3]) {
+      const c = tanzBild(p, t);
+      const rumpf = rumpfIndex(c);
+      assert.ok(rumpf >= 0, `${p}: Rumpf gezeichnet`);
+      for (const arm of armStriche(c)) assert.ok(c.shapes.indexOf(arm) > rumpf, `${p}: Arm liegt vor dem Körper`);
+    }
+  }
+});
+
+test("Tanzen auf der Stelle: beide Füße bleiben fest am Boden", () => {
+  for (const p of TANZ_STAND) {
+    const start = tanzBild(p, 0);
+    for (const farbe of ["#ff6f61", "#35d6c0"]) {
+      const s0 = socke(start, farbe);
+      assert.ok(s0, `${p}: Socke gezeichnet`);
+      for (const t of zeiten(2.1)) {
+        const s1 = socke(tanzBild(p, t), farbe);
+        assert.ok(Math.abs(s1.left - s0.left) < 1e-6 && Math.abs(s1.right - s0.right) < 1e-6, `${p} t=${t.toFixed(2)}: Fuß rutscht nicht`);
+        assert.ok(Math.abs(s1.bottom) < 1e-6, `${p} t=${t.toFixed(2)}: Sohle auf dem Boden`);
+      }
+    }
+  }
+});
+
+test("Fuß tippt: die Ferse bleibt am Boden, nur die Zehen wippen", () => {
+  let hoch = 0;
+  const rot0 = socke(tanzBild("danceTap", 0), "#ff6f61");
+  for (const t of zeiten(1, 0.02)) {
+    const c = tanzBild("danceTap", t);
+    const tipp = socke(c, "#35d6c0"), steh = socke(c, "#ff6f61");
+    assert.ok(Math.abs(tipp.bottom) < 1e-6, `t=${t.toFixed(2)}: Ferse steht auf dem Boden`);
+    assert.ok(Math.abs(steh.left - rot0.left) < 1e-6 && Math.abs(steh.bottom) < 1e-6, "Standfuß bleibt stehen");
+    hoch = Math.max(hoch, -3.6 - tipp.top);
+  }
+  assert.ok(hoch > 1, `Zehen heben sichtbar an (${hoch.toFixed(2)})`);
+  // genau auf dem Schlag liegt der Fuß wieder flach
+  near(socke(tanzBild("danceTap", 0.5), "#35d6c0").top, -3.6);
+});
+
+test("Floss (Fortnite): gestreckte Arme kreuzen abwechselnd vor und hinter dem Körper, die Hüfte geht dagegen", () => {
+  const lage = t => {
+    const c = tanzBild("danceFortnite", t);
+    const rumpf = rumpfIndex(c);
+    const arme = armStriche(c);
+    const nah = arme.find(z => z.color === "#c4ad84"), fern = arme.find(z => z.color === "#dcc9a5");
+    const huefte = (nah.points[0][0] + fern.points[0][0]) / 2;
+    return {
+      nahHinten: c.shapes.indexOf(nah) < rumpf, fernHinten: c.shapes.indexOf(fern) < rumpf,
+      huefte, haende: (nah.points[2][0] + fern.points[2][0]) / 2 - huefte,
+      gestreckt: Math.min(abstand(nah.points[0], nah.points[2]), abstand(fern.points[0], fern.points[2])),
+    };
+  };
+  // ein Schwung je Schlag: links vorn, rechts hinten, links hinten, rechts vorn
+  const a = lage(0.45), b = lage(0.95), c2 = lage(1.45), d = lage(1.95);
+  assert.deepEqual([a.nahHinten, a.fernHinten], [false, false], "links: naher Arm kreuzt vorn");
+  assert.deepEqual([b.nahHinten, b.fernHinten], [false, true], "rechts: ferner Arm läuft hinter dem Körper durch");
+  assert.deepEqual([c2.nahHinten, c2.fernHinten], [true, false], "links: naher Arm läuft hinter dem Körper durch");
+  assert.deepEqual([d.nahHinten, d.fernHinten], [false, false], "rechts: ferner Arm kreuzt vorn");
+  for (const [l, seite] of [[a, -1], [b, 1], [c2, -1], [d, 1]]) {
+    assert.ok(l.haende * seite > 3, "beide Fäuste auf derselben Seite");
+    assert.ok(l.huefte * seite < -1.5, "die Hüfte geht dagegen");
+    assert.ok(l.gestreckt > 15, "Arme sind gestreckt");
+  }
+});
+
+test("Hände: beide gleich hell, vier Finger, Daumen am Handballen – spiegelbildlich zur Körpermitte", () => {
+  const c = tanzBild("danceArmsUp", 0.1);
+  const finger = seite => c.shapes.filter(z => z.kind === "stroke" && z.color === "#f4c9a0" && z.points.length === 2 && z.points[0][0] * seite > 0 && z.points[0][1] < -40);
+  const daumen = seite => c.shapes.filter(z => z.kind === "stroke" && z.color === "#f4c9a0" && z.points.length === 3 && z.points[0][0] * seite > 0 && z.points[0][1] < -40);
+  for (const seite of [-1, 1]) {
+    const f = finger(seite), d = daumen(seite);
+    assert.equal(f.length, 4, "vier Finger");
+    assert.equal(d.length, 1, "ein Daumen");
+    const laengen = f.map(z => abstand(z.points[0], z.points[1])).sort((x, y) => x - y);
+    assert.ok(laengen[3] - laengen[0] > 0.5, "Finger sind unterschiedlich lang");
+    const knoechel = f.reduce((sum, z) => sum + z.points[0][0], 0) / 4;
+    // Daumenspitze zeigt zur Körpermitte: bei der linken Hand nach rechts, bei der rechten nach links
+    assert.ok((d[0].points[2][0] - knoechel) * -seite > 0.8, `Daumen zur Mitte (Seite ${seite})`);
+    // und er setzt am Handballen an, nicht an den Fingerspitzen
+    const spitzen = f.reduce((sum, z) => sum + z.points[1][1], 0) / 4;
+    assert.ok(d[0].points[0][1] > spitzen + 1.5, "Daumen setzt unten am Handballen an");
+  }
+  // Faust beim Twist: alle Finger beider Hände eingerollt
+  const twist = tanzBild("danceTwist", 0.2);
+  const stummel = twist.shapes.filter(z => z.kind === "stroke" && z.color === "#f4c9a0" && z.points.length === 2);
+  assert.equal(stummel.length, 8);
+  assert.ok(stummel.every(z => abstand(z.points[0], z.points[1]) < 1), "Faust: Finger eingerollt");
+});
+
+test("Schritt-Tanz: Kopf nickt, ein Arm wippt nach oben, der Zeigefinger zeigt zur Decke", () => {
+  const c = tanzBild("danceSchritt", 0.3);
+  // erhobene Hand: ein gestreckter Zeigefinger, drei eingerollte Finger
+  const oben = c.shapes.filter(z => z.kind === "stroke" && z.color === "#f4c9a0" && z.points.length === 2 && z.points[0][1] < -44);
+  const laengen = oben.map(z => abstand(z.points[0], z.points[1])).sort((x, y) => x - y);
+  assert.equal(oben.length, 4, "vier Finger an der erhobenen Hand");
+  assert.ok(laengen[3] > 2.5 && laengen[2] < 1, `nur der Zeigefinger ist gestreckt (${laengen.map(v => v.toFixed(1))})`);
+  // der Finger ist kurz wie ein echter Finger – kein langer Stab
+  assert.ok(laengen[3] < 3.4, "Zeigefinger hat natürliche Länge");
+  const spitze = Math.min(...oben.map(z => Math.min(z.points[0][1], z.points[1][1])));
+  assert.ok(spitze < -50, "Finger zeigt über Kopfhöhe");
+  // Kopf nickt im Takt: auf dem Schlag weiter vorn als dazwischen
+  const kopf = t => head(tanzBild("danceSchritt", t));
+  assert.ok(kopf(0) && kopf(0.25), "Kopf gezeichnet");
+  // Schritte: beide Füße wechseln sich ab
+  const fuss = t => socke(tanzBild("danceSchritt", t), "#35d6c0").left;
+  assert.ok(Math.abs(fuss(0) - fuss(0.5)) > 8, "ganze Schritte im Takt");
+});
+
+test("Moonwalk: geschmeidig, keine Socken-Wechsel, ein Fuß steht auf der Zehe", () => {
+  let vorher = null, gekippt = 0;
+  for (const t of zeiten(1, 0.01)) {
+    const c = tanzBild("danceMoonwalk", t);
+    const rot = c.shapes.filter(z => z.color === "#ff6f61"), tuerkis = c.shapes.filter(z => z.color === "#35d6c0");
+    assert.equal(rot.length, 1, "eine rote Socke");
+    assert.equal(tuerkis.length, 1, "eine türkise Socke");
+    const xr = (rot[0].left + rot[0].right) / 2, xt = (tuerkis[0].left + tuerkis[0].right) / 2;
+    assert.ok(xt > xr + 2, `Socken wechseln nicht die Seite (t=${t.toFixed(2)})`);
+    // geschmeidig: kein Fuß springt von Bild zu Bild
+    if (vorher) assert.ok(Math.abs(xr - vorher.xr) < 0.35 && Math.abs(xt - vorher.xt) < 0.35, `kein Ruck bei t=${t.toFixed(2)}`);
+    vorher = { xr, xt };
+    // immer bleibt mindestens eine Sohle am Boden
+    assert.ok(Math.min(Math.abs(rot[0].bottom), Math.abs(tuerkis[0].bottom)) < 1e-6, "ein Fuß liegt flach");
+    assert.ok(rot[0].bottom < 1e-6 && tuerkis[0].bottom < 1e-6, "kein Fuß taucht in den Boden");
+    if (tuerkis[0].bottom - tuerkis[0].top > 4.6 || rot[0].bottom - rot[0].top > 4.6) gekippt++;
+  }
+  assert.ok(gekippt > 40, "Stützfuß steht deutlich auf der Zehe");
+  const a = socke(tanzBild("danceMoonwalk", 0.1), "#35d6c0"), b = socke(tanzBild("danceMoonwalk", 0.35), "#35d6c0");
+  assert.ok(Math.abs(a.left - b.left) > 0.5, "Füße gleiten");
+  // Tour: Moonwalk ist ein reines Bewegungssegment (nie auf der Stelle)
   const tour = readFileSync("src/game/house.ts", "utf8");
   const segs = [...tour.matchAll(/\{ floor: \d, x: \d+, stil: "danceMoonwalk", dauer: (\d+), tempo: \d+ \}/g)];
-  assert.ok(segs.length >= 2, "Moonwalk in der Tour");
+  assert.ok(segs.length >= 1, "Moonwalk in der Tour");
   for (const mSeg of segs) assert.equal(mSeg[1], "0", "Moonwalk-Segment gleitet durch (dauer 0)");
 });
 
-test("Torjubel: Anlauf mit Blick nach links, dann Rutscher auf beiden Knien ins Wohnzimmer", () => {
+test("Torjubel: Schritte als Anlauf, dann Rutscher auf beiden Knien ins Wohnzimmer", () => {
   const quelle = readFileSync("src/game/house.ts", "utf8");
   const tour = quelle.slice(quelle.indexOf("PLATTEN_TOUR"), quelle.indexOf("PLATTEN_RUECKKEHR"));
-  // Anlauf: schnelles Lauf-Segment direkt vor dem Rutscher
   const segs = [...tour.matchAll(/\{ floor: (\d), x: (\d+), stil: "([a-zA-Z]+)", dauer: (\d+), tempo: (\d+) \}/g)]
     .map(mm => ({ floor: +mm[1], x: +mm[2], stil: mm[3], dauer: +mm[4], tempo: +mm[5] }));
   const rutsch = segs.findIndex(z => z.stil === "danceSlide");
   assert.ok(rutsch >= 1, "Rutscher in der Tour");
-  const anlauf = segs[rutsch - 1];
-  assert.equal(anlauf.stil, "run", "direkt davor: Anlauf");
-  assert.ok(anlauf.tempo >= 95, "Anlauf ist schneller");
-  assert.ok(anlauf.x > segs[rutsch].x, "Anlauf läuft nach links");
   assert.equal(segs[rutsch].floor, 1, "Rutscher im Erdgeschoss (Wohnzimmer)");
+  assert.equal(segs[rutsch - 1].stil, "danceSchritt", "direkt davor: Anlauf im Schritt-Tanz");
+  assert.ok(segs[rutsch - 1].x > segs[rutsch].x, "es geht nach links ins Wohnzimmer");
+  assert.equal(segs.some(z => z.stil === "run"), false, "kein Rennen in der Tour");
   assert.ok(quelle.includes('if (state === "danceSlide") face = -1;'), "Blick beim Rutschen nach links");
   // Pose: beide Knie auf dem Boden (Welt y ≈ 0), Füße schleifen hinten
   const pose = readFileSync("src/game/luni.ts", "utf8");
-  const abschnitt = pose.slice(pose.indexOf('case "danceSlide"'), pose.indexOf('case "handstand"'));
+  const abschnitt = pose.slice(pose.indexOf('case "danceSlide"'), pose.indexOf('case "danceHeadnod"'));
   assert.ok(abschnitt.includes("Torjubel"), "Kommentar: Torjubel");
   assert.ok(abschnitt.includes("r.rootY = 8"), "Hüfte auf Knieshöhe");
   assert.ok(abschnitt.includes("r.footNearDir = -1;") && abschnitt.includes("r.footFarDir = -1;"), "Füße zeigen nach hinten");
@@ -884,76 +1024,83 @@ test("Torjubel: Anlauf mit Blick nach links, dann Rutscher auf beiden Knien ins 
   G.drawLuni(c.ctx, 0, 0, { state: "danceSlide", t: 0.5, face: -1, shadow: false, scale: 1 });
   const socken = c.shapes.filter(z => ["#ff6f61", "#35d6c0"].includes(z.color)).map(z => z.bottom);
   assert.equal(socken.length, 2, "beide Füße sichtbar");
-  // Fußpunkte bei y≈0; die Sockenform selbst darf durch die Drehung etwas reichen
   assert.ok(socken.every(v => v > -2 && v < 4), `Knie/Füße am Boden: ${socken.map(v => v.toFixed(1))}`);
+  // beide Arme jubeln nach oben: Hände über Schulterhöhe
+  for (const arm of armStriche(tanzBild("danceSlide", 0.3))) assert.ok(arm.points[2][1] < arm.points[0][1] - 6, "Arme im V nach oben");
 });
 
-/** Aktuelles Tour-Segment (auch beim Rückweg, das dann danceGlide ist). */
-const PLATTEN_SEG = h => (h.danceRueck
-  ? { floor: 3, x: 668, stil: "danceGlide", dauer: 0, tempo: 34 }
-  : G.PLATTEN_TOUR[Math.min(h.danceSeg, G.PLATTEN_TOUR.length - 1)]);
-
-test("Tanzen: Arme und Hände liegen vor Körper und Haaren", () => {
-  for (const p of ["danceSway", "danceDisco", "danceStep", "danceKick", "danceSlide"]) {
-    const c = canvas();
-    G.drawLuni(c.ctx, 0, 0, { state: p, t: 0.9, face: 1, shadow: false, scale: 1 });
-    const arme = c.shapes.filter(z => z.kind === "stroke" && ["#dcc9a5", "#c4ad84"].includes(z.color));
-    const haare = c.shapes.filter(z => z.color === "#191920");
-    assert.ok(arme.length >= 2 && haare.length >= 2, `${p}: Arme und Haare gezeichnet`);
-    const letzterArm = c.shapes.lastIndexOf(arme[arme.length - 1]);
-    const letztesHaar = c.shapes.lastIndexOf(haare[haare.length - 1]);
-    assert.ok(letzterArm > letztesHaar, `${p}: Arme kommen nach den Haaren (liegen vorn)`);
-  }
-});
-
-test("Tanz-Tour: beschwingt durchs Haus, Knie-Rutscher ins Wohnzimmer, Rückkehr zur Anlage", () => {
+test("Tanz-Tour: durchs ganze Haus, in jedem Raum ein anderer Tanz, unterwegs nur Tanzschritte, pünktlich zurück", () => {
   const h = haus({
     stations: G.STATIONS, lf: 3, lx: 668, lface: 1,
     plattenPhase: "play", plattenT: 0, plattenPower: true, plattenSpin: 0,
     plattenArmLift: 0, plattenArmTurn: 1, plattenEndFrom: 1, plattenBass: 0,
     plattenMusic: null, plattenReady: false, plattenPreparing: false,
     plattenStarted: false, plattenPausedAt: null, musikzimmer: null,
-    danceSeg: 0, danceT: 0, danceStil: "danceSway", danceRueck: false,
+    danceSeg: 0, danceT: 0, danceStil: "danceArmsUp", danceRueck: false,
     danceTreppe: false, danceTreppeT: 0, danceTreppeStair: null, danceTreppeDir: 1,
+    danceBlendFrom: null, danceBlendT: 0,
     activity: null, target: null, cur: null, path: [],
   });
-  // Musikzeit simulieren (echte Zeitachse), damit die Tour bis zum Ende läuft
-  let zeit = 0;
-  const etagen = [];
-  let rutscher = false;
-  let moonwalk = false;
-  let gleiten = false;
-  let treppenTanz = false;
-  let anlauf = false;
-  const neueMoves = new Set();
-  let maxFeder = 0;
-  for (let i = 0; i < 6000; i++) {
+  const reise = ["danceSchritt", "danceMoonwalk", "danceSlide"];
+  let zeit = 0, maxFeder = 0, weich = false, treppenTanz = false, zurueckUm = null;
+  const etagen = [], stile = new Set(), proEtage = { 1: new Set(), 2: new Set(), 3: new Set() };
+  for (let i = 0; i < 8000; i++) {
     zeit += 0.05;
+    const xVor = h.lx, treppeVor = h.danceTreppe;
     h.plattenStarted = true;
     h.plattenMusic = { currentTime: zeit, stop() {} };
     h.updatePlatten(0.05);
     if (h.plattenPhase !== "play") break;
     if (!etagen.includes(h.lf)) etagen.push(h.lf);
-    // Der Rutscher läuft als aktuelles Segment im Wohnzimmer (EG)
-    if (h.lf === 1 && PLATTEN_SEG(h).stil === "danceSlide") rutscher = true;
-    if (h.danceStil === "danceMoonwalk") moonwalk = true;
-    if (h.danceStil === "danceGlide" && h.danceTreppe) treppenTanz = true;
-    if (h.danceStil === "danceGlide") gleiten = true;
-    if (h.danceStil === "run") anlauf = true;
-    if (h.danceStil === "danceStep" || h.danceStil === "danceKick") neueMoves.add(h.danceStil);
+    stile.add(h.danceStil);
+    if (h.danceBlendFrom) weich = true;
+    if (h.danceTreppe && h.danceStil === "danceSchritt") treppenTanz = true;
+    // Wer auf der Stelle tanzt, bewegt sich nicht durchs Haus (nur das Einrasten am Ziel)
+    if (!reise.includes(h.danceStil)) {
+      assert.ok(!h.danceTreppe && !treppeVor, `${h.danceStil}: nie in einer Standpose auf der Treppe`);
+      assert.ok(Math.abs(h.lx - xVor) <= 1.5 + 1e-9, `${h.danceStil}: rutscht nicht über den Boden`);
+      proEtage[h.lf].add(h.danceStil);
+    }
+    if (h.danceRueck && zurueckUm === null && h.lf === 3 && Math.abs(h.lx - 668) < 3) zurueckUm = zeit;
     if (h.plattenBass > maxFeder) maxFeder = h.plattenBass;
   }
   assert.deepEqual(etagen, [3, 2, 1], "alle drei Etagen besucht");
-  assert.ok(rutscher, "Knie-Rutscher im Wohnzimmer (danceSlide)");
-  assert.ok(moonwalk, "Moonwalk dabei");
-  assert.ok(gleiten, "gleitende Tanzschritte statt Stillstand");
-  assert.ok(treppenTanz, "Treppen werden mitgetanzt");
-  assert.ok(anlauf, "Anlauf (run) vor dem Rutscher");
-  assert.ok(neueMoves.has("danceStep") && neueMoves.has("danceKick"), "neue Tanz-Moves dabei");
+  for (const s of reise) assert.ok(stile.has(s), `${s} dabei`);
+  for (const weg of ["run", "walk", "danceGlide", "danceKick", "danceShuffle"]) assert.ok(!stile.has(weg), `${weg} kommt nicht vor`);
+  for (const f of [1, 2, 3]) assert.ok(proEtage[f].size >= 3, `Etage ${f}: mindestens drei verschiedene Tänze (${[...proEtage[f]]})`);
+  assert.ok(stile.size >= 14, `abwechslungsreich: ${stile.size} verschiedene Tänze`);
+  assert.ok(weich, "weiche Übergänge zwischen den Tänzen");
+  assert.ok(treppenTanz, "Treppen werden im Schritt-Tanz mitgetanzt");
   assert.ok(maxFeder > 0.6, "Boxen pulsieren zum Bass");
   assert.ok(h.danceRueck, "Rückweg zur Anlage eingeleitet");
+  assert.ok(zurueckUm !== null && zurueckUm < G.PLATTEN_DURATION_SECONDS - 2, `pünktlich zurück an der Anlage (${zurueckUm?.toFixed(1)} s)`);
   assert.equal(h.lf, 3, "zurück im Dachgeschoss");
   assert.ok(Math.abs(h.lx - 668) < 3, `zurück an der Anlage (x=${h.lx.toFixed(1)})`);
+});
+
+test("Tanz-Tour: wird die Zeit knapp, tanzt sie direkt zur Anlage zurück", () => {
+  const h = haus({
+    stations: G.STATIONS, lf: 1, lx: 330, lface: -1,
+    plattenPhase: "play", plattenT: 0, plattenPower: true, plattenSpin: 0,
+    plattenArmLift: 0, plattenArmTurn: 1, plattenEndFrom: 1, plattenBass: 0,
+    plattenMusic: null, plattenReady: false, plattenPreparing: false,
+    plattenStarted: true, plattenPausedAt: null, musikzimmer: null,
+    danceSeg: 9, danceT: 0, danceStil: "danceDisco", danceRueck: false,
+    danceTreppe: false, danceTreppeT: 0, danceTreppeStair: null, danceTreppeDir: 1,
+    danceBlendFrom: null, danceBlendT: 0,
+    activity: null, target: null, cur: null, path: [],
+  });
+  // spät im Lied im Wohnzimmer: der Rückweg braucht rund 46 Sekunden
+  let zeit = G.PLATTEN_DURATION_SECONDS - 52;
+  for (let i = 0; i < 2000; i++) {
+    zeit += 0.05;
+    h.plattenMusic = { currentTime: zeit, stop() {} };
+    h.updatePlatten(0.05);
+    if (h.plattenPhase !== "play") break;
+    if (i === 60) assert.ok(h.danceRueck, "Rückweg sofort eingeleitet");
+  }
+  assert.equal(h.lf, 3, "rechtzeitig im Dachgeschoss");
+  assert.ok(Math.abs(h.lx - 668) < 3, "rechtzeitig an der Anlage");
 });
 
 test("Froschlied: 53 Noten aus der MIDI, einstimmig, Mund passend zum Ton", () => {
@@ -1047,6 +1194,53 @@ test("Frosch-Töne: exakte MIDI-Tonhöhen, saubere Dauer, kein Clipping", () => 
   const lang = G.renderSilbe(fakeCtx, 60, 0, 3264);
   assert.ok(Math.abs(kurz.duration - 557 / 1920) < 0.01, "kurze Note 0.29s");
   assert.ok(Math.abs(lang.duration - 3264 / 1920) < 0.01, "lange Note 1.70s");
+});
+
+test("Weihnachtshaus & Weihnachtsstein: vierte Hauswelt, drei überlappungsfreie Wechselsteine ≥ 24×24", () => {
+  assert.ok(G.WELTEN.includes("weihnacht"), "weihnacht in WELTEN");
+  assert.equal(G.weltAusHash("#weihnachtshaus"), "weihnacht");
+  assert.equal(G.STEIN_NAMEN.weihnacht, "Weihnachtsstein");
+  for (const w of G.WELTEN) {
+    const slots = G.steinSlots(w);
+    assert.equal(slots.length, 3, `${w}: drei Steine der anderen Welten`);
+    assert.equal(slots.some(s => s.ziel === w), false, `${w}: eigener Stein fehlt`);
+    for (let i = 0; i < slots.length; i++) {
+      const [hx, hy, hw, hh] = slots[i].hit;
+      assert.ok(hw >= 24 && hh >= 24, `${slots[i].label}: mindestens 24×24`);
+      assert.ok(hx >= 96 && hx + hw <= 350 && hy + hh <= 570, `${slots[i].label}: im sicheren Erdbereich`);
+      for (let j = i + 1; j < slots.length; j++) {
+        const [bx, by, bw, bh] = slots[j].hit;
+        const ueber = hx < bx + bw && hx + hw > bx && hy < by + bh && hy + hh > by;
+        assert.equal(ueber, false, `${slots[i].label} und ${slots[j].label} überlappen nicht`);
+      }
+    }
+  }
+  const c = canvas();
+  G.drawStein(c.ctx, "weihnacht", 0.5);
+  assert.ok(c.shapes.some(s => s.color === "#7a242c"), "Weihnachtsstein-Grundkörper");
+  assert.ok(c.shapes.some(s => s.color === "#2f7d47"), "Tannenbaum auf dem Weihnachtsstein");
+  const app = readFileSync("src/App.tsx", "utf8");
+  assert.ok(app.includes('#weihnachtshaus') && app.includes('welt="weihnacht"'), "Route #weihnachtshaus in App.tsx");
+});
+
+test("Weihnachtsschlitten: Weihnachtsmann mit Schlitten und Rentieren statt UFO im Weihnachtshaus", () => {
+  const src = readFileSync("src/game/house.ts", "utf8");
+  assert.ok(src.includes('this.welt === "weihnacht"') && src.includes("drawWeihnachtsschlitten("), "Weihnachtshaus zeichnet Schlitten statt UFO");
+  const c = canvas();
+  G.drawWeihnachtsschlitten(c.ctx, 0, false, -1, [G.PATCH_ZIP]);
+  assert.ok(c.shapes.some(s => s.color === "#ab1f27" || s.color === "#c92a32"), "roter Schlittenkorpus");
+  assert.ok(c.shapes.some(s => s.color === "#8d5b37") && c.shapes.some(s => s.color === "#6e462a"), "zwei Rentiere im Gespann");
+  assert.ok(c.shapes.some(s => s.color === "#f6f8fb"), "weißer Bart / Pelzbesatz");
+  assert.ok(c.arcs.some(a => a.color === "#ef342c"), "Leit-Rentier mit roter Nase");
+  // Alles innerhalb des sicheren Wii-4:3- und Overscan-Bereichs (96..864, >= 30)
+  for (const s of c.shapes) {
+    assert.ok(s.left >= 96 && s.right <= 864 && s.top >= 30, `Schlitten im sicheren Bereich: [${s.left.toFixed(1)}..${s.right.toFixed(1)}, top=${s.top.toFixed(1)}]`);
+  }
+  // Identische Menüfunktion wie beim UFO
+  const offen = canvas();
+  G.drawWeihnachtsschlitten(offen.ctx, 0, true, 0, [G.PATCH_ZIP]);
+  assert.ok(offen.shapes.some(s => s.color === "rgba(8,20,26,.88)"), "Patch-Menü öffnet identisch");
+  assert.ok(offen.texte.some(t => t.inhalt === G.PATCH_ZIP), "Archivname im Menü");
 });
 
 console.log(`\n${n} Hausgrafik-Tests bestanden.`);

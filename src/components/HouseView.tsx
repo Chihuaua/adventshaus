@@ -3,33 +3,30 @@ import { House } from "@/game/house";
 import { sfx } from "@/game/audio";
 import { loadMuted, saveMuted } from "@/game/storage";
 import { wechsleWelt } from "@/game/welten";
-import { PATCH_DATEIEN, type PatchDatei } from "@/game/patch";
-import { zipErzeugen } from "@/game/zip";
+import { PATCH_TXT, PATCH_VORSCHAU } from "@/game/patch";
+import { patchTxtHerunterladen, patchZipHerunterladen } from "@/components/PatchView";
 import { Icon } from "@/components/Icons";
 import StandTransfer from "@/components/StandTransfer";
 
 
 
 /**
- * UFO: das Archiv der aktuellen Sitzung herunterladen – ohne Token, ohne Netz.
- * Im Archiv liegen aktuell.patch und aktuell.json. Der Dateiname folgt
- * LCL-<Kurzname>-<laufende Nummer>.zip.
+ * UFO / Weihnachtsschlitten: lädt wahlweise das ZIP-Archiv, die TXT-Datei
+ * herunter oder öffnet die Patch-Code-Vorschau (#patch) zum Kopieren.
  */
-function patchHerunterladen(datei: string) {
-  if (!PATCH_DATEIEN.some((d: PatchDatei) => d.inhalt)) return;
-  const bytes = zipErzeugen(PATCH_DATEIEN);
-  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/zip" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = datei;
-  a.rel = "noopener";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+function patchAktion(eintrag: string) {
+  if (eintrag === PATCH_VORSCHAU) {
+    window.location.hash = "#patch";
+    return;
+  }
+  if (eintrag === PATCH_TXT || eintrag.endsWith(".txt")) {
+    patchTxtHerunterladen(eintrag);
+    return;
+  }
+  patchZipHerunterladen(eintrag);
 }
 
-export default function HouseView({ welt = "normal" }: { welt?: "normal" | "gruesel" }) {
+export default function HouseView({ welt = "normal" }: { welt?: "normal" | "gruesel" | "weihnacht" }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [muted, setMuted] = useState(false);
   // Osterei „Datenkoffer“: Luni hat den Koffer im Keller geöffnet.
@@ -48,7 +45,7 @@ export default function HouseView({ welt = "normal" }: { welt?: "normal" | "grue
       welt,
       onWelt: wechsleWelt,
       onUpdate: () => setTransfer(true),
-      onUfo: patchHerunterladen,
+      onUfo: patchAktion,
     });
     house.mount();
     const onFonts = () => house.resize();
@@ -87,7 +84,11 @@ export default function HouseView({ welt = "normal" }: { welt?: "normal" | "grue
           <div className="flex items-baseline gap-2">
             <span className="font-display text-[11px] tracking-[0.28em] text-mint-50 sm:text-sm">LUNIS HAUS</span>
             <span className="hidden text-[10px] tracking-[0.18em] text-mint-400/80 sm:inline">
-              {welt === "gruesel" ? "LITTLE COMPUTER LUNI · GRUSELHAUS" : "LITTLE COMPUTER LUNI · DAS ADVENTSHAUS"}
+              {welt === "gruesel"
+                ? "LITTLE COMPUTER LUNI · GRUSELHAUS"
+                : welt === "weihnacht"
+                  ? "LITTLE COMPUTER LUNI · WEIHNACHTSHAUS"
+                  : "LITTLE COMPUTER LUNI · DAS ADVENTSHAUS"}
             </span>
           </div>
           <div className="flex items-center gap-2">

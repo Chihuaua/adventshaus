@@ -75,7 +75,7 @@ import {
 import { clipMusikzimmer, drawMusikzimmerEffects, drawMusikzimmer, drawMusiktuer, musikzimmerStationen, vorhangGriff, MUSIKZIMMER } from "./gruselhaus/musikzimmer";
 import { klavierHaende, MusikzimmerAblauf } from "./gruselhaus/musikzimmer-ablauf";
 import { drawPixelText } from "./pixel";
-import { drawUfo, ufoTreffer, ufoZeileBei } from "./ufo";
+import { drawUfo, drawWeihnachtsschlitten, ufoTreffer, ufoZeileBei } from "./ufo";
 import { PATCH_EINTRAEGE } from "./patch";
 import {
   BIO_BAD, badezimmerStationen, drawBioBadAfter, drawBioBadBefore,
@@ -1562,39 +1562,52 @@ interface TanzSegment {
   tempo: number;
 }
 
-/** Tanz-Tour: beschwingt durchs ganze Haus. Treppen werden mitgetanzt
- *  (rauf und runter), der Moonwalk läuft immer gleitend über den Boden,
- *  längere Strecken als wippende Tanzschritte (danceGlide) und der
- *  Knie-Rutscher führt im Wohnzimmer auf beiden Knien herein
- *  (Tom-Cruise-Szene). */
+/** Tanz-Tour: einmal durchs ganze Haus und wieder zurück zur Anlage. In jedem
+ *  Raum tanzt Luni auf der Stelle etwas anderes; dazwischen geht sie nie
+ *  einfach, sondern tanzt die Schritte (Schritt-Tanz: ein Schritt je Schlag,
+ *  Kopf nickt, Finger zeigt zur Decke). Im Schlafzimmer gleitet sie ein Stück
+ *  im Moonwalk, im Wohnzimmer rutscht sie auf beiden Knien herein (Torjubel).
+ *  `tempo` gilt nur für Moonwalk und Rutscher – alle anderen Wege laufen im
+ *  Schritt-Tanz mit TANZ_SCHRITT_TEMPO. */
 const PLATTEN_TOUR: readonly TanzSegment[] = [
-  // Dachgeschoss: locker zwischen Anlage und Gaming-Ecke
-  { floor: 3, x: 640, stil: "danceDisco", dauer: 2, tempo: 50 },
-  { floor: 3, x: 480, stil: "danceMoonwalk", dauer: 0, tempo: 38 },
-  { floor: 3, x: 420, stil: "danceStep", dauer: 2, tempo: 50 },
-  { floor: 3, x: 560, stil: "danceKick", dauer: 2, tempo: 50 },
-  // 1. Stock: Schlafzimmer und Bad entlang
-  { floor: 2, x: 300, stil: "danceGlide", dauer: 0, tempo: 36 },
-  { floor: 2, x: 440, stil: "danceSway", dauer: 2, tempo: 50 },
-  { floor: 2, x: 600, stil: "danceDisco", dauer: 2, tempo: 50 },
-  { floor: 2, x: 340, stil: "danceKick", dauer: 2, tempo: 50 },
-  // Erdgeschoss: durch die Küche ins Wohnzimmer
-  { floor: 1, x: 660, stil: "danceGlide", dauer: 0, tempo: 36 },
-  { floor: 1, x: 560, stil: "danceStep", dauer: 2, tempo: 50 },
-  // Torjubel: kurzer Anlauf (etwas schneller, Blick nach links) …
-  { floor: 1, x: 470, stil: "run", dauer: 0, tempo: 100 },
-  // … dann auf beiden Knien ins Wohnzimmer rutschen
-  { floor: 1, x: 360, stil: "danceSlide", dauer: 4, tempo: 55 },
-  { floor: 1, x: 430, stil: "danceDisco", dauer: 3, tempo: 50 },
-  { floor: 1, x: 330, stil: "danceKick", dauer: 2, tempo: 50 },
-  { floor: 1, x: 405, stil: "danceMoonwalk", dauer: 0, tempo: 38 },
-  { floor: 1, x: 320, stil: "danceStep", dauer: 2, tempo: 50 },
-  { floor: 1, x: 470, stil: "danceSway", dauer: 3, tempo: 50 },
+  // Dachgeschoss: an der Anlage, dann Richtung Gaming-Ecke
+  { floor: 3, x: 668, stil: "danceArmsUp", dauer: 3, tempo: 39 },
+  { floor: 3, x: 560, stil: "danceClap", dauer: 3, tempo: 39 },
+  { floor: 3, x: 420, stil: "danceFortnite", dauer: 4, tempo: 39 },
+  // 1. Stock: Twist vor dem Bett, Moonwalk durchs Schlafzimmer, Armwelle am Bad
+  { floor: 2, x: 300, stil: "danceTwist", dauer: 3, tempo: 39 },
+  { floor: 2, x: 400, stil: "danceMoonwalk", dauer: 0, tempo: 13 },
+  { floor: 2, x: 540, stil: "danceWave", dauer: 4, tempo: 39 },
+  // Erdgeschoss: Roboter in der Küche, dann auf den Knien ins Wohnzimmer
+  { floor: 1, x: 640, stil: "danceRobot", dauer: 3, tempo: 39 },
+  { floor: 1, x: 500, stil: "danceSchritt", dauer: 0, tempo: 39 },
+  { floor: 1, x: 395, stil: "danceSlide", dauer: 3, tempo: 45 },
+  { floor: 1, x: 330, stil: "danceDisco", dauer: 4, tempo: 39 },
+  // Rückweg: in jedem Stockwerk noch ein anderer Tanz
+  { floor: 1, x: 600, stil: "danceStep", dauer: 3, tempo: 39 },
+  { floor: 2, x: 560, stil: "danceHeadnod", dauer: 2, tempo: 39 },
+  { floor: 2, x: 330, stil: "danceHeart", dauer: 3, tempo: 39 },
+  { floor: 3, x: 420, stil: "danceTap", dauer: 2, tempo: 39 },
+  { floor: 3, x: 668, stil: "danceArmUp", dauer: 2, tempo: 39 },
 ];
 
-/** Ab dieser Spielzeit kehrt sie spätestens zur Anlage zurück, damit der Tonarm
- *  pünktlich hebt. Normal ist die Tour vorher zu Ende und löst die Rückkehr aus. */
-const PLATTEN_RUECKKEHR = 105;
+/** Tänze, die selbst Weg zurücklegen (alle anderen stehen auf der Stelle). */
+const TANZ_REISE: readonly LuniState[] = ["danceSchritt", "danceMoonwalk", "danceSlide"];
+
+/** Tempo des Schritt-Tanzes: ein Schritt je Schlag deckt genau diese Strecke,
+ *  damit die Füße nicht über den Boden rutschen. */
+const TANZ_SCHRITT_TEMPO = 39;
+
+/** Zurück an der Anlage wechselt sie bis zum Liedende durch diese Tänze. */
+const TANZ_ROTATION: readonly LuniState[] = [
+  "danceArmsUp", "danceClap", "danceHeadnod", "danceFortnite", "danceTap", "danceDisco",
+  "danceTwist", "danceRobot", "danceWave", "danceHeart", "danceStep", "danceArmUp",
+];
+
+/** Reserve in Sekunden: reicht die Restzeit des Liedes nur noch für den Weg zur
+ *  Anlage plus diese Reserve, bricht sie die Tour ab und tanzt direkt zurück –
+ *  so hebt der Tonarm pünktlich. Normal endet die Tour vorher an der Anlage. */
+const PLATTEN_RUECKKEHR_RESERVE = 4;
 
 function recordPlayer(c: C, x: number, F: number, opts: RecordPlayerOpts = {}) {
   const { power = false, spin = 0, armLift = 0, armTurn = 0 } = opts;
@@ -2825,8 +2838,8 @@ export interface HouseOptions {
   clock?: Clock;
   /** sichtbarer Traumstein wechselt in die leere Traumhausansicht (alt) */
   onTraumhaus?: () => void;
-  /** Welche Hauswelt dieses Haus zeigt: das normale oder das Gruselhaus */
-  welt?: "normal" | "gruesel";
+  /** Welche Hauswelt dieses Haus zeigt: normal, Gruselhaus oder Weihnachtshaus */
+  welt?: "normal" | "gruesel" | "weihnacht";
   /** Ein Klick auf einen Wechselstein: Ziel-Hauswelt */
   onWelt?: (ziel: WeltId) => void;
   /**
@@ -2939,7 +2952,11 @@ export class House {
   private hover: Station | null = null;
 
   /* ------------------------------ Hauswelt ------------------------------- */
-  private welt: "normal" | "gruesel" = "normal";
+  private welt: "normal" | "gruesel" | "weihnacht" = "normal";
+  /** Normales Haus und Weihnachtshaus teilen 1:1 dieselbe Hauslogik. */
+  private get istNormalHaus(): boolean {
+    return this.welt === "normal" || this.welt === "weihnacht";
+  }
   private onWelt: ((ziel: WeltId) => void) | null = null;
   private steine: SteinSlot[] = [];
   private steinStationen: Station[] = [];
@@ -3220,6 +3237,8 @@ export class House {
   private danceTreppeT = 0;
   private danceTreppeStair: Stair | null = null;
   private danceTreppeDir: 1 | -1 = 1;
+  private danceBlendFrom: LuniState | null = null;
+  private danceBlendT = 0;
   private wet = 0;
   private shPhase: ShPhase | null = null;
   private shT = 0;
@@ -3501,7 +3520,7 @@ export class House {
       ashButts: this.ashButts,
       bucketButts: this.bucketButts,
       lighterOnTable: this.lightAufTisch,
-      hunde: this.welt === "normal" ? this.hunde.snapshot() : undefined,
+      hunde: this.istNormalHaus ? this.hunde.snapshot() : undefined,
     };
   }
 
@@ -3543,7 +3562,7 @@ export class House {
     this.ashButts = typeof s.ashButts === "number" ? Math.max(0, Math.round(s.ashButts)) : 0;
     this.bucketButts = typeof s.bucketButts === "number" ? Math.max(0, Math.round(s.bucketButts)) : 0;
     this.lightAufTisch = s.lighterOnTable === true;
-    if (this.welt === "normal" && s.hunde) this.hunde.wiederherstellen(s.hunde);
+    if (this.istNormalHaus && s.hunde) this.hunde.wiederherstellen(s.hunde);
     const vi = s.vampir;
     this.vampirStil = typeof vi === "number" && vi >= 0 && vi < VAMPIR_OUTFITS.length ? vi : null;
     this.vampirLetzt = typeof s.vampirLetzt === "number" ? s.vampirLetzt : -1;
@@ -3627,7 +3646,7 @@ export class House {
       return;
     }
     // Wetterstation: reine GUI, klickbar ohne Lunis Weg (auch im normalen Haus).
-    const wt = wetterStationHit(wetterStationLayout(this.wetter, this.wetterAdd, this.wetterOffen, this.welt === "normal"), x, y);
+    const wt = wetterStationHit(wetterStationLayout(this.wetter, this.wetterAdd, this.wetterOffen, this.istNormalHaus), x, y);
     if (wt?.befehl) {
       this.wetterBefehl(wt.befehl);
       sfx.ui();
@@ -3706,7 +3725,7 @@ export class House {
       return;
     }
     this.hover = this.steinUnter(x, y) ?? this.pick(x, y);
-    this.wetterHover = wetterStationHit(wetterStationLayout(this.wetter, this.wetterAdd, this.wetterOffen, this.welt === "normal"), x, y);
+    this.wetterHover = wetterStationHit(wetterStationLayout(this.wetter, this.wetterAdd, this.wetterOffen, this.istNormalHaus), x, y);
     const onTv = this.hitAtticTv(x, y) || this.hitLivingTv(x, y);
     this.canvas.style.cursor = this.wetterHover || this.hover || onTv
       ? "pointer" : this.walkTargetAt(x, y) ? "crosshair" : "default";
@@ -3728,8 +3747,8 @@ export class House {
     const id = typeof request === "string" ? request : request.id;
     const find = (k: string) => this.stations.find((s) => s.id === k) ?? null;
     if (id === "laufziel" && (this.bedPhase || this.sleepPhase)) return;
-    if (id === "adventskalender" && this.welt !== "normal") return;
-    if ((id === "odin" || id === "apollo") && this.welt !== "normal") return;
+    if (id === "adventskalender" && !this.istNormalHaus) return;
+    if ((id === "odin" || id === "apollo") && !this.istNormalHaus) return;
     // Laufendes Streicheln oder Hunde-Zuruf sauber beenden, wenn etwas anderes gewünscht ist
     if (this.petHund && id !== this.petHund) {
       this.hunde.beendeStreicheln(this.petHund);
@@ -4149,7 +4168,7 @@ export class House {
     }
 
     // ---- Odin & Apollo: im Garten zurückrufen, im Haus hingehen und streicheln ----
-    if ((id === "odin" || id === "apollo") && this.welt === "normal") {
+    if ((id === "odin" || id === "apollo") && this.istNormalHaus) {
       this.chain = [];
       this.smokeRequested = false;
       if (this.hunde.istImGarten(id)) {
@@ -4753,7 +4772,7 @@ export class House {
     const act = this.activity;
 
     // Odin & Apollo leben ununterbrochen im normalen Haus – unabhängig von Lunis Aktion.
-    if (this.welt === "normal") {
+    if (this.istNormalHaus) {
       const hour = this.clock.hour + this.clock.min / 60;
       const schlecht = ["regen", "sturm", "gewitter", "schnee", "hagel"].includes(this.wetter.art);
       this.hunde.update(dt, {
@@ -5203,8 +5222,8 @@ export class House {
     this.adventAktualisieren(dt);
     if (act?.id !== "adventskalender") this.adventWarteT = 0;
     if (act?.id === "adventskalender") {
-      // Der Kalender hängt nur im normalen Haus an der Wohnzimmerwand.
-      if (this.welt !== "normal") {
+      // Der Kalender hängt im normalen Haus und im Weihnachtshaus an der Wohnzimmerwand.
+      if (!this.istNormalHaus) {
         this.finishActivity();
         return;
       }
@@ -5214,7 +5233,7 @@ export class House {
     }
 
     // Odin & Apollo: Streicheln & Zuruf bei Ankunft
-    if (this.welt === "normal") {
+    if (this.istNormalHaus) {
       if (act?.id === "hund_ruf" && this.rufHund) {
         const vorher = this.rufT;
         this.rufT += dt;
@@ -5916,9 +5935,11 @@ export class House {
   }
 
   private draw() {
-    const bettBelegt = this.welt === "normal" && this.lf === 2 && !this.cur && !this.pending
-      && this.path.length === 0 && (this.lieDown || !!this.sleepPhase || this.asleep ||
-        (this.bedEinstieg !== null && this.bedEinstieg !== "anfahrt"));
+    const bettBelegt = this.welt === "normal" || this.welt === "weihnacht"
+      ? (this.lf === 2 && !this.cur && !this.pending
+        && this.path.length === 0 && (this.lieDown || !!this.sleepPhase || this.asleep ||
+          (this.bedEinstieg !== null && this.bedEinstieg !== "anfahrt")))
+      : false;
     if (bettBelegt !== this.bettRendered) {
       this.bettRendered = bettBelegt;
       this.dirty = true;
@@ -5992,7 +6013,7 @@ export class House {
     this.drawStereo(ctx);
     this.drawCigPile(ctx);
     ashBucket(ctx, BUCKET_X, FK, this.bucketButts);
-    if (this.welt === "normal") {
+    if (this.istNormalHaus) {
       this.adventStandPruefen();
       adventWand(ctx, this.adventStand.offen, this.adventStand.jahr || new Date().getFullYear());
     }
@@ -6022,7 +6043,7 @@ export class House {
     this.drawGlassesRest(ctx);
     // Odin & Apollo: nach den Möbeln der Ebene – sie laufen davor und dürfen
     // nicht hinter Bettpfosten, Decke oder Vorderkante verschwinden.
-    if (this.welt === "normal") this.hunde.draw(ctx);
+    if (this.istNormalHaus) this.hunde.draw(ctx);
     if (this.gruselBad) {
       drawBioBadAfter(ctx, this.bioFx(), () => drawLuni(ctx,
         BIO_BAD.kapsel.x + BIO_BAD.kapsel.w / 2, FLOOR_Y[2], {
@@ -6053,8 +6074,12 @@ export class House {
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) this.drawKesselEffekte(ctx);
 
 
-    drawWetterStation(ctx, this.wetter, this.wetterAdd, this.wetterHover, this.wetterOffen, this.welt === "normal");
-    drawUfo(ctx, this.elapsed, this.ufoOffen, this.ufoOffen ? this.ufoZeile : -1, PATCH_EINTRAEGE, this.ufoHover);
+    drawWetterStation(ctx, this.wetter, this.wetterAdd, this.wetterHover, this.wetterOffen, this.istNormalHaus);
+    if (this.welt === "weihnacht") {
+      drawWeihnachtsschlitten(ctx, this.elapsed, this.ufoOffen, this.ufoOffen ? this.ufoZeile : -1, PATCH_EINTRAEGE, this.ufoHover);
+    } else {
+      drawUfo(ctx, this.elapsed, this.ufoOffen, this.ufoOffen ? this.ufoZeile : -1, PATCH_EINTRAEGE, this.ufoHover);
+    }
     this.drawHoverLabel(ctx);
     if (this.tvZoom) this.drawTvFullscreen(ctx);
     if (this.adventFullscreen || this.adventZoomT > 0) this.drawAdventskalender(ctx);
@@ -6507,27 +6532,76 @@ export class House {
     return { da: false, fortschritt: 0 };
   }
 
-  /** Tanz-Routine während des Liedes: Tour durchs Haus, dann zurück zur Anlage.
-   *  Treppen werden mitgetanzt (rauf und runter) – auch auf dem Rückweg. */
+  /** Weiche Übergänge: beim Wechsel des Tanzes blendet die alte Pose kurz in die neue. */
+  private tanzStilSetzen(dt: number, stil: LuniState) {
+    if (this.danceStil !== stil) {
+      this.danceBlendFrom = this.danceStil;
+      this.danceBlendT = 0;
+      this.danceStil = stil;
+    }
+    if (this.danceBlendFrom) {
+      this.danceBlendT += dt;
+      if (this.danceBlendT >= 0.35) {
+        this.danceBlendFrom = null;
+        this.danceBlendT = 0;
+      }
+    }
+  }
+
+  /** Sekunden, die der Schritt-Tanz von hier bis zur Anlage braucht (Etagen + Treppen). */
+  private tanzRueckwegSek(): number {
+    let weg = 0;
+    let f = this.lf;
+    let x = this.lx;
+    if (this.danceTreppe && this.danceTreppeStair) {
+      // Auf der Treppe: vorsichtig rechnen, als stünde sie noch ganz unten.
+      const s = this.danceTreppeStair;
+      f = s.lower;
+      x = s.footX;
+    }
+    while (f < 3) {
+      const s = STAIRS[f];
+      weg += Math.abs(s.footX - x) + Math.hypot(s.topX - s.footX, FLOOR_Y[s.upper] - FLOOR_Y[s.lower]);
+      x = s.topX;
+      f++;
+    }
+    weg += Math.abs(PLATTEN_STAND_X - x);
+    return weg / TANZ_SCHRITT_TEMPO;
+  }
+
+  /** Tanz-Routine während des Liedes: an jedem Halt tanzt sie auf der Stelle,
+   *  dazwischen tanzt sie die Schritte – nie in einer Standpose über den Boden.
+   *  Treppen werden mitgetanzt. Wird die Zeit knapp, geht es direkt zur Anlage. */
   private tanzTour(dt: number, musikZeit: number) {
     const tourVorbei = this.danceSeg >= PLATTEN_TOUR.length - 1 && this.danceT >= PLATTEN_TOUR[this.danceSeg].dauer;
-    if (!this.danceRueck && (tourVorbei || musikZeit >= PLATTEN_RUECKKEHR)) {
+    const knapp = musikZeit + this.tanzRueckwegSek() + PLATTEN_RUECKKEHR_RESERVE >= PLATTEN_DURATION_SECONDS;
+    if (!this.danceRueck && (tourVorbei || knapp)) {
       this.danceRueck = true;
       this.danceT = 0;
     }
     const rueck = this.danceRueck;
     const ziel = rueck
-      ? { floor: 3, x: PLATTEN_STAND_X, stil: "danceGlide" as LuniState, dauer: 0, tempo: 48 }
+      ? { floor: 3, x: PLATTEN_STAND_X, stil: "danceArmsUp" as LuniState, dauer: 0, tempo: TANZ_SCHRITT_TEMPO }
       : PLATTEN_TOUR[clamp(this.danceSeg, 0, PLATTEN_TOUR.length - 1)];
-    const weg = this.tanzSchritt(dt, ziel.floor, ziel.x, ziel.tempo, ziel.stil === "danceMoonwalk");
-    // Auf der Treppe tanzt sie weiter – rauf wie runter, im gleitenden Schritt.
-    this.danceStil = this.danceTreppe ? "danceGlide" : ziel.stil;
+    // Unterwegs: Moonwalk und Rutscher nur auf der Zieletage, sonst Schritt-Tanz.
+    const aufZieletage = this.lf === ziel.floor && !this.danceTreppe;
+    const reiseStil: LuniState = aufZieletage && TANZ_REISE.includes(ziel.stil) ? ziel.stil : "danceSchritt";
+    const tempo = reiseStil === "danceSchritt" ? TANZ_SCHRITT_TEMPO : ziel.tempo;
+    const weg = this.tanzSchritt(dt, ziel.floor, ziel.x, tempo, reiseStil === "danceMoonwalk");
     if (!weg.da) {
+      this.tanzStilSetzen(dt, this.danceTreppe ? "danceSchritt" : reiseStil);
       this.danceT = 0;
       return;
     }
-    if (rueck) return; // an der Anlage angekommen: dort weitertanzen bis zum Ende
+    if (rueck) {
+      // An der Anlage: bis zum Liedende fröhlich durch die Tänze wechseln.
+      this.danceT += dt;
+      const rotation = TANZ_ROTATION[Math.floor(this.danceT / 4) % TANZ_ROTATION.length];
+      this.tanzStilSetzen(dt, rotation);
+      return;
+    }
     this.danceT += dt;
+    this.tanzStilSetzen(dt, ziel.stil);
     if (this.danceT >= ziel.dauer && this.danceSeg < PLATTEN_TOUR.length - 1) {
       this.danceT = 0;
       this.danceSeg++;
@@ -6603,6 +6677,8 @@ export class House {
         this.danceTreppe = false;
         this.danceTreppeT = 0;
         this.danceTreppeStair = null;
+        this.danceBlendFrom = null;
+        this.danceBlendT = 0;
         this.danceStil = PLATTEN_TOUR[0].stil;
         this.tryStartPlattenPlayback();
       }
@@ -6681,6 +6757,8 @@ export class House {
     this.danceTreppe = false;
     this.danceTreppeT = 0;
     this.danceTreppeStair = null;
+    this.danceBlendFrom = null;
+    this.danceBlendT = 0;
     this.danceStil = "danceSway";
   }
 
@@ -8812,7 +8890,7 @@ export class House {
   private adventStandPruefen() {
     const jahr = this.clock.year || new Date().getFullYear();
     if (this.adventStand.jahr !== jahr) {
-      this.adventStand = ladeAdvent(jahr);
+      this.adventStand = ladeAdvent(jahr, this.welt);
       this.adventTuerenCache = null;
       this.adventAnims.clear();
     }
@@ -8850,7 +8928,7 @@ export class House {
     if (this.adventStand.offen.includes(tue.tag)) return;
     const frei = adventFrei(tue.tag, this.clock.month, this.clock.day, ADVENT_NACH_DATUM);
     if (!frei) return; // Finalmodus: Türchen ist noch zugefroren
-    if (adventOeffnen(this.adventStand, tue.tag, true)) {
+    if (adventOeffnen(this.adventStand, tue.tag, true, this.welt)) {
       this.adventAnims.set(index, 0.001);
       if (adventSternVerdient(this.adventStand)) this.adventSternT = 4;
       sfx.ui();
@@ -9484,7 +9562,7 @@ export class House {
       else drawBedEntryBlanket(c, this.elapsed, "hinlegen", e);
       return;
     }
-    const ruhtImBett = this.welt === "normal" && !a && this.activity?.id === "bett" && !this.bedEinstieg;
+    const ruhtImBett = this.istNormalHaus && !a && this.activity?.id === "bett" && !this.bedEinstieg;
     if (this.sleepPhase || this.asleep || ruhtImBett) {
       // Kopfmitte bei x≈310, y≈286: direkt auf dem Kissen (294–324, 286–298).
       st = this.stations.find((sn) => sn.id === "bett") ?? null;
@@ -9628,13 +9706,13 @@ export class House {
         walkPhase = this.walkP + p * 7;
       } else if (this.plattenPhase === "play") {
         if (this.danceTreppe && this.danceTreppeStair) {
-          // Treppe: sie tanzt weiter (rauf und runter), Position entlang der Stufen
+          // Treppe: sie tanzt die Schritte mit (Kopf nickt, Arm hoch)
           const s = this.danceTreppeStair;
           y = this.danceTreppeDir === 1
             ? lerp(FLOOR_Y[s.lower], FLOOR_Y[s.upper], this.danceTreppeT)
             : lerp(FLOOR_Y[s.upper], FLOOR_Y[s.lower], this.danceTreppeT);
           onStair = true;
-          state = "danceGlide";
+          state = "danceSchritt";
         } else {
           state = this.danceStil;
           // Torjubel-Rutscher: Blick nach links (in Rutschrichtung)
@@ -9861,6 +9939,13 @@ export class House {
       betweenBodyAndArms: this.saxPhase ? () => this.drawSaxCarried(c) : null,
       armsInFront: !!this.saxPhase,
       eyeRoll,
+      // Musikzeit für den Plattentanz: alle Tanzposen laufen im Takt, in jedem Stockwerk
+      beatT: this.plattenPhase === "play"
+        ? (this.plattenStarted ? (this.plattenMusic?.currentTime ?? 0) : this.plattenT)
+        : undefined,
+      // Smoothe Tanzwechsel: alte Pose zublenden, neue unsichtbar ersetzen
+      blendFrom: this.danceBlendFrom ?? undefined,
+      blendK: this.danceBlendFrom ? Math.min(1, this.danceBlendT / 0.35) : undefined,
     });
     this.hand[0] = hand[0];
     this.hand[1] = hand[1];

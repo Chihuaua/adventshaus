@@ -1,12 +1,14 @@
 /* =======================================================================
    HAUSWELTEN
 
-   Drei unabhängige Welten, jede mit eigenem Speicherplatz:
-     normal  – das ursprüngliche Haus (Wachstein führt hierher)
-     traum   – das Traumhaus, die bestehende Traumhaus-Ansicht
-               (der Traumstein führt hierher)
-     gruesel – das Gruselhaus im Halloween-Stil
-               (der Horrorstein führt hierher)
+   Vier unabhängige Welten, jede mit eigenem Speicherplatz:
+     normal    – das ursprüngliche Haus (Wachstein führt hierher)
+     traum     – das Traumhaus, die bestehende Traumhaus-Ansicht
+                 (der Traumstein führt hierher)
+     gruesel   – das Gruselhaus im Halloween-Stil
+                 (der Horrorstein führt hierher)
+     weihnacht – das Weihnachtshaus (1:1-Kopie als Ausgangspunkt fürs
+                 Weihnachtsdesign; der Weihnachtsstein führt hierher)
 
    Der Wechsel ist ein einziger Klick: Er setzt nur den URL-Hash. Die alte
    Ansicht speichert beim Abbau ihren Zustand unter ihrem eigenen Schlüssel,
@@ -16,14 +18,15 @@
 
 import { loadJson, saveJson } from "./storage";
 
-export type WeltId = "normal" | "traum" | "gruesel";
+export type WeltId = "normal" | "traum" | "gruesel" | "weihnacht";
 
-export const WELTEN: readonly WeltId[] = ["normal", "traum", "gruesel"] as const;
+export const WELTEN: readonly WeltId[] = ["normal", "traum", "gruesel", "weihnacht"] as const;
 
 export const WELT_NAMEN: Record<WeltId, string> = {
   normal: "Normales Haus",
   traum: "Traumhaus",
   gruesel: "Gruselhaus",
+  weihnacht: "Weihnachtshaus",
 };
 
 /** URL-Hash je Welt. Das normale Haus liegt bewusst auf dem leeren Hash. */
@@ -31,11 +34,13 @@ export const WELT_HASH: Record<WeltId, string> = {
   normal: "",
   traum: "#traumhaus",
   gruesel: "#gruselhaus",
+  weihnacht: "#weihnachtshaus",
 };
 
 export function weltAusHash(hash: string): WeltId | null {
   if (hash === "#traumhaus") return "traum";
   if (hash === "#gruselhaus") return "gruesel";
+  if (hash === "#weihnachtshaus") return "weihnacht";
   if (hash === "" || hash === "#") return "normal";
   return null;
 }

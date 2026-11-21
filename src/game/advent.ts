@@ -25,6 +25,8 @@ export const ADVENT_TAGE = 24;
 export const ADVENT_NACH_DATUM = false;
 
 const SCHLUESSEL = "lcp1.advent.v1";
+const adventSchluessel = (welt?: string) =>
+  welt && welt !== "normal" ? `lcp1.advent.${welt}.v1` : SCHLUESSEL;
 
 /* ------------------------------ Datum --------------------------------- */
 
@@ -75,8 +77,8 @@ function leer(jahr: number): AdventStand {
   return { jahr, offen: [], reihenfolge: [] };
 }
 
-export function ladeAdvent(jahr: number): AdventStand {
-  const s = loadJson<AdventStand>(SCHLUESSEL);
+export function ladeAdvent(jahr: number, welt?: string): AdventStand {
+  const s = loadJson<AdventStand>(adventSchluessel(welt));
   if (!s || s.jahr !== jahr) return leer(jahr);
   return {
     jahr,
@@ -85,8 +87,8 @@ export function ladeAdvent(jahr: number): AdventStand {
   };
 }
 
-export function speichereAdvent(stand: AdventStand) {
-  saveJson(SCHLUESSEL, stand);
+export function speichereAdvent(stand: AdventStand, welt?: string) {
+  saveJson(adventSchluessel(welt), stand);
 }
 
 /** Geheime Belohnung: alle 24 Türchen exakt in der Reihenfolge 1–24 (Konzept 3.1). */
@@ -101,11 +103,11 @@ export function adventSternVerdient(stand: AdventStand): boolean {
  * Türchen öffnen. Liefert true, wenn es neu geöffnet wurde.
  * `frei` entscheidet, ob das Türchen gerade dran ist (Datum oder Prototyp).
  */
-export function adventOeffnen(stand: AdventStand, tag: number, frei: boolean): boolean {
+export function adventOeffnen(stand: AdventStand, tag: number, frei: boolean, welt?: string): boolean {
   if (!frei || stand.offen.includes(tag)) return false;
   stand.offen.push(tag);
   stand.reihenfolge.push(tag);
-  speichereAdvent(stand);
+  speichereAdvent(stand, welt);
   return true;
 }
 

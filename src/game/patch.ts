@@ -1,15 +1,8 @@
 /* =======================================================================
-   Patch-Dateien der aktuellen Sitzung (Inhalt der UFO-Station)
+   Patch-Dateien der aktuellen Sitzung (Inhalt der UFO-/Schlitten-Station)
 
-   Dieses Modul wird von tools/ufo-bauen.mjs erzeugt. Das UFO oben rechts
-   bietet LCL-Frosch-Sauber-34.zip an – darin liegen aktuell.patch und aktuell.json.
-
-   Namensmuster: LCL-<Kurzname>-<zweistellige laufende Nummer>.zip
-   Die Nummer erhöht sich bei jedem Vorschau-Bau um 1.
-
-   Anwendung:  Archiv entpacken, dann
-                git apply aktuell.patch
-                ./node_modules/.bin/tsc --noEmit && npm run build
+   Dieses Modul wird von tools/ufo-bauen.mjs erzeugt. Das Menü oben rechts
+   bietet LCL-Weihnachtshaus-41.zip, die TXT-Datei und die Code-Vorschau an.
    ======================================================================= */
 
 export interface PatchDatei {
@@ -18,13 +11,16 @@ export interface PatchDatei {
   inhalt: string;
 }
 
-export const PATCH_KURZ = "Frosch-Sauber";
-export const PATCH_NUMMER = 34;
+export const PATCH_KURZ = "Weihnachtshaus";
+export const PATCH_NUMMER = 41;
 export const PATCH_ZIP =
   `LCL-${PATCH_KURZ}-${String(PATCH_NUMMER).padStart(2, "0")}.zip`;
+export const PATCH_TXT =
+  `LCL-${PATCH_KURZ}-${String(PATCH_NUMMER).padStart(2, "0")}.txt`;
+export const PATCH_VORSCHAU = "Patch-Code anzeigen / kopieren";
 
-/** Zeilen im UFO-Menü. */
-export const PATCH_EINTRAEGE: readonly string[] = [PATCH_ZIP];
+/** Zeilen im UFO-/Weihnachtsschlitten-Menü. */
+export const PATCH_EINTRAEGE: readonly string[] = [PATCH_ZIP, PATCH_TXT, PATCH_VORSCHAU];
 
 export const PATCH_DATEIEN: readonly PatchDatei[] = [
   {

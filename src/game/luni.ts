@@ -62,8 +62,17 @@ export type LuniState =
   | "danceMoonwalk"
   | "danceGlide"
   | "danceStep"
-  | "danceKick"
   | "danceSlide"
+  | "danceHeadnod"
+  | "danceTap"
+  | "danceArmUp"
+  | "danceArmsUp"
+  | "danceFortnite"
+  | "danceSchritt"
+  | "danceClap"
+  | "danceRobot"
+  | "danceWave"
+  | "danceHeart"
   | "handstand"
   | "cartwheel"
   | "flip"
@@ -111,6 +120,10 @@ export type LuniExpr =
 export interface LuniOpts {
   /** Sekunden, treibt alle Eigenbewegungen */
   t?: number;
+  /** Musiksekunden des Liedes (falls übergeben und Tanz): die Tanzposen
+   *  richten sich rhythmisch an der Musik aus (120 BPM, 1 Takt = 0.5 s).
+   *  Ohne Musikzeit laufen die Posen wie gehabt auf der globalen Uhr. */
+  beatT?: number;
   face?: 1 | -1;
   state?: LuniState;
   expr?: LuniExpr;
@@ -196,6 +209,10 @@ export interface LuniOpts {
   umhang?: number;
   /** Rückenansicht mit gezielt greifenden Händen (Sargdeckel, Umhang). */
   backReach?: boolean;
+  /** Vor der neuen Pose zu zeigende alte Tanzpose (smoother Übergang). */
+  blendFrom?: LuniState;
+  /** 0..1: wie weit der Übergang zur neuen Pose schon geglättet ist. */
+  blendK?: number;
 }
 
 /** Vampir-Outfit: Farben und Zierdetails. Proportionen bleiben unverändert. */
@@ -241,6 +258,8 @@ export const SITZ_MUND: readonly [number, number] = [
   HEAD_Y + (MUND_X + 0.8) * Math.sin(SITZ_NEIGUNG) + (MUND_Y - 0.4) * Math.cos(SITZ_NEIGUNG),
 ];
 /** Länge der Rückenhaare ab Kopfmitte – Spitze endet etwas unter den Schultern. */
+import { tanzParamsFor } from "./tanz";
+
 const HAIR_LEN = 18;
 
 /* ------------------------------ Helfer -------------------------------- */
@@ -343,7 +362,21 @@ interface Rig {
   spineCurve: number;
   /** Welche Hand Gegenstände hält */
   prop: "auto" | "near" | "far";
+  /** Zeigt der Finger hoch: die höhere Hand streckt den Zeigefinger. */
+  fingerUp: boolean;
+  /** Halbe Schulterbreite, an der die Arme ansetzen. Tanzposen nutzen die
+   *  äußere Schulterecke des Rumpfs statt der Brustmitte. */
+  schulterX: number;
+  /** Tanz: dieser Arm liegt hinter dem Rumpf (z. B. beim Floss). */
+  armNearHinten: boolean;
+  armFarHinten: boolean;
+  /** Handhaltung je Arm. */
+  handNear: Geste;
+  handFar: Geste;
 }
+
+/** Handhaltung: offene Hand, Faust oder ausgestreckter Zeigefinger. */
+type Geste = "offen" | "faust" | "zeig";
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const ease = (v: number) => {
@@ -413,6 +446,92 @@ function keys(p: number, ks: [number, V][]): V {
   return ks[ks.length - 1][1];
 }
 
+/** Schultergelenk der Alltagsposen (halbe Breite) und der Tanzposen. */
+const SCHULTER_X = 3.4;
+const TANZ_SCHULTER = 5.6;
+const GRAD = Math.PI / 180;
+const ZWEI_PI = Math.PI * 2;
+
+/** Punkt `nach` so verschieben, dass er genau `len` von `von` entfernt liegt. */
+function aufLaenge(von: V, nach: V, len: number): V {
+  const dx = nach[0] - von[0];
+  const dy = nach[1] - von[1];
+  const d = Math.hypot(dx, dy) || 1;
+  return [von[0] + (dx / d) * len, von[1] + (dy / d) * len];
+}
+
+/**
+ * Arm aus zwei Gelenkwinkeln (Grad) – Ober- und Unterarm behalten immer ihre
+ * feste Länge. 0 = hängt senkrecht, 90 = waagrecht nach außen, 180 = senkrecht
+ * nach oben, über 180 (oder negativ) = zur Körpermitte hin.
+ */
+function armWinkel(side: 1 | -1, schulter: V, ober: number, unter: number): Limb {
+  const a1 = ober * GRAD;
+  const a2 = unter * GRAD;
+  const ex = schulter[0] + side * Math.sin(a1) * UPPER_ARM;
+  const ey = schulter[1] + Math.cos(a1) * UPPER_ARM;
+  return {
+    elbow: [ex, ey],
+    hand: [ex + side * Math.sin(a2) * FORE_ARM, ey + Math.cos(a2) * FORE_ARM],
+  };
+}
+
+/** Zwei Rig-Posen weich ineinander überblenden (smoothe Tanzwechsel). */
+function mergeRig(a: Rig, b: Rig, k: number): Rig {
+  const ln = (u: number, v: number) => lerp(u, v, k);
+  const limb = (a: Limb, b: Limb): Limb => ({
+    elbow: [ln(a.elbow[0], b.elbow[0]), ln(a.elbow[1], b.elbow[1])],
+    hand: [ln(a.hand[0], b.hand[0]), ln(a.hand[1], b.hand[1])],
+  });
+  const pick = <T,>(x: T, y: T): T => (k < 0.5 ? x : y);
+  const schulterX = ln(a.schulterX, b.schulterX);
+  const shoulderY = ln(a.shoulderY, b.shoulderY);
+  // Zwischen zwei Tanzposen bleiben Ober- und Unterarm gleich lang: die
+  // überblendeten Richtungen werden wieder auf die festen Längen gebracht.
+  const tanz = a.schulterX > SCHULTER_X + 0.5 && b.schulterX > SCHULTER_X + 0.5;
+  const arm = (side: 1 | -1, x: Limb, y: Limb): Limb => {
+    const l = limb(x, y);
+    if (!tanz) return l;
+    const sch: V = [side * schulterX, shoulderY + 2];
+    const e = aufLaenge(sch, l.elbow, UPPER_ARM);
+    const h = aufLaenge(e, [e[0] + l.hand[0] - l.elbow[0], e[1] + l.hand[1] - l.elbow[1]], FORE_ARM);
+    return { elbow: e, hand: h };
+  };
+  return {
+    schulterX,
+    armNearHinten: pick(a.armNearHinten, b.armNearHinten),
+    armFarHinten: pick(a.armFarHinten, b.armFarHinten),
+    handNear: pick(a.handNear, b.handNear),
+    handFar: pick(a.handFar, b.handFar),
+    rootX: ln(a.rootX, b.rootX),
+    rootY: ln(a.rootY, b.rootY),
+    rootRot: ln(a.rootRot, b.rootRot),
+    pivotY: ln(a.pivotY, b.pivotY),
+    scaleX: ln(a.scaleX, b.scaleX),
+    hipY: ln(a.hipY, b.hipY),
+    shoulderY,
+    headY: ln(a.headY, b.headY),
+    headTilt: ln(a.headTilt, b.headTilt),
+    armFar: arm(-1, a.armFar, b.armFar),
+    armNear: arm(1, a.armNear, b.armNear),
+    legFar: limb(a.legFar, b.legFar),
+    legNear: limb(a.legNear, b.legNear),
+    hairFlow: ln(a.hairFlow, b.hairFlow),
+    hairUp: pick(a.hairUp, b.hairUp),
+    hairLen: ln(a.hairLen, b.hairLen),
+    footFarAng: ln(a.footFarAng, b.footFarAng),
+    footNearAng: ln(a.footNearAng, b.footNearAng),
+    footFarDir: pick(a.footFarDir, b.footFarDir),
+    footNearDir: pick(a.footNearDir, b.footNearDir),
+    footDrop: ln(a.footDrop, b.footDrop),
+    bend: ln(a.bend, b.bend),
+    neckBend: ln(a.neckBend, b.neckBend),
+    spineCurve: ln(a.spineCurve, b.spineCurve),
+    prop: pick(a.prop, b.prop),
+    fingerUp: pick(a.fingerUp, b.fingerUp),
+  };
+}
+
 function baseRig(): Rig {
   return {
     rootX: 0,
@@ -441,20 +560,18 @@ function baseRig(): Rig {
     neckBend: 0,
     spineCurve: 0,
     prop: "auto",
+    fingerUp: false,
+    schulterX: SCHULTER_X,
+    armNearHinten: false,
+    armFarHinten: false,
+    handNear: "offen",
+    handFar: "offen",
   };
 }
 
 /** Beine nutzen dieselbe Limb-Struktur: elbow = Knie, hand = Fuß. */
 function leg(knee: V, foot: V): Limb {
   return { elbow: knee, hand: foot };
-}
-
-/** Zwei Armhaltungen weich ineinander überblenden (für Tanzwechsel). */
-function misch(a: Limb, b: Limb, k: number): Limb {
-  return {
-    elbow: [lerp(a.elbow[0], b.elbow[0], k), lerp(a.elbow[1], b.elbow[1], k)],
-    hand: [lerp(a.hand[0], b.hand[0], k), lerp(a.hand[1], b.hand[1], k)],
-  };
 }
 
 /* Gang: Länge von Ober- und Unterschenkel (Bühneneinheiten). */
@@ -490,9 +607,61 @@ function gangKnie(huefte: V, fuss: V): V {
   return [huefte[0] + ux * a + px * h, huefte[1] + uy * a + py * h];
 }
 
-function buildRig(state: LuniState, t: number, walkP: number, phase: number, reach: number): Rig {
+/**
+ * Knie mit wählbarer Seite: q = 1 knickt nach vorn (+x) wie gangKnie, q = -1 zur
+ * anderen Seite; Werte dazwischen blenden weich über (für das Hüftpendeln).
+ */
+function knieSeite(huefte: V, fuss: V, q: number): V {
+  const dx = fuss[0] - huefte[0];
+  const dy = fuss[1] - huefte[1];
+  const d = Math.hypot(dx, dy) || 1;
+  const ux = dx / d;
+  const uy = dy / d;
+  const l1 = GANG_OBERSCHENKEL;
+  const l2 = GANG_UNTERSCHENKEL;
+  if (d >= l1 + l2) {
+    const k = d / (l1 + l2);
+    return [huefte[0] + ux * l1 * k, huefte[1] + uy * l1 * k];
+  }
+  const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d);
+  const h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+  let px = -uy;
+  let py = ux;
+  if (px < 0) {
+    px = -px;
+    py = -py;
+  }
+  const k = Math.max(-1, Math.min(1, q));
+  return [huefte[0] + ux * a + px * h * k, huefte[1] + uy * a + py * h * k];
+}
+
+function buildRig(state: LuniState, t: number, walkP: number, phase: number, reach: number, beatT?: number): Rig {
   const r = baseRig();
   const breathe = Math.sin(t * 2) * 0.45;
+  // Tanz-Uhr: Musikzeit, falls übergeben (dann läuft der Tanz im Takt zur
+  // Musik), sonst die globale Stoppuhr – wie gehabt.
+  const bt = beatT ?? t;
+  /** Schläge seit Liedbeginn (120 BPM: zwei Schläge je Sekunde). */
+  const takt = bt * 2;
+  /** Phase 0..1 innerhalb von `n` Schlägen. */
+  const taktPhase = (n: number) => {
+    const q = takt / n;
+    return q - Math.floor(q);
+  };
+  /** Beide Arme über Gelenkwinkel setzen – sie sitzen außen an der Schulter. */
+  const tanzArme = (nahOber: number, nahUnter: number, fernOber: number, fernUnter: number) => {
+    r.schulterX = TANZ_SCHULTER;
+    const sy = r.shoulderY + 2;
+    r.armNear = armWinkel(1, [TANZ_SCHULTER, sy], nahOber, nahUnter);
+    r.armFar = armWinkel(-1, [-TANZ_SCHULTER, sy], fernOber, fernUnter);
+  };
+  /** Beide Füße stehen fest am Boden (Weltposition), auch wenn die Hüfte pendelt. */
+  const stand = (nahX = 4.6, fernX = -4.6, knie = 1) => {
+    const nf: V = [nahX - r.rootX, -r.rootY];
+    const ff: V = [fernX - r.rootX, -r.rootY];
+    r.legNear = leg(knieSeite([2.6, r.hipY], nf, knie), nf);
+    r.legFar = leg(knieSeite([-2.6, r.hipY], ff, knie), ff);
+  };
 
   switch (state) {
     case "idle": {
@@ -1014,154 +1183,151 @@ function buildRig(state: LuniState, t: number, walkP: number, phase: number, rea
     }
 
     /* ----------------------------- Tanz ----------------------------- */
+    // Alle Tanzposen setzen die Arme über Gelenkwinkel (tanzArme): Ober- und
+    // Unterarm behalten ihre Länge und sitzen außen an der Schulter. Wer auf
+    // der Stelle tanzt, steht mit festen Füßen (stand) – nur die Hüfte pendelt.
 
     case "danceSway": {
-      // Leichtes, geerdetes Wiegen: die Knie federn mit (federnder Gang),
-      // die Arme bleiben locker angewinkelt. Ellenbogen immer außen.
-      const s = Math.sin(t * 3.8);
-      const c = Math.cos(t * 3.8);
-      r.rootX = s * 2.4;
-      r.rootY = Math.abs(c) * 1.2;
-      r.headTilt = s * 0.12;
-      r.armNear = { elbow: [8.5 + s * 1.5, -27], hand: [6 + s * 5, -35 - c * 2] };
-      r.armFar = { elbow: [-8.5 + s * 1.5, -27], hand: [-6 + s * 5, -35 + c * 2] };
-      r.legFar = leg(gangKnie([-2.6, r.hipY], [-4.8 + s * 1.3, -r.rootY]), [-4.8 + s * 1.3, -r.rootY]);
-      r.legNear = leg(gangKnie([2.6, r.hipY], [4.8 + s * 1.3, -r.rootY]), [4.8 + s * 1.3, -r.rootY]);
-      r.hairFlow = -s * 2.4;
+      // Wiegen: das Gewicht pendelt von Bein zu Bein, die Füße bleiben stehen.
+      // Die Hände schwingen locker vor der Brust mit.
+      const cfg = tanzParamsFor("danceSway");
+      const s = Math.sin(Math.PI * takt);
+      const c = Math.cos(Math.PI * takt);
+      r.rootX = s * 2.2 * cfg.sway;
+      r.rootY = 0.4 + s * s * 1.0 * cfg.bounce;
+      r.headTilt = s * 0.1 * cfg.nod;
+      r.hairFlow = -s * 2.0;
+      const schwung = (11 * s + 4 * c) * cfg.armUp;
+      tanzArme(22 - 4 * s, 236 + schwung, 22 + 4 * s, 236 - schwung);
+      stand();
       break;
     }
 
     case "danceTwist": {
-      // Twist ohne 2D-Stauchung (kein scaleX, keine Drehung): Hüfte und Füße
-      // arbeiten geerdet gegeneinander, die angewinkelten Arme pendeln außen.
-      const s = Math.sin(t * 5.0);
-      const b = Math.abs(s);
-      r.rootX = s * 1.6;
-      r.rootY = b * 1.4;
-      r.hipY = HIP_Y + b * 1.0;
-      r.headTilt = -s * 0.11;
-      r.armNear = { elbow: [9 - s * 2, -26], hand: [5.5 - s * 5.5, -21 + b] };
-      r.armFar = { elbow: [-9 - s * 2, -26], hand: [-5.5 - s * 5.5, -21 + b] };
-      r.legFar = leg([-2.6 - s * 2.4, -10], [-4.6 - s * 1.6, -r.rootY]);
-      r.legNear = leg([2.6 - s * 2.4, -10], [4.6 - s * 1.6, -r.rootY]);
-      r.footFarAng = -s * 0.14;
-      r.footNearAng = -s * 0.14;
-      r.hairFlow = -s * 2.6;
+      // Twist: die Füße bleiben am Boden, Hüfte und Knie schwingen gemeinsam
+      // zur Seite, die angewinkelten Arme gehen mit Fäusten dagegen.
+      const cfg = tanzParamsFor("danceTwist");
+      const s = Math.sin(Math.PI * takt);
+      r.rootX = s * 2.2 * cfg.sway;
+      r.rootY = 0.3 + s * s * 1.6 * cfg.bounce;
+      r.headTilt = -s * 0.08 * cfg.nod;
+      r.hairFlow = -s * 2.2;
+      const dreh = s * cfg.armUp;
+      tanzArme(30 - 9 * dreh, 292 - 24 * dreh, 30 + 9 * dreh, 292 + 24 * dreh);
+      r.handNear = "faust";
+      r.handFar = "faust";
+      stand(4.6, -4.6, s * 2.5);
       break;
     }
 
     case "danceDisco": {
-      // Saturday-Night-Fever-Pose: ein Arm diagonal nach oben, die andere Hand
-      // an der Hüfte; wechselt weich und federt im Takt am Boden.
-      const beat = Math.abs(Math.sin(t * 4.2));
-      const sw = ease((Math.sin(t * 1.05) + 1) / 2);
-      r.rootY = beat * 1.8;
-      r.rootX = (1 - 2 * sw) * -1.2 * beat;
-      r.headTilt = -0.1 * (1 - sw) + 0.08 * sw - beat * 0.05;
-      const hoch = (sgn: number): Limb => ({ elbow: [sgn * 9.2, -40], hand: [sgn * 6.8, -50.5 - beat] });
-      const seit = (sgn: number): Limb => ({ elbow: [sgn * 8.2, -28], hand: [sgn * 5, -23.5] });
-      r.armNear = misch(seit(1), hoch(1), sw);
-      r.armFar = misch(hoch(-1), seit(-1), sw);
-      r.legFar = leg(gangKnie([-2.6, r.hipY], [-5.2, -r.rootY]), [-5.2, -r.rootY]);
-      r.legNear = leg(gangKnie([2.6, r.hipY], [5.2, -r.rootY]), [5.2, -r.rootY]);
-      r.hairFlow = (1 - 2 * sw) * -1.8;
+      // Saturday Night Fever: ein Arm zeigt schräg nach oben, die andere Hand
+      // stützt sich in die Hüfte. Drei Schläge halten, auf dem vierten wechseln.
+      const cfg = tanzParamsFor("danceDisco");
+      const ab = 0.5 + 0.5 * Math.cos(ZWEI_PI * taktPhase(1));
+      const p8 = taktPhase(8) * 8;
+      const k = p8 < 3 ? 0 : p8 < 4 ? ease(p8 - 3) : p8 < 7 ? 1 : 1 - ease(p8 - 7);
+      r.rootX = (1 - 2 * k) * 1.3 * cfg.sway;
+      r.rootY = 0.4 + ab * 1.3 * cfg.bounce;
+      r.headTilt = ((2 * k - 1) * 0.07 - ab * 0.04) * cfg.nod;
+      r.hairFlow = (1 - 2 * k) * 1.4;
+      const hochO = 150 - ab * 5 * cfg.armUp;
+      const hochU = 166 - ab * 7 * cfg.armUp;
+      // Der Arm senkt sich in einem weiten Bogen nach außen bis in die Hüfte.
+      tanzArme(lerp(40, hochO, k), lerp(-28, hochU, k), lerp(hochO, 40, k), lerp(hochU, -28, k));
+      r.handNear = k > 0.6 ? "zeig" : "offen";
+      r.handFar = k < 0.4 ? "zeig" : "offen";
+      stand();
       break;
     }
 
     case "danceMoonwalk": {
-      // Moonwalk: jeder Fuß bleibt auf seiner Seite – die Socken wechseln nie
-      // hin und her. Ein Fuß gleitet flach zurück, der andere tippt auf der
-      // Zehe nach vorn, halbperiodisch versetzt. Das Rückwärtsgleiten selbst
-      // kommt aus der Bewegung (sie läuft rückwärts gerichtet).
-      const cyc = ((t * 1.9) % 1 + 1) % 1;
-      const fuss = (phase: number): { x: number; y: number; ang: number } => {
-        if (phase < 0.5) {
-          // flach auf dem Boden, gleitet zurück
-          const q = ease(phase / 0.5);
-          return { x: lerp(2.3, -2.3, q), y: 0, ang: 0 };
-        }
-        // auf der Zehe, tippt leicht nach vorn
-        const q = ease((phase - 0.5) / 0.5);
-        const hub = Math.sin(q * Math.PI);
-        return { x: lerp(-2.3, 2.3, q), y: -1.7 * hub, ang: 0.42 * hub };
-      };
-      const nah = fuss(cyc);
-      const fern = fuss((cyc + 0.5) % 1);
-      r.rootY = 0.7;
-      const nearFoot: V = [3.7 + nah.x, nah.y - r.rootY];
-      const farFoot: V = [-3.7 + fern.x, fern.y - r.rootY];
-      r.legNear = leg(gangKnie([2.6, r.hipY], nearFoot), nearFoot);
-      r.legFar = leg(gangKnie([-2.6, r.hipY], farFoot), farFoot);
-      r.footNearAng = nah.ang;
-      r.footFarAng = fern.ang;
-      const bob = Math.sin(t * 3.8) * 0.7;
-      // Arme lässig angewinkelt, Ellenbogen außen
-      r.armNear = { elbow: [9, -27 + bob * 0.3], hand: [7, -22 - bob] };
-      r.armFar = { elbow: [-9, -26 - bob * 0.3], hand: [-6.5, -23 + bob] };
-      r.headTilt = 0.12 + Math.sin(t * 1.9) * 0.03;
-      r.hairFlow = 1.2;
+      // Moonwalk: jeder Fuß bleibt auf seiner Seite – die Socken wechseln nie.
+      // Ein Fuß steht auf der Zehe fest am Boden, während der andere flach und
+      // weich nach hinten gleitet; dann wechseln sie. Ein Zyklus = 2 Schläge.
+      const cfg = tanzParamsFor("danceMoonwalk");
+      const c = taktPhase(2);
+      const nahStuetzt = c < 0.5;
+      const h = nahStuetzt ? c * 2 : (c - 0.5) * 2;
+      const W = 2.8 * Math.min(1.2, cfg.legs);
+      // Stützfuß: gleichmäßig nach vorn (= steht am Boden, der Körper zieht weg).
+      const vor = lerp(-W, W, h);
+      // Gleitfuß: weich anfahren, weich ankommen.
+      const zurueck = lerp(W, -W, ease(h));
+      // Ferse hebt weich ab und setzt weich wieder auf.
+      const heb = ease(Math.min(1, h / 0.25, (1 - h) / 0.25)) * 0.5;
+      const nx = 4.6 + (nahStuetzt ? vor : zurueck);
+      const fx = -4.6 + (nahStuetzt ? zurueck : vor);
+      const nAng = nahStuetzt ? heb : 0;
+      const fAng = nahStuetzt ? 0 : heb;
+      const weite = (nx - fx - 2 * (4.6 - W)) / (4 * W);
+      r.rootY = 0.8 + weite * weite * 0.7;
+      // Die Zehenspitze bleibt am Boden, wenn die Ferse hochkommt.
+      const nf: V = [nx + 5.2 * (1 - Math.cos(nAng)), -5.2 * Math.sin(nAng) - r.rootY];
+      const ff: V = [fx + 5.2 * (1 - Math.cos(fAng)), -5.2 * Math.sin(fAng) - r.rootY];
+      r.legNear = leg(gangKnie([2.6, r.hipY], nf), nf);
+      r.legFar = leg(gangKnie([-2.6, r.hipY], ff), ff);
+      r.footNearAng = nAng;
+      r.footFarAng = fAng;
+      // Arme hängen locker und pendeln ruhig mit.
+      const sw = Math.sin(ZWEI_PI * c) * cfg.armUp;
+      tanzArme(9 + 4 * sw, -5 + 7 * sw, 9 - 4 * sw, -5 - 7 * sw);
+      r.headTilt = (0.1 + Math.sin(ZWEI_PI * c) * 0.02) * cfg.nod;
+      r.hairFlow = 1.1 * cfg.sway;
       break;
     }
 
     case "danceStep": {
-      // Lockerer Step-Touch: das Gewicht pendelt seicht von Seite zu Seite,
-      // die Füße tippen abwechselnd, die Arme schwingen lose mit.
-      const s = Math.sin(t * 3.0);
-      const tapR = Math.max(0, Math.sin(t * 6.0));
-      const tapL = Math.max(0, -Math.sin(t * 6.0));
-      r.rootX = s * 2.1;
-      r.rootY = 0.6;
-      r.headTilt = s * 0.09;
-      const nearFoot: V = [4.4 + s * 0.8, -tapR * 1.5 - r.rootY];
-      const farFoot: V = [-4.4 + s * 0.8, -tapL * 1.5 - r.rootY];
-      r.legNear = leg(gangKnie([2.6, r.hipY], nearFoot), nearFoot);
-      r.legFar = leg(gangKnie([-2.6, r.hipY], farFoot), farFoot);
-      r.footNearAng = tapR * 0.18;
-      r.footFarAng = -tapL * 0.18;
-      r.armNear = { elbow: [8.4 - s, -28], hand: [6.5 - s * 2.2, -23 + tapR] };
-      r.armFar = { elbow: [-8.4 - s, -27], hand: [-6.5 - s * 2.2, -24 + tapL] };
-      r.hairFlow = -s * 1.8;
-      break;
-    }
-
-    case "danceKick": {
-      // Leichter Kick: abwechselnd ein kleiner, niedriger Kick nach vorn,
-      // die Arme schwingen gegen – locker und flockig, ohne zu hüpfen.
-      const cyc = ((t * 1.4) % 1 + 1) % 1;
-      const kickN = Math.pow(Math.max(0, Math.sin(cyc * Math.PI * 2)), 2);
-      const kickF = Math.pow(Math.max(0, Math.sin(cyc * Math.PI * 2 + Math.PI)), 2);
-      r.rootY = 0.8;
-      r.rootX = (kickN - kickF) * 0.8;
-      r.headTilt = 0.05;
-      const nearFoot: V = [4.2 + kickN * 7.5, -kickN * 6.5 - r.rootY];
-      const farFoot: V = [-4.2 - kickF * 0.5, -kickF * 0.8 - r.rootY];
-      r.legNear = leg(gangKnie([2.6, r.hipY], nearFoot), nearFoot);
-      r.legFar = leg(gangKnie([-2.6, r.hipY], farFoot), farFoot);
-      r.footNearAng = -kickN * 0.35;
-      r.armNear = { elbow: [8.6, -28 - kickF * 2], hand: [7, -23 - kickF * 3] };
-      r.armFar = { elbow: [-8.6, -28 - kickN * 2], hand: [-7.5, -24 - kickN * 4] };
-      r.hairFlow = -(kickN - kickF) * 1.6;
+      // Step-Touch über 4 Schläge: Gewicht nach rechts, der linke Fuß tippt
+      // daneben auf – dann Gewicht nach links und der rechte Fuß tippt auf.
+      const cfg = tanzParamsFor("danceStep");
+      const p = taktPhase(4) * 4;
+      const rechts = p < 2;
+      const q = rechts ? p : p - 2;
+      // Gewicht wandert in der ersten halben Zählzeit auf das Standbein.
+      const verl = ease(Math.min(1, q / 0.5));
+      const gewicht = (rechts ? 1 : -1) * (2 * verl - 1);
+      const ab = 0.5 + 0.5 * Math.cos(ZWEI_PI * taktPhase(1));
+      r.rootX = gewicht * 2.4 * cfg.sway;
+      r.rootY = 0.8 + ab * 0.8 * cfg.bounce;
+      r.headTilt = gewicht * 0.06 * cfg.nod;
+      r.hairFlow = -gewicht * 1.6;
+      // Spielbein: heran (0.5–1), auf der Zehe tippen (1–1.5), zurück (1.5–2).
+      const heran = q < 0.5 ? 0 : q < 1 ? ease((q - 0.5) / 0.5) : q < 1.5 ? 1 : 1 - ease((q - 1.5) / 0.5);
+      const flug = q > 0.5 && q < 1 ? Math.sin(((q - 0.5) / 0.5) * Math.PI) : q > 1.5 ? Math.sin(((q - 1.5) / 0.5) * Math.PI) : 0;
+      const tipp = q >= 1 && q <= 1.5 ? 0.38 * Math.sin(((q - 1) / 0.5) * Math.PI * 0.5 + Math.PI * 0.25) : 0;
+      const hub = flug * 1.8 * Math.min(1.3, cfg.legs);
+      const nahFrei = !rechts;
+      // Der freie Fuß setzt dicht neben dem Standfuß auf, ohne ihn zu überdecken.
+      const nx = nahFrei ? lerp(5.6, 2.2, heran) : 5.6;
+      const fx = nahFrei ? -5.6 : lerp(-5.6, -2.2, heran);
+      const nAng = nahFrei ? tipp : 0;
+      const fAng = nahFrei ? 0 : tipp;
+      const nf: V = [nx - r.rootX, -(nahFrei ? hub : 0) - 5.2 * Math.sin(nAng) - r.rootY];
+      const ff: V = [fx - r.rootX, -(nahFrei ? 0 : hub) - 5.2 * Math.sin(fAng) - r.rootY];
+      r.legNear = leg(gangKnie([2.6, r.hipY], nf), nf);
+      r.legFar = leg(gangKnie([-2.6, r.hipY], ff), ff);
+      r.footNearAng = nAng;
+      r.footFarAng = fAng;
+      const g = gewicht * cfg.armUp;
+      tanzArme(14 - 5 * g, -4 - 9 * g, 14 + 5 * g, -4 + 9 * g);
       break;
     }
 
     case "danceGlide": {
-      // Gleitender Tanz: wippende, langsame Tanzschritte mit angewinkelten
-      // Armen. Sie tanzt dabei weiter (kein Stillstand, kein Rennen).
-      const schritt = ((t * 1.35) % 1 + 1) % 1;
-      const wippe = Math.sin(schritt * Math.PI);
-      const seite = Math.sin(t * 0.68);
-      r.rootX = seite * 1.8;
-      r.rootY = 0.6 + wippe * 1.5;
-      r.headTilt = seite * 0.1 + wippe * 0.04;
+      // Wippende, langsame Tanzschritte mit locker angewinkelten Armen.
+      const cfg = tanzParamsFor("danceGlide");
+      const wippe = Math.sin(taktPhase(1) * Math.PI);
+      const seite = Math.sin(Math.PI * takt * 0.25);
+      r.rootX = seite * 1.8 * cfg.sway;
+      r.rootY = 0.6 + wippe * 1.5 * cfg.bounce;
+      r.headTilt = (seite * 0.1 + wippe * 0.04) * cfg.nod;
       const vorn: V = [4.6 + wippe * 1.4, -r.rootY];
-      const hinten: V = [-4.6 - wippe * 1.2, -r.rootY + wippe * 0.6];
+      const hinten: V = [-4.6 - wippe * 1.2, -r.rootY];
       r.legNear = leg(gangKnie([2.6, r.hipY], vorn), vorn);
       r.legFar = leg(gangKnie([-2.6, r.hipY], hinten), hinten);
-      r.footNearAng = -wippe * 0.12;
-      r.footFarAng = wippe * 0.1;
-      const bob = Math.sin(t * 2.7) * 0.8;
-      r.armNear = { elbow: [8.8 + seite, -27 + bob * 0.35], hand: [6.2 + seite * 2, -22 - bob] };
-      r.armFar = { elbow: [-8.8 + seite, -26 - bob * 0.35], hand: [-6 + seite * 2, -23 + bob] };
+      const bob = Math.sin(ZWEI_PI * taktPhase(1)) * cfg.armUp;
+      tanzArme(20 + seite * 3, -20 + bob * 6, 20 - seite * 3, -20 - bob * 6);
       r.hairFlow = -seite * 1.6;
       break;
     }
@@ -1169,16 +1335,19 @@ function buildRig(state: LuniState, t: number, walkP: number, phase: number, rea
     case "danceSlide": {
       // Torjubel: nach kurzem Anlauf rutscht sie AUF BEIDEN KNIEN ins
       // Wohnzimmer – Knie auf dem Boden, Unterschenkel schleifen hinten,
-      // Oberkörper aufrecht und leicht zurückgelehnt, Arme weit ausgebreitet.
-      const wob = Math.sin(t * 5.2) * 1.0;
-      const fedder = Math.sin(t * 6.4) * 0.35;
+      // Oberkörper aufrecht und leicht zurückgelehnt, beide Arme im weiten V
+      // nach oben, die Fäuste pumpen im Takt.
+      const cfg = tanzParamsFor("danceSlide");
+      const pump = Math.sin(ZWEI_PI * taktPhase(1)) * cfg.bounce;
+      const fedder = Math.sin(ZWEI_PI * taktPhase(0.5)) * 0.35 * cfg.bounce;
       r.rootY = 8 + fedder;
       r.rootRot = -0.12;
       r.pivotY = r.hipY;
-      r.headTilt = -0.1 + Math.sin(t * 3.1) * 0.03;
-      // Arme breit zum Jubel (einer hoch, einer weit zur Seite)
-      r.armNear = { elbow: [7, -30], hand: [11.5, -41 + wob] };
-      r.armFar = { elbow: [-8, -29], hand: [-13.5, -36 - wob] };
+      r.headTilt = (-0.1 + pump * 0.03) * cfg.nod;
+      const a = pump * cfg.armUp;
+      tanzArme(128 + a * 5, 152 + a * 9, 124 - a * 5, 150 - a * 9);
+      r.handNear = "faust";
+      r.handFar = "faust";
       // Beide Knie tragen auf dem Boden, die Schienbeine schleifen hinterher
       r.legNear = leg([7.5, -8], [-4.5, -8.4]);
       r.legFar = leg([5.5, -8], [-7, -8.4]);
@@ -1186,7 +1355,215 @@ function buildRig(state: LuniState, t: number, walkP: number, phase: number, rea
       r.footNearAng = -0.4;
       r.footFarDir = -1;
       r.footFarAng = -0.4;
-      r.hairFlow = -2.8;
+      r.hairFlow = -2.8 * cfg.sway;
+      break;
+    }
+
+    case "danceHeadnod": {
+      // Kopfnicken: der Kopf nickt genau auf den Schlag nach vorn, die Knie
+      // federn mit, die Arme hängen locker. Beide Füße bleiben stehen.
+      const cfg = tanzParamsFor("danceHeadnod");
+      const ab = 0.5 + 0.5 * Math.cos(ZWEI_PI * taktPhase(1));
+      const lang = Math.sin(Math.PI * takt * 0.5);
+      r.rootX = lang * 1.0 * cfg.sway;
+      r.rootY = 0.4 + ab * 1.3 * cfg.bounce;
+      r.headTilt = (0.02 + ab * 0.2) * cfg.nod;
+      r.hairFlow = lang * 0.6 - ab * 1.4;
+      const mit = ab * cfg.armUp;
+      tanzArme(11 + mit * 3, -8 + mit * 6, 11 + mit * 3, -8 + mit * 6);
+      stand();
+      break;
+    }
+
+    case "danceTap": {
+      // Fuß tippt: die Hände locker in den Hüften, das Gewicht auf dem hinteren
+      // Bein. Der vordere Fuß steht mit der Ferse fest am Boden – nur die Zehen
+      // heben langsam an und tippen genau auf den Schlag wieder auf.
+      const cfg = tanzParamsFor("danceTap");
+      const f = taktPhase(1);
+      const zehe = (f < 0.72 ? ease(f / 0.72) : 1 - ease((f - 0.72) / 0.28)) * Math.min(1.3, cfg.legs);
+      const ab = 0.5 + 0.5 * Math.cos(ZWEI_PI * f);
+      r.rootX = -0.9;
+      r.rootY = 0.5 + ab * 0.5 * cfg.bounce;
+      r.headTilt = (0.03 + ab * 0.07) * cfg.nod;
+      r.hairFlow = 0.4 - ab * 0.6;
+      tanzArme(42, -30 + ab * 2 * cfg.armUp, 42, -30 + ab * 2 * cfg.armUp);
+      const ang = -0.3 * zehe;
+      // Die Ferse ist der Drehpunkt: sie bleibt auf dem Boden.
+      const nf: V = [6.4 - r.rootX, -2.2 * Math.sin(-ang) - r.rootY];
+      const ff: V = [-4.4 - r.rootX, -r.rootY];
+      r.legNear = leg(gangKnie([2.6, r.hipY], nf), nf);
+      r.legFar = leg(gangKnie([-2.6, r.hipY], ff), ff);
+      r.footNearAng = ang;
+      break;
+    }
+
+    case "danceArmUp": {
+      // Ein Arm hoch: die Faust pumpt im Takt nach oben, der andere Arm hängt
+      // locker. Die Knie federn auf den Schlag.
+      const cfg = tanzParamsFor("danceArmUp");
+      const ab = 0.5 + 0.5 * Math.cos(ZWEI_PI * taktPhase(1));
+      const lang = Math.sin(Math.PI * takt * 0.5);
+      r.rootX = lang * 1.4 * cfg.sway;
+      r.rootY = 0.4 + ab * 1.3 * cfg.bounce;
+      r.headTilt = (-0.04 + lang * 0.06) * cfg.nod;
+      r.hairFlow = -lang * 1.5;
+      const a = ab * cfg.armUp;
+      tanzArme(152 - a * 42, 172 + a * 13, 13 + ab * 3, -8 + ab * 5);
+      r.handNear = "faust";
+      stand();
+      break;
+    }
+
+    case "danceArmsUp": {
+      // Beide Arme hoch: im weiten V über den Schultern, sie winken gemeinsam
+      // von Seite zu Seite wie auf einem Konzert.
+      const cfg = tanzParamsFor("danceArmsUp");
+      const s = Math.sin(Math.PI * takt);
+      const ab = 0.5 + 0.5 * Math.cos(ZWEI_PI * taktPhase(1));
+      r.rootX = s * 1.6 * cfg.sway;
+      r.rootY = 0.4 + ab * 1.2 * cfg.bounce;
+      r.headTilt = s * 0.06 * cfg.nod;
+      r.hairFlow = -s * 1.8;
+      const w = s * Math.min(1.1, cfg.armUp);
+      tanzArme(144 - 8 * w, 162 - 10 * w, 144 + 8 * w, 162 + 10 * w);
+      stand();
+      break;
+    }
+
+    case "danceFortnite": {
+      // Der Floss (Fortnite): beide Arme schwingen gestreckt mit Fäusten von
+      // einer Seite zur anderen, die Hüfte geht jeweils dagegen. Der Arm, der
+      // den Körper kreuzt, läuft abwechselnd VOR und HINTER dem Körper durch –
+      // vorn, hinten, hinten, vorn. Ein Schwung je Schlag.
+      const cfg = tanzParamsFor("danceFortnite");
+      const i = Math.floor(takt);
+      const f = takt - i;
+      const zu = ((i % 2) + 2) % 2 === 0 ? -1 : 1;
+      const s = lerp(-zu, zu, ease(Math.min(1, f / 0.62)));
+      const hinten = (n: number) => {
+        const m = ((n % 4) + 4) % 4;
+        return m === 1 || m === 2;
+      };
+      // Nach links kreuzt der nahe Arm (+x), nach rechts der ferne (−x). Der
+      // andere kommt gerade von seinem letzten Schwung zurück: er behält dessen
+      // Ebene, bis er den Körper wieder frei hat.
+      const naherKreuzt = zu < 0;
+      const schwingt = f < 0.62;
+      r.armNearHinten = naherKreuzt ? hinten(i) : hinten(i - 1) && schwingt;
+      r.armFarHinten = naherKreuzt ? hinten(i - 1) && schwingt : hinten(i);
+      r.rootX = -s * 2.4 * cfg.sway;
+      r.rootY = 0.5 + (1 - s * s) * 0.9 * cfg.bounce;
+      r.headTilt = -s * 0.05 * cfg.nod;
+      r.hairFlow = s * 1.6;
+      // +35° nach außen auf der eigenen Seite, −50° quer über den Körper.
+      const nah = s * 42.5 - Math.abs(s) * 7.5;
+      const fern = -s * 42.5 - Math.abs(s) * 7.5;
+      tanzArme(nah, nah, fern, fern);
+      r.handNear = "faust";
+      r.handFar = "faust";
+      stand();
+      break;
+    }
+
+    case "danceSchritt": {
+      // Schritt-Tanz: ein Schritt je Schlag, der Kopf nickt mit, ein Arm wippt
+      // gestreckt nach oben und zeigt mit dem Finger zur Decke, der andere
+      // schwingt locker mit. Mit Musikzeit fallen die Schritte genau auf den Takt.
+      const cfg = tanzParamsFor("danceSchritt");
+      const ab = 0.5 + 0.5 * Math.cos(ZWEI_PI * taktPhase(1));
+      const gang = beatT !== undefined ? Math.PI * (takt + 0.5) : walkP;
+      const sw = Math.sin(gang);
+      const lift = Math.max(0, Math.cos(gang)) * 2.6 * cfg.legs;
+      const liftF = Math.max(0, -Math.cos(gang)) * 2.6 * cfg.legs;
+      r.rootY = 0.5 + ab * 1.1 * cfg.bounce;
+      r.headTilt = (0.03 + ab * 0.17) * cfg.nod;
+      r.hairFlow = -1.2 - ab * 0.8;
+      const a = ab * cfg.armUp;
+      tanzArme(150 - a * 20, 170 + a * 6, 11 + 4 * sw, -6 + 7 * sw);
+      r.fingerUp = cfg.finger;
+      const weite = 7.5 * Math.min(1.2, cfg.legs);
+      const nearFoot: V = [sw * weite, -lift - r.rootY];
+      const farFoot: V = [-sw * weite, -liftF - r.rootY];
+      r.legNear = leg(gangKnie([2.6, r.hipY], nearFoot), nearFoot);
+      r.legFar = leg(gangKnie([-2.6, r.hipY], farFoot), farFoot);
+      break;
+    }
+
+    case "danceClap": {
+      // Klatschen: Oberarme und Unterarme schwingen gemeinsam auf und treffen
+      // sich genau auf den Schlag wieder vor der Brust. Die Knie federn mit.
+      const cfg = tanzParamsFor("danceClap");
+      const f = taktPhase(1);
+      const auf = Math.pow(Math.sin(Math.PI * Math.pow(f, 0.8)), 1.2) * Math.min(1.2, cfg.armUp);
+      const ab = 0.5 + 0.5 * Math.cos(ZWEI_PI * f);
+      const lang = Math.sin(Math.PI * takt * 0.5);
+      r.rootX = lang * 1.2 * cfg.sway;
+      r.rootY = 0.4 + ab * 1.2 * cfg.bounce;
+      r.headTilt = (0.02 + ab * 0.1) * cfg.nod;
+      r.hairFlow = -lang * 1.2 - ab * 0.5;
+      tanzArme(22 + 14 * auf, 234 - 20 * auf, 22 + 14 * auf, 234 - 20 * auf);
+      stand();
+      break;
+    }
+
+    case "danceRobot": {
+      // Roboter: Oberarme waagrecht, Unterarme im rechten Winkel – einer zeigt
+      // nach oben, einer nach unten. Auf jeden Schlag rucken sie hart in die
+      // Gegenstellung und rasten ein. Normale Armlänge, nur die Gelenke drehen.
+      const cfg = tanzParamsFor("danceRobot");
+      const p = taktPhase(2) * 2;
+      const teil = Math.floor(p);
+      const f = p - teil;
+      const ruck = Math.min(1, f / 0.2);
+      const k = teil === 0 ? ruck : 1 - ruck;
+      const rast = f > 0.2 && f < 0.34 ? Math.sin(((f - 0.2) / 0.14) * Math.PI) : 0;
+      r.rootX = (k - 0.5) * 1.6 * cfg.sway;
+      r.rootY = 0.3 + rast * 0.5 * cfg.bounce;
+      r.headTilt = (k - 0.5) * 0.2 * cfg.nod;
+      r.hairFlow = 0;
+      const hub = 86 * Math.min(1.04, cfg.armUp);
+      tanzArme(84, 90 + hub * (1 - 2 * k) + rast * 4, 84, 90 - hub * (1 - 2 * k) - rast * 4);
+      stand();
+      break;
+    }
+
+    case "danceWave": {
+      // Armwelle: eine echte Welle läuft von der einen Hand durch Unterarm,
+      // Oberarm und Schultern bis in die andere Hand. Jedes Armglied hebt und
+      // senkt sich nacheinander – die Längen bleiben, nur die Gelenke drehen.
+      const cfg = tanzParamsFor("danceWave");
+      const ph = Math.PI * takt;
+      const kappa = 0.95;
+      const G = 30 * Math.min(1.3, cfg.armUp);
+      // Kette: ferne Hand (0) – Ellbogen (1) – Schulter (2) | Schulter (2.6) –
+      // Ellbogen (3.6) – nahe Hand (4.6). Die Neigung folgt der Steigung der Welle.
+      const steig = (xi: number) => Math.cos(ph - kappa * xi);
+      const mitte = Math.sin(ph - kappa * 2.3);
+      r.rootX = mitte * 0.8 * cfg.sway;
+      r.rootY = 0.6 - mitte * 0.7 * cfg.bounce;
+      r.headTilt = -Math.cos(ph - kappa * 2.3) * 0.07 * cfg.nod;
+      r.hairFlow = mitte * 1.0;
+      tanzArme(86 - G * 0.8 * steig(3.1), 90 - G * steig(4.1), 86 + G * 0.8 * steig(1.5), 90 + G * steig(0.5));
+      stand();
+      break;
+    }
+
+    case "danceHeart": {
+      // Herz: beide Hände liegen übereinander auf dem Herzen. Sie wiegt sich
+      // verträumt, der Kopf neigt sich mit, und die Hände heben sich im
+      // Herzschlag (bu-bumm) zweimal kurz von der Brust.
+      const cfg = tanzParamsFor("danceHeart");
+      const lang = Math.sin(Math.PI * takt * 0.5);
+      const f = taktPhase(2);
+      const bumm = (x: number) => (x > 0 && x < 1 ? Math.sin(Math.PI * x) : 0);
+      const puls = (bumm(f / 0.2) + 0.7 * bumm((f - 0.26) / 0.2)) * cfg.armUp;
+      r.rootX = lang * 1.8 * cfg.sway;
+      r.rootY = 0.5 + (1 - lang * lang) * 0.5 * cfg.bounce;
+      r.headTilt = lang * 0.13 * cfg.nod;
+      r.hairFlow = -lang * 1.8;
+      tanzArme(24 + puls * 3, 248 - puls * 4.5, 24 + puls * 3, 256 - puls * 4.5);
+      stand();
       break;
     }
 
@@ -1665,39 +2042,73 @@ function pullBack(from: V, to: V, d: number): V {
   return [to[0] - (dx / len) * d, to[1] - (dy / len) * d];
 }
 
-/** Kleine Hand entlang des Unterarms, mit vier Fingern und seitlichem Daumen. */
-function drawHand(ctx: C, elbow: V, hand: V, skin: string, shade: string) {
+/**
+ * Hand entlang des Unterarms: gewölbte Handfläche (am Handgelenk schmal, an den
+ * Knöcheln breit), vier unterschiedlich lange Finger mit runden Kuppen und ein
+ * Daumen, der am Handballen ansetzt und schräg nach vorn zeigt.
+ * `daumen` (-1..1): auf welcher Seite der Daumen sitzt und wie weit er absteht.
+ * `geste`: offene Hand, Faust oder ausgestreckter Zeigefinger.
+ */
+function drawHand(ctx: C, elbow: V, hand: V, skin: string, shade: string, daumen = 1, geste: Geste = "offen") {
+  const s = daumen >= 0 ? 1 : -1;
+  const ab = Math.min(1, Math.abs(daumen));
   ctx.save();
   ctx.translate(hand[0], hand[1]);
   ctx.rotate(Math.atan2(hand[1] - elbow[1], hand[0] - elbow[0]));
-  ctx.fillStyle = skin;
-  rr(ctx, -1.8, -1.5, 3.4, 3, 1.2);
-  ctx.fill();
-  ctx.strokeStyle = skin;
   ctx.lineCap = "round";
-  ctx.lineWidth = 0.75;
-  for (const [y, end] of [[-1.1, 2.5], [-0.37, 3], [0.37, 2.9], [1.1, 2.3]] as const) {
+  ctx.lineJoin = "round";
+  // Handfläche
+  ctx.fillStyle = skin;
+  ctx.beginPath();
+  ctx.moveTo(-1.9, -1.15);
+  ctx.quadraticCurveTo(-0.3, -1.8, 1.05, -1.55);
+  ctx.quadraticCurveTo(1.5, 0, 1.05, 1.55);
+  ctx.quadraticCurveTo(-0.3, 1.8, -1.9, 1.15);
+  ctx.quadraticCurveTo(-2.25, 0, -1.9, -1.15);
+  ctx.closePath();
+  ctx.fill();
+  // Finger, vom Daumen aus gezählt: Zeige-, Mittel-, Ring- und kleiner Finger
+  const lage = [1.14, 0.39, -0.37, -1.12];
+  const offen = [2.1, 2.45, 2.2, 1.7];
+  const spitzen: number[] = [];
+  ctx.strokeStyle = skin;
+  ctx.lineWidth = 0.8;
+  for (let i = 0; i < 4; i++) {
+    const gestreckt = geste === "offen" || (geste === "zeig" && i === 0);
+    const len = !gestreckt ? 0.55 : geste === "zeig" ? 2.7 : offen[i];
+    const y0 = s * lage[i];
     ctx.beginPath();
-    ctx.moveTo(0.8, y);
-    ctx.lineTo(end, y * 1.08);
+    ctx.moveTo(0.75, y0);
+    ctx.lineTo(0.95 + len, geste === "offen" ? y0 * 1.1 : y0);
     ctx.stroke();
+    spitzen.push(0.95 + len);
   }
+  // Daumen
   ctx.lineWidth = 1.05;
   ctx.beginPath();
-  ctx.moveTo(-0.7, 0.9);
-  ctx.quadraticCurveTo(-0.1, 2.35, 1.05, 2.35);
+  if (geste === "offen") {
+    ctx.moveTo(-1.0, s * 0.95);
+    ctx.quadraticCurveTo(-0.55, s * (1.35 + 0.85 * ab), 0.6, s * (1.3 + 1.1 * ab));
+  } else {
+    // Faust und Zeigen: der Daumen liegt quer über den eingerollten Fingern
+    ctx.moveTo(-0.9, s * 1.05);
+    ctx.quadraticCurveTo(0.5, s * 1.75, 1.5, s * 0.75);
+  }
   ctx.stroke();
+  // Feine Fugen zwischen den Fingern und am Daumenansatz
   ctx.strokeStyle = shade;
-  ctx.lineWidth = 0.3;
-  for (const y of [-0.74, 0, 0.74]) {
+  ctx.lineWidth = 0.26;
+  for (let i = 0; i < 3; i++) {
+    const y = (s * (lage[i] + lage[i + 1])) / 2;
+    const ende = Math.max(1.25, Math.min(spitzen[i], spitzen[i + 1]) - 0.35);
     ctx.beginPath();
-    ctx.moveTo(1.15, y);
-    ctx.lineTo(2.35, y);
+    ctx.moveTo(1.05, y);
+    ctx.lineTo(ende, y * 1.05);
     ctx.stroke();
   }
   ctx.beginPath();
-  ctx.moveTo(-0.35, 1.25);
-  ctx.lineTo(0.4, 1.85);
+  ctx.moveTo(-0.55, s * 1.05);
+  ctx.lineTo(0.25, s * 1.3);
   ctx.stroke();
   ctx.restore();
 }
@@ -2280,13 +2691,14 @@ function drawUmhangRuecken(ctx: C, r: Rig, u: { aussen: string; futter: string }
 /* ------------------------------ Hauptroutine ---------------------------- */
 
 /** Zeichnet Luni und liefert die Weltposition der vorderen Hand zurück. */
-export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
+function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   const {
     t = 0,
     face = 1,
     state = "idle",
     expr = "happy",
     walk = 0,
+    beatT,
     blink = 0,
     scale = 1,
     shadow = true,
@@ -2381,7 +2793,17 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   const K = vampir && oberteil === "dressed"
     ? { ...KP, cardiganLight: vampir.spitze ?? vampir.trim ?? KP.cardiganLight }
     : KP;
-  const r = buildRig(state, state === "smoke" ? rauchzeit ?? t : t, walk, phase, armReach);
+  // Smoothe Übergänge zwischen Tanzposen: alte und neue Pose werden weich
+  // ineinander überblendet (keine harten Posewechsel).
+  const tzeit = state === "smoke" ? rauchzeit ?? t : t;
+  let r: Rig;
+  if (opts.blendFrom && opts.blendK !== undefined && opts.blendK > 0 && opts.blendK < 1) {
+    const alt = buildRig(opts.blendFrom, tzeit, walk, phase, armReach, beatT);
+    const neu = buildRig(state, tzeit, walk, phase, armReach, beatT);
+    r = mergeRig(alt, neu, ease(opts.blendK));
+  } else {
+    r = buildRig(state, tzeit, walk, phase, armReach, beatT);
+  }
   if (bedLean > 0) r.bend = Math.max(r.bend, clamp01(bedLean) * 0.28);
   const bettSitzEnde = state === "sit" && bedSitzen !== undefined ? buildRig("sit", t, walk, phase, armReach) : null;
   if (bettSitzEnde && bedSitzen !== undefined) {
@@ -2596,21 +3018,43 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
      damit erhobene Arme nicht quer über den Körper greifen. */
   const armBehind = r.armNear;
   const armFront = r.armFar;
+  const tanzt = state.startsWith("dance");
+  /** Beim Tanzen zeigt der Daumen nach oben und leicht zur Körpermitte –
+   *  an beiden Händen spiegelbildlich. Alltagsposen behalten ihre Seite. */
+  const daumenSeite = (side: 1 | -1, arm: Limb): number => {
+    if (!tanzt) return 1;
+    const a = Math.atan2(arm.hand[1] - arm.elbow[1], arm.hand[0] - arm.elbow[0]);
+    const d = (-Math.sin(a) * -side * 0.35 - Math.cos(a)) / Math.hypot(0.35, 1);
+    return Math.max(-1, Math.min(1, d * 5));
+  };
+  const naheHandHoeher = armBehind.hand[1] < armFront.hand[1];
+  const gesteNah: Geste = r.fingerUp && naheHandHoeher ? "zeig" : r.handNear;
+  const gesteFern: Geste = r.fingerUp && !naheHandHoeher ? "zeig" : r.handFar;
+  const SCHULTER_HINTEN: V = [r.schulterX, r.shoulderY + 2];
 
   /* --- hinterer Arm (früher der vordere) --- */
   const drawBackArm = (nurHand = false) =>
     upperLean(() => {
       if (!nurHand) {
         const wrist = pullBack(armBehind.elbow, armBehind.hand, 1.5);
-        stroke3(ctx, [3.4, r.shoulderY + 2], armBehind.elbow, wrist, K.cardiganDark, 4.4);
-        if (state !== "sax" && K.cardigan === LUNI_COLORS.cardigan) armKaro(ctx, [[3.4, r.shoulderY + 2], armBehind.elbow, wrist]);
+        stroke3(ctx, SCHULTER_HINTEN, armBehind.elbow, wrist, K.cardiganDark, 4.4);
+        if (state !== "sax" && K.cardigan === LUNI_COLORS.cardigan) armKaro(ctx, [SCHULTER_HINTEN, armBehind.elbow, wrist]);
+        if (tanzt) {
+          // Beim Tanzen sind beide Arme ganz zu sehen: auch dieser bekommt sein Bündchen.
+          ctx.save();
+          ctx.translate(wrist[0], wrist[1]);
+          ctx.rotate(Math.atan2(armBehind.hand[1] - armBehind.elbow[1], armBehind.hand[0] - armBehind.elbow[0]));
+          ctx.fillStyle = mixCol(K.cardiganLight, K.cardiganDark, 0.35);
+          rr(ctx, -1.5, -2.2, 1.8, 4.4, 0.8);
+          ctx.fill();
+          ctx.restore();
+        }
       }
-      drawHand(ctx, armBehind.elbow, armBehind.hand, K.skinShade, mixCol(K.skinShade, "#8f5940", 0.3));
+      drawHand(ctx, armBehind.elbow, armBehind.hand, K.skin, K.skinShade, daumenSeite(1, armBehind), gesteNah);
     });
   // Beim Tragen eines Instruments und beim Tanzen liegt der Arm vor dem Korpus,
   // nicht dahinter – Arme und Hände verschwinden so nie hinter dem Körper.
-  const tanztFrueh = state.startsWith("dance");
-  if (!bedCover && !back && !armsInFront && !armeVorne && !tanztFrueh) drawBackArm();
+  if (!bedCover && !back && !armsInFront && !armeVorne && !tanzt) drawBackArm();
 
   /* --- vorderes Bein (das dunkle, unverdreht) --- */
   if (!bedCover) {
@@ -2626,7 +3070,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   }
 
   // Zeichnung und Armbewegung beginnen am selben Schultergelenk.
-  const SCHULTER_VORN: V = [-3.4, r.shoulderY + 2];
+  const SCHULTER_VORN: V = [-r.schulterX, r.shoulderY + 2];
   const drawFrontArm = () =>
     upperLean(() => {
       const wrist = pullBack(armFront.elbow, armFront.hand, 1.5);
@@ -2641,7 +3085,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
       rr(ctx, -1.5, -2.3, 1.8, 4.6, 0.8);
       ctx.fill();
       ctx.restore();
-      drawHand(ctx, armFront.elbow, armFront.hand, K.skin, K.skinShade);
+      drawHand(ctx, armFront.elbow, armFront.hand, K.skin, K.skinShade, daumenSeite(-1, armFront), gesteFern);
     });
 
   if (P && oberteil === "dressed" && !back && !vampir) drawPajamaDetails(ctx, r, P.top, P.bottom);
@@ -2668,7 +3112,7 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
         } else {
           stroke3(ctx, [side * 6.2, r.shoulderY + 2.2], arm.elbow, arm.hand, side < 0 ? K.cardiganDark : K.cardigan, 4.5);
         }
-        drawHand(ctx, arm.elbow, arm.hand, side < 0 ? K.skinShade : K.skin, K.skinShade);
+        drawHand(ctx, arm.elbow, arm.hand, K.skin, K.skinShade);
       }
     };
     // Nur Posen, die bewusst hinter den Rücken greifen (Schrank, Waschen),
@@ -2687,6 +3131,12 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     // Die langen Haare liegen über Rücken und Schultern.
     drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen * (wet > 0.3 ? 0.94 : 1), true);
   } else {
+    // Tanz: ein Arm, der hinter dem Körper durchschwingt (Floss), wird vor dem
+    // Rumpf gezeichnet und dadurch von ihm verdeckt.
+    if (tanzt && !bedCover && !bent) {
+      if (r.armNearHinten) drawBackArm();
+      if (r.armFarHinten) drawFrontArm();
+    }
     /* --- Rumpf (an der vertikalen Achse gespiegelt) --- */
     upperLean(() => {
       ctx.save();
@@ -2711,7 +3161,6 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     betweenBodyAndArms?.();
     // Beim Tanzen kommen beide Arme erst ganz zum Schluss (vor die Haare) –
     // sonst verschwinden sie hinter dem Körper.
-    const tanzt = state.startsWith("dance");
     if (!bedCover && (armsInFront || armeVorne)) drawBackArm();
     else if (!bedCover && handVorRumpf) drawBackArm(true);
 
@@ -2862,11 +3311,11 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
 
   if (!bedCover && bent && !back) drawFrontArm();
 
-  // Beim Tanzen liegen beide Arme ganz vorn – auch vor Haaren und Kopf,
-  // damit sie nie hinter dem Körper verschwinden.
-  if (!bedCover && !back && !bent && state.startsWith("dance")) {
-    drawBackArm();
-    drawFrontArm();
+  // Beim Tanzen liegen die Arme ganz vorn – auch vor Haaren und Kopf, damit
+  // sie nie hinter dem Körper verschwinden (außer sie sollen es, siehe oben).
+  if (!bedCover && !back && !bent && tanzt) {
+    if (!r.armNearHinten) drawBackArm();
+    if (!r.armFarHinten) drawFrontArm();
   }
 
   ctx.restore();
@@ -2914,6 +3363,13 @@ export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     x + (r.rootX + propHand[0]) * scale * face,
     y + (r.rootY + propHand[1]) * scale,
   ];
+}
+
+/* -------------------------- Drehung: entfernt -------------------------- */
+
+/** Zeichnet die Figur (kein 2D-Rotate mehr; die Rotationsansicht ist entfernt). */
+export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
+  return renderFig(ctx, x, y, opts);
 }
 
 /* ---------------------------- Zzz-Partikel ----------------------------- */
