@@ -2,7 +2,7 @@
    Patch-Dateien der aktuellen Sitzung (Inhalt der UFO-Station)
 
    Dieses Modul wird von tools/ufo-bauen.mjs erzeugt. Das UFO oben rechts
-   bietet LCL-Tanz-Arme-30.zip an – darin liegen aktuell.patch und aktuell.json.
+   bietet LCL-Frosch-Sauber-34.zip an – darin liegen aktuell.patch und aktuell.json.
 
    Namensmuster: LCL-<Kurzname>-<zweistellige laufende Nummer>.zip
    Die Nummer erhöht sich bei jedem Vorschau-Bau um 1.
@@ -18,8 +18,8 @@ export interface PatchDatei {
   inhalt: string;
 }
 
-export const PATCH_KURZ = "Tanz-Arme";
-export const PATCH_NUMMER = 30;
+export const PATCH_KURZ = "Frosch-Sauber";
+export const PATCH_NUMMER = 34;
 export const PATCH_ZIP =
   `LCL-${PATCH_KURZ}-${String(PATCH_NUMMER).padStart(2, "0")}.zip`;
 

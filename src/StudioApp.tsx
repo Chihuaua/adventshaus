@@ -30,7 +30,9 @@ const GROUPS: { title: string; items: { k: LuniState; label: string }[] }[] = [
       { k: "danceTwist", label: "Twist" },
       { k: "danceDisco", label: "Disco" },
       { k: "danceMoonwalk", label: "Moonwalk" },
-      { k: "danceSlide", label: "Rutschen" },
+      { k: "danceStep", label: "Step-Touch" },
+      { k: "danceKick", label: "Kick" },
+      { k: "danceSlide", label: "Knie-Rutscher" },
     ],
   },
   {
@@ -52,6 +54,7 @@ const EXPRS: { k: LuniExpr; label: string }[] = [
   { k: "grin", label: "Grinsen" },
   { k: "wink", label: "Zwinkern" },
   { k: "love", label: "Verliebt" },
+  { k: "sing", label: "Singen" },
   { k: "think", label: "Nachdenklich" },
   { k: "focus", label: "Konzentriert" },
   { k: "tired", label: "Müde" },

@@ -48,6 +48,8 @@ import { SaxophonMusic } from "./audio/saxophonVoice";
 import { SAX_DURATION_SECONDS } from "./audio/saxophonNotes";
 import { PlattenMusic, plattenBassPulse } from "./audio/plattenVoice";
 import { PLATTEN_DURATION_SECONDS } from "./audio/plattenNotes";
+import { FroschMusic, froschMundOffen } from "./audio/froschVoice";
+import { FROSCH_DURATION_SECONDS } from "./audio/froschNotes";
 import { VAMPIR_OUTFITS, naechstesOutfit } from "./gruselhaus/vampir";
 import {
   KesselAblauf, OFEN, ZAUBER_ZEIT, drawKessel, drawKesselGedanke, drawKesselSchimmer, drawOfen,
@@ -1560,25 +1562,39 @@ interface TanzSegment {
   tempo: number;
 }
 
-/** Tanz-Tour: beschwingt durchs ganze Haus, mit Moonwalk auf dem Dachboden
- *  und dem Knie-Rutscher ins Wohnzimmer (Tom-Cruise-Szene). */
+/** Tanz-Tour: beschwingt durchs ganze Haus. Treppen werden mitgetanzt
+ *  (rauf und runter), der Moonwalk läuft immer gleitend über den Boden,
+ *  längere Strecken als wippende Tanzschritte (danceGlide) und der
+ *  Knie-Rutscher führt im Wohnzimmer auf beiden Knien herein
+ *  (Tom-Cruise-Szene). */
 const PLATTEN_TOUR: readonly TanzSegment[] = [
-  { floor: 3, x: 640, stil: "danceDisco", dauer: 7, tempo: 44 },
-  { floor: 3, x: 480, stil: "danceMoonwalk", dauer: 2, tempo: 34 },
-  { floor: 3, x: 390, stil: "danceTwist", dauer: 4, tempo: 44 },
-  { floor: 2, x: 300, stil: "danceSway", dauer: 4, tempo: 46 },
-  { floor: 2, x: 560, stil: "danceDisco", dauer: 4, tempo: 46 },
-  { floor: 1, x: 660, stil: "danceSway", dauer: 0, tempo: 46 },
-  { floor: 1, x: 480, stil: "danceSway", dauer: 0, tempo: 46 },
-  { floor: 1, x: 376, stil: "danceSlide", dauer: 6, tempo: 95 },
-  { floor: 1, x: 430, stil: "danceDisco", dauer: 5, tempo: 44 },
-  { floor: 1, x: 340, stil: "danceTwist", dauer: 5, tempo: 44 },
-  { floor: 1, x: 405, stil: "danceMoonwalk", dauer: 3, tempo: 34 },
-  { floor: 1, x: 335, stil: "danceSway", dauer: 6, tempo: 46 },
+  // Dachgeschoss: locker zwischen Anlage und Gaming-Ecke
+  { floor: 3, x: 640, stil: "danceDisco", dauer: 2, tempo: 50 },
+  { floor: 3, x: 480, stil: "danceMoonwalk", dauer: 0, tempo: 38 },
+  { floor: 3, x: 420, stil: "danceStep", dauer: 2, tempo: 50 },
+  { floor: 3, x: 560, stil: "danceKick", dauer: 2, tempo: 50 },
+  // 1. Stock: Schlafzimmer und Bad entlang
+  { floor: 2, x: 300, stil: "danceGlide", dauer: 0, tempo: 36 },
+  { floor: 2, x: 440, stil: "danceSway", dauer: 2, tempo: 50 },
+  { floor: 2, x: 600, stil: "danceDisco", dauer: 2, tempo: 50 },
+  { floor: 2, x: 340, stil: "danceKick", dauer: 2, tempo: 50 },
+  // Erdgeschoss: durch die Küche ins Wohnzimmer
+  { floor: 1, x: 660, stil: "danceGlide", dauer: 0, tempo: 36 },
+  { floor: 1, x: 560, stil: "danceStep", dauer: 2, tempo: 50 },
+  // Torjubel: kurzer Anlauf (etwas schneller, Blick nach links) …
+  { floor: 1, x: 470, stil: "run", dauer: 0, tempo: 100 },
+  // … dann auf beiden Knien ins Wohnzimmer rutschen
+  { floor: 1, x: 360, stil: "danceSlide", dauer: 4, tempo: 55 },
+  { floor: 1, x: 430, stil: "danceDisco", dauer: 3, tempo: 50 },
+  { floor: 1, x: 330, stil: "danceKick", dauer: 2, tempo: 50 },
+  { floor: 1, x: 405, stil: "danceMoonwalk", dauer: 0, tempo: 38 },
+  { floor: 1, x: 320, stil: "danceStep", dauer: 2, tempo: 50 },
+  { floor: 1, x: 470, stil: "danceSway", dauer: 3, tempo: 50 },
 ];
 
-/** Ab dieser Spielzeit kehrt sie zur Anlage zurück, damit der Tonarm pünktlich hebt. */
-const PLATTEN_RUECKKEHR = 92;
+/** Ab dieser Spielzeit kehrt sie spätestens zur Anlage zurück, damit der Tonarm
+ *  pünktlich hebt. Normal ist die Tour vorher zu Ende und löst die Rückkehr aus. */
+const PLATTEN_RUECKKEHR = 105;
 
 function recordPlayer(c: C, x: number, F: number, opts: RecordPlayerOpts = {}) {
   const { power = false, spin = 0, armLift = 0, armTurn = 0 } = opts;
@@ -3185,6 +3201,16 @@ export class House {
   private plattenStarted = false;
   private plattenPausedAt: number | null = null;
 
+  // Gesang „Frosch am Strand“: an der Gitarre stehen, animal-crossing-mässig
+  // singen, Mund passend bewegen, danach aufräumen
+  private singPhase: "sing" | null = null;
+  private singT = 0;
+  private singMusic: FroschMusic | null = null;
+  private singReady = false;
+  private singPreparing = false;
+  private singStarted = false;
+  private singPausedAt: number | null = null;
+
   // Tanz-Tour während des Liedes
   private danceSeg = 0;
   private danceT = 0;
@@ -3761,9 +3787,15 @@ export class House {
       if (id === "platten") return;
       this.stopPlatten();
     }
+    // Sie singt gerade: jede andere Anweisung beendet den Gesang sauber.
+    if (this.singPhase) {
+      if (id === "gitarre") return;
+      this.stopSing();
+    }
     // Schon beim Klick die Tonpuffer berechnen: dann ist die Musik am Mund bereit.
     if (id === "saxophon") this.prepareSax();
     if (id === "platten") this.preparePlatten();
+    if (id === "gitarre") this.prepareSing();
 
     // Duschen: hinter dem Vorhang wird nichts unterbrochen. Auf dem Weg
     // dorthin bricht ein anderer Wunsch den Ablauf ab.
@@ -5338,6 +5370,7 @@ export class House {
     this.updateWake(dt);
     this.updateSarg(dt);
     this.updateSax(dt);
+    this.updateSing(dt);
     this.updatePlatten(dt);
     if (this.welt === "gruesel") this.raumFx.update(dt);
     // Alle paar Sekunden sichern, damit ein Absturz nichts kostet.
@@ -5583,6 +5616,10 @@ export class House {
         }
         if (this.target.id === "platten" && !this.plattenPhase) {
           this.startPlatten();
+        }
+        // An der Gitarre angekommen: das Froschlied singen.
+        if (this.target.id === "gitarre" && !this.singPhase) {
+          this.startSing();
         }
       }
       return;
@@ -6278,6 +6315,79 @@ export class House {
     this.saxPausedAt = null;
   }
 
+  /* ------------------------- Gesang „Frosch am Strand“ ------------------ */
+
+  private prepareSing() {
+    sfx.ensure();
+    const shared = sfx.getSharedAudio();
+    if (!shared) return;
+    if (!this.singMusic) this.singMusic = new FroschMusic(shared.ctx, shared.master);
+    const music = this.singMusic;
+    if (!this.singReady && !this.singPreparing) {
+      this.singPreparing = true;
+      void music
+        .prepare()
+        .then(() => {
+          this.singReady = true;
+        })
+        .catch(() => {
+          this.singReady = false;
+          music.dispose();
+          if (this.singMusic === music) this.singMusic = null;
+        })
+        .finally(() => {
+          this.singPreparing = false;
+        });
+    }
+  }
+
+  /** An der Gitarre angekommen: stehen bleiben und das Froschlied singen. */
+  private startSing() {
+    if (this.singPhase) return;
+    this.singPhase = "sing";
+    this.singT = 0;
+    this.singStarted = false;
+    this.singPausedAt = null;
+    this.prepareSing();
+  }
+
+  private tryStartSingPlayback() {
+    if (this.singStarted || !this.singMusic || !this.singReady || this.singPausedAt !== null) return;
+    if (this.musikzimmer?.active) return;
+    const shared = sfx.getSharedAudio();
+    if (!shared) return;
+    try {
+      this.singMusic.playAt(shared.ctx.currentTime + 0.05, 0);
+      this.singStarted = true;
+    } catch {
+      // Audio noch gesperrt – im nächsten Bild erneut versuchen.
+    }
+  }
+
+  private updateSing(dt: number) {
+    if (!this.singPhase) return;
+    this.singT += dt;
+    if (!this.singStarted) this.tryStartSingPlayback();
+    const mt = this.singStarted ? (this.singMusic?.currentTime ?? 0) : this.singT;
+    if (mt >= FROSCH_DURATION_SECONDS) {
+      this.singMusic?.stop();
+      this.singStarted = false;
+      this.singPhase = null;
+      this.singT = 0;
+      this.activity = null;
+      this.target = null;
+    }
+  }
+
+  /** Gesang sofort beenden (Abbruch, Aufwachen, neue Anweisung). */
+  private stopSing() {
+    this.singMusic?.stop();
+    this.singPhase = null;
+    this.singT = 0;
+    this.singStarted = false;
+    this.singPausedAt = null;
+  }
+
   /* ---------------------------- Plattenspieler --------------------------- */
 
   /** Anlage (Plattenspieler + beide Boxen) hinter Luni im Dachgeschoss. */
@@ -6349,7 +6459,7 @@ export class House {
    * Tempo fort (kein Rennen), Treppen werden normal begangen. Liefert true,
    * sobald sie am Ziel steht. `rueckwaerts` dreht die Blickrichtung (Moonwalk).
    */
-  private tanzSchritt(dt: number, zielFloor: number, zielX: number, tempo: number, rueckwaerts: boolean): boolean {
+  private tanzSchritt(dt: number, zielFloor: number, zielX: number, tempo: number, rueckwaerts: boolean): { da: boolean; fortschritt: number } {
     if (this.danceTreppe && this.danceTreppeStair) {
       const s = this.danceTreppeStair;
       const len = Math.hypot(s.topX - s.footX, FLOOR_Y[s.upper] - FLOOR_Y[s.lower]);
@@ -6366,18 +6476,18 @@ export class House {
         this.danceTreppeT = 0;
         this.danceTreppeStair = null;
       }
-      return false;
+      return { da: false, fortschritt: 0 };
     }
     if (this.lf === zielFloor) {
       const dx = zielX - this.lx;
       if (Math.abs(dx) <= 1.5) {
         this.lx = zielX;
-        return true;
+        return { da: true, fortschritt: 1 };
       }
       const schritt = Math.min(Math.abs(dx), tempo * dt);
       this.lx += Math.sign(dx) * schritt;
       this.lface = rueckwaerts ? (dx > 0 ? -1 : 1) : dx > 0 ? 1 : -1;
-      return false;
+      return { da: false, fortschritt: 0 };
     }
     const hoch = zielFloor > this.lf;
     const s = STAIRS[hoch ? this.lf : this.lf - 1];
@@ -6389,27 +6499,30 @@ export class House {
       this.danceTreppeT = 0;
       this.danceTreppeStair = s;
       this.danceTreppeDir = hoch ? 1 : -1;
-      return false;
+      return { da: false, fortschritt: 0 };
     }
     const schritt = Math.min(Math.abs(dx), tempo * dt);
     this.lx += Math.sign(dx) * schritt;
     this.lface = dx > 0 ? 1 : -1;
-    return false;
+    return { da: false, fortschritt: 0 };
   }
 
-  /** Tanz-Routine während des Liedes: Tour durchs Haus, dann zurück zur Anlage. */
+  /** Tanz-Routine während des Liedes: Tour durchs Haus, dann zurück zur Anlage.
+   *  Treppen werden mitgetanzt (rauf und runter) – auch auf dem Rückweg. */
   private tanzTour(dt: number, musikZeit: number) {
-    if (!this.danceRueck && musikZeit >= PLATTEN_RUECKKEHR) {
+    const tourVorbei = this.danceSeg >= PLATTEN_TOUR.length - 1 && this.danceT >= PLATTEN_TOUR[this.danceSeg].dauer;
+    if (!this.danceRueck && (tourVorbei || musikZeit >= PLATTEN_RUECKKEHR)) {
       this.danceRueck = true;
       this.danceT = 0;
     }
     const rueck = this.danceRueck;
     const ziel = rueck
-      ? { floor: 3, x: PLATTEN_STAND_X, stil: "danceSway" as LuniState, dauer: 0, tempo: 58 }
+      ? { floor: 3, x: PLATTEN_STAND_X, stil: "danceGlide" as LuniState, dauer: 0, tempo: 48 }
       : PLATTEN_TOUR[clamp(this.danceSeg, 0, PLATTEN_TOUR.length - 1)];
-    const da = this.tanzSchritt(dt, ziel.floor, ziel.x, ziel.tempo, ziel.stil === "danceMoonwalk");
-    this.danceStil = this.danceTreppe ? "walk" : ziel.stil;
-    if (!da) {
+    const weg = this.tanzSchritt(dt, ziel.floor, ziel.x, ziel.tempo, ziel.stil === "danceMoonwalk");
+    // Auf der Treppe tanzt sie weiter – rauf wie runter, im gleitenden Schritt.
+    this.danceStil = this.danceTreppe ? "danceGlide" : ziel.stil;
+    if (!weg.da) {
       this.danceT = 0;
       return;
     }
@@ -7408,6 +7521,10 @@ export class House {
         this.plattenPausedAt = this.plattenMusic.pause();
         this.plattenStarted = false;
       }
+      if (this.singPhase === "sing" && this.singStarted && this.singMusic) {
+        this.singPausedAt = this.singMusic.pause();
+        this.singStarted = false;
+      }
     } else {
       if (this.saxPausedAt !== null && this.saxPhase === "play" && this.saxMusic) {
         const shared = sfx.getSharedAudio();
@@ -7428,6 +7545,18 @@ export class House {
             this.plattenMusic.playAt(shared.ctx.currentTime + 0.05, this.plattenPausedAt);
             this.plattenStarted = true;
             this.plattenPausedAt = null;
+          } catch {
+            // Audio noch gesperrt – bleibt pausiert.
+          }
+        }
+      }
+      if (this.singPausedAt !== null && this.singPhase === "sing" && this.singMusic) {
+        const shared = sfx.getSharedAudio();
+        if (shared) {
+          try {
+            this.singMusic.playAt(shared.ctx.currentTime + 0.05, this.singPausedAt);
+            this.singStarted = true;
+            this.singPausedAt = null;
           } catch {
             // Audio noch gesperrt – bleibt pausiert.
           }
@@ -9465,6 +9594,18 @@ export class House {
 
     let pianoPose: number | undefined;
     let walkPhase = this.walkP;
+    // Tanz: zurückgelegter Weg des Abschnitts (Moonwalk läuft nie auf der Stelle)
+    // Gesang an der Gitarre: Mundöffnung aus der Gesangszeit
+    let singOpen = 0;
+
+    // Gesang an der Gitarre: beschwingt wiegen, Mund singt passend mit.
+    if (this.singPhase && this.lf === 3 && !a) {
+      face = this.lface;
+      state = "danceSway";
+      expr = "sing";
+      const mt = this.singStarted ? (this.singMusic?.currentTime ?? 0) : this.singT;
+      singOpen = froschMundOffen(mt);
+    }
 
     // Plattenspieler: Anlage einschalten, dann wegtreten. Während des Liedes
     // tanzt sie beschwingt durchs ganze Haus und kehrt zur Anlage zurück.
@@ -9487,15 +9628,17 @@ export class House {
         walkPhase = this.walkP + p * 7;
       } else if (this.plattenPhase === "play") {
         if (this.danceTreppe && this.danceTreppeStair) {
-          // Treppe: normales Gehen, Position entlang der Stufen
+          // Treppe: sie tanzt weiter (rauf und runter), Position entlang der Stufen
           const s = this.danceTreppeStair;
           y = this.danceTreppeDir === 1
             ? lerp(FLOOR_Y[s.lower], FLOOR_Y[s.upper], this.danceTreppeT)
             : lerp(FLOOR_Y[s.upper], FLOOR_Y[s.lower], this.danceTreppeT);
           onStair = true;
-          state = "walk";
+          state = "danceGlide";
         } else {
           state = this.danceStil;
+          // Torjubel-Rutscher: Blick nach links (in Rutschrichtung)
+          if (state === "danceSlide") face = -1;
         }
       } else if (this.plattenPhase === "armEndLift" || this.plattenPhase === "armEndTurn" || this.plattenPhase === "armEndLower") {
         state = "idle";
@@ -9682,6 +9825,7 @@ export class House {
       expr,
       walk: walkPhase,
       phase: posePhase,
+      singOpen,
       blink: this.blink > 0 ? 1 : 0,
       scale: LUNI_SCALE,
       shadow: !onStair && yOff === 0,
