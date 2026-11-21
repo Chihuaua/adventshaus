@@ -146,9 +146,9 @@ export function renderSilbe(
 
 type Voice = { source: AudioBufferSourceNode; nodes: AudioNode[] };
 
-/**
- * Saubere MIDI-Wiedergabe von „Frosch am Strand“ an vorhandenem AudioContext & Master.
- */
+import { MUSIK_PEGEL } from "./pegel";
+
+/** Saubere MIDI-Wiedergabe von „Frosch am Strand“ am gemeinsamen Audio-Master. */
 export class FroschMusic {
   private readonly output: GainNode;
   private cache = new Map<string, AudioBuffer>();
@@ -164,7 +164,7 @@ export class FroschMusic {
 
   constructor(private readonly ctx: AudioContext, master: AudioNode) {
     this.output = ctx.createGain();
-    this.output.gain.value = 0.62;
+    this.output.gain.value = MUSIK_PEGEL.gesang;
     this.output.connect(master);
   }
 

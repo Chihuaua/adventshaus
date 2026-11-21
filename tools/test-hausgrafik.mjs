@@ -8,7 +8,7 @@ import { build } from "esbuild";
 const source = readFileSync("src/game/house.ts", "utf8");
 const bundle = await build({
   stdin: {
-    contents: source + '\nexport { piano, bed, drawBedScene, drawBlanket, drawBedFront, drawBedEntryBlanket, bedBlanketPose, bedBlanketPushHand, recordPlayer, speaker, PLATTEN_TOUR, SAX_GRIP_UP, SAX_GRIP_LOW, sfx };\nexport { drawLuni } from "./luni";\nexport { drawUfo, drawWeihnachtsschlitten, ufoTreffer, ufoZeileBei, UFO_BOX, UFO_MENUE } from "./ufo";\nexport { steinSlots, drawStein, STEIN_NAMEN } from "./steine";\nexport { WELTEN, weltAusHash } from "./welten";\nexport { PATCH_DATEIEN, PATCH_EINTRAEGE, PATCH_ZIP, PATCH_KURZ, PATCH_NUMMER } from "./patch";\nexport { zipErzeugen } from "./zip";\nexport { PLATTEN_NOTES, PLATTEN_DURATION_SECONDS, PLATTEN_TICKS_PER_SECOND } from "./audio/plattenNotes";\nexport { plattenBassPulse } from "./audio/plattenVoice";\nexport { FROSCH_NOTES, FROSCH_DURATION_SECONDS, FROSCH_TICKS_PER_SECOND } from "./audio/froschNotes";\nexport { froschMundOffen, renderSilbe } from "./audio/froschVoice";',
+    contents: source + '\nexport { piano, bed, drawBedScene, drawBlanket, drawBedFront, drawBedEntryBlanket, bedBlanketPose, bedBlanketPushHand, recordPlayer, speaker, PLATTEN_TOUR, SAX_GRIP_UP, SAX_GRIP_LOW, sfx };\nexport { drawLuni } from "./luni";\nexport { drawUfo, drawWeihnachtsschlitten, ufoTreffer, ufoZeileBei, UFO_BOX, UFO_MENUE } from "./ufo";\nexport { steinSlots, drawStein, STEIN_NAMEN } from "./steine";\nexport { pianoStool };\nexport { WELTEN, weltAusHash } from "./welten";\nexport { PATCH_DATEIEN, PATCH_EINTRAEGE, PATCH_ZIP, PATCH_KURZ, PATCH_NUMMER } from "./patch";\nexport { zipErzeugen } from "./zip";\nexport { PLATTEN_NOTES, PLATTEN_DURATION_SECONDS, PLATTEN_TICKS_PER_SECOND } from "./audio/plattenNotes";\nexport { plattenBassPulse } from "./audio/plattenVoice";\nexport { KlavierMusik, klavierHaendeAt, klavierTon, klavierAnschlagGain } from "./audio/klavierVoice";\nexport { KLAVIER_NOTES, KLAVIER_DAUER_MS } from "./audio/klavierNotes";\nexport { FROSCH_NOTES, FROSCH_DURATION_SECONDS, FROSCH_TICKS_PER_SECOND } from "./audio/froschNotes";\nexport { froschMundOffen, renderSilbe } from "./audio/froschVoice";',
     resolveDir: path.resolve("src/game"), loader: "ts",
   },
   bundle: true, write: false, format: "esm", platform: "node",
@@ -72,8 +72,8 @@ const head = c => c.arcs.find(a => a.r === 9.2 && a.color === "#f4c9a0");
 
 test("Klaviaturkasten und Korpus: exakt dieselben Kanten 545–589", () => {
   const c = canvas(); G.piano(c.ctx, 545, 200);
-  const body = c.shapes.find(s => s.color === "#2a1f1b");
-  const keys = c.shapes.find(s => s.color === "#221812");
+  const body = c.shapes.find(s => s.color === "#63483a");
+  const keys = c.shapes.find(s => s.color === "#4d382b");
   near(body.left, 545); near(body.right, 589);
   near(keys.left, body.left); near(keys.right, body.right);
   near(keys.top, 166);
@@ -81,7 +81,7 @@ test("Klaviaturkasten und Korpus: exakt dieselben Kanten 545–589", () => {
   near(white.left, 550); near(white.top, 168);
   const middle = (body.left + body.right) / 2;
   near((white.left + white.right) / 2, middle);
-  const cheeks = c.shapes.filter(s => s.color === "#2f221b");
+  const cheeks = c.shapes.filter(s => s.color === "#5a4133");
   near((cheeks[0].left + cheeks[1].right) / 2, middle);
   const details = c.shapes.filter(s => s.color === "#d9a83c");
   near((details[0].left + details[1].right) / 2, middle);
@@ -275,7 +275,7 @@ test("Hände haben je vier Finger und einen Daumen in derselben hellen Hautfarbe
 });
 
 test("Saxophonhände bleiben beim Anheben, Spielen und Abstellen an den Griffen", () => {
-  const h = haus({ stations: G.STATIONS, lx: 653, saxStarted: true, saxMusic: { currentTime: 0 }, elapsed: 0 });
+  const h = haus({ stations: G.STATIONS, lx: G.STATIONS.find(z => z.id === "saxophon").x, saxStarted: true, saxMusic: { currentTime: 0 }, elapsed: 0 });
   for (const phase of ["reach", "lift", "play", "lower"]) {
     h.saxPhase = phase;
     for (let i = 0; i <= 20; i++) {
@@ -295,14 +295,14 @@ test("Saxophonhände bleiben beim Anheben, Spielen und Abstellen an den Griffen"
 });
 
 test("Saxophonärmel beginnt am Schultergelenk; das Instrument behält seine Größe", () => {
-  const h = haus({ stations: G.STATIONS, lx: 653, saxPhase: "play", saxT: 0, saxStarted: true,
+  const h = haus({ stations: G.STATIONS, lx: G.STATIONS.find(z => z.id === "saxophon").x, saxPhase: "play", saxT: 0, saxStarted: true,
     saxMusic: { currentTime: 0 }, elapsed: 0, scale: 1, dpr: 1 });
   const c = canvas();
   G.drawLuni(c.ctx, h.lx, 200, { state: "sax", t: 0, scale: 1.08, face: -1, shadow: false,
     handTarget: h.saxGripAt(G.SAX_GRIP_UP), handTarget2: h.saxGripAt(G.SAX_GRIP_LOW),
     handElbow: 1, handElbow2: -1, handKontakt: true });
   const arm = c.shapes.find(s => s.kind === "stroke" && s.color === "#dcc9a5" && s.points.length === 3);
-  assert.ok(arm); near(arm.points[0][0], 653 + 3.4 * 1.08); near(arm.points[0][1], 200 - 34 * 1.08);
+  assert.ok(arm); near(arm.points[0][0], G.STATIONS.find(z => z.id === "saxophon").x + 3.4 * 1.08); near(arm.points[0][1], 200 - 34 * 1.08);
   const getragen = canvas(); h.drawSaxCarried(getragen.ctx);
   h.saxPhase = null;
   const abgestellt = canvas(); h.drawSax(abgestellt.ctx);
@@ -1139,20 +1139,25 @@ test("Froschlied: 53 Noten aus der MIDI, einstimmig, Mund passend zum Ton", () =
   assert.equal(mund1.kind, "ellipse", "bei singOpen=1 offenes Oval");
 });
 
-test("Gesang an der Gitarre: hingehen, singen, Mund bewegt sich, danach aufräumen", () => {
+test("Gesang am Mikrofon: singen, Musikzeit folgt dem Lied, danach aufraeumen", () => {
+  const mikrofon = G.STATIONS.find(z => z.id === "mikrofon");
+  let zeit = 0, gestoppt = false;
   const h = haus({
-    stations: G.STATIONS, lf: 3, lx: 800, lface: 1,
+    stations: G.STATIONS, lf: 3, lx: mikrofon.x, lface: 1,
     singPhase: null, singT: 0, singMusic: null, singReady: false, singPreparing: false,
     singStarted: false, singPausedAt: null, musikzimmer: null,
-    activity: G.STATIONS.find(z => z.id === "gitarre"), target: null, cur: null, path: [],
+    activity: mikrofon, target: mikrofon, cur: null, path: [],
   });
   h.prepareSing = () => {};
+  h.singMusic = { get currentTime() { return zeit; }, stop() { gestoppt = true; } };
+  h.tryStartSingPlayback = () => { h.singStarted = true; };
   h.startSing();
   assert.equal(h.singPhase, "sing");
-  for (let i = 0; i < 10; i++) h.updateSing(0.05);
+  for (let i = 0; i < 10; i++) { zeit += 0.05; h.updateSing(0.05); }
   assert.equal(h.singPhase, "sing", "Lied läuft noch");
-  h.singT = G.FROSCH_DURATION_SECONDS;
+  zeit = G.FROSCH_DURATION_SECONDS;
   h.updateSing(0.02);
+  assert.equal(gestoppt, true);
   assert.equal(h.singPhase, null, "nach dem Lied ist Ruhe");
   assert.equal(h.activity, null);
   assert.equal(h.target, null);
@@ -1257,8 +1262,9 @@ test("Dachgeschoss & Klavier: kein Schornstein-Rechteck, kein Querbalken, kein T
   const wandRechts = houseFn.indexOf('rect(c, HR, 118, 12');
   const dach = houseFn.indexOf("drawRoof(c)");
   assert.ok(wandLinks > 0 && wandRechts > 0 && dach > wandLinks && dach > wandRechts, "Dach liegt vor linker und rechter Seitenwand");
-  // 4) Schemel zentriert vor dem Klavier (Klavier 545..589 -> Mitte 567, Hocker 554..580 -> Mitte 567)
-  assert.ok(houseFn.includes("pianoStool(c, 554, FD)"), "Klavierschemel mittig bei x=554..580");
+  // 4) Schemel zentriert vor dem Klavier (Klavier 545..589 -> Mitte 567; kleiner Schemel 558..576 -> Mitte 567)
+  assert.ok(houseFn.includes("pianoStool(c, SCHEMEL_X, FD)"), "Klavierschemel mittig vor dem Klavier");
+  near(G.SCHEMEL_X + 9, 567);
   const klavierSt = G.STATIONS.find(s => s.id === "klavier");
   assert.equal(klavierSt.x, 567, "Klavier-Station zentriert bei x=567");
   assert.equal(klavierSt.face, 1);
@@ -1275,6 +1281,379 @@ test("Dachgeschoss & Klavier: kein Schornstein-Rechteck, kein Querbalken, kein T
   h.drawLuniNow(c.ctx);
   assert.equal(head(c), undefined, "Rückenansicht am Klavier: kein Gesicht zum Spieler");
   assert.ok(c.shapes.some(s => s.color === "#191920"), "Haare am Hinterkopf sichtbar");
+});
+
+test("Klavierlied: 525 Noten aus ssm.mid, sortiert, Tonumfang 24–77, Länge 93,5 s", () => {
+  assert.equal(G.KLAVIER_NOTES.length, 525);
+  for (let i = 1; i < G.KLAVIER_NOTES.length; i++) assert.ok(G.KLAVIER_NOTES[i][0] >= G.KLAVIER_NOTES[i - 1][0], `Note ${i} sortiert`);
+  const tonhoehen = G.KLAVIER_NOTES.map(n => n[2]);
+  assert.equal(Math.min(...tonhoehen), 24);
+  assert.equal(Math.max(...tonhoehen), 77);
+  assert.equal(G.KLAVIER_DAUER_MS, 93520);
+  for (const [st, d, p, v] of G.KLAVIER_NOTES) assert.ok(st >= 0 && d > 0 && p >= 21 && p <= 108 && v >= 1 && v <= 127, "gültige Note");
+});
+
+test("Klavierton: Grundton stimmt, klingt ab, keine ungültigen Werte", () => {
+  const fake = { createBuffer: (ch, n) => { const d = new Float32Array(n); return { getChannelData: () => d }; } };
+  const a = G.klavierTon(fake, 60).getChannelData(0);
+  assert.ok(a.every(v => Number.isFinite(v)), "keine NaN");
+  const sr = 22050;
+  const rms = (s0, s1) => Math.sqrt(a.slice(s0, s1).reduce((x, v) => x + v * v, 0) / (s1 - s0));
+  assert.ok(rms(Math.round(0.05 * sr), Math.round(0.25 * sr)) > 2 * rms(Math.round(2.0 * sr), Math.round(2.4 * sr)), "klingt ab");
+  const seg = a.subarray(Math.round(0.2 * sr), Math.round(0.2 * sr) + 2048);
+  let best = 0, lag0 = 0;
+  for (let lag = Math.floor(sr / 1000); lag <= Math.floor(sr / 200); lag++) {
+    let sum = 0;
+    for (let i = 0; i + lag < seg.length; i++) sum += seg[i] * seg[i + lag];
+    if (sum > best) { best = sum; lag0 = lag; }
+  }
+  const hz = sr / lag0;
+  assert.ok(Math.abs(hz - 261.6) / 261.6 < 0.01, `Grundton ${hz.toFixed(1)} Hz (soll 261,6)`);
+});
+
+test("Klavierlied: plant alle Noten im Takt, pausiert und setzt an der Musikzeit fort", async () => {
+  const quellen = [];
+  const ctx = {
+    currentTime: 0,
+    createBuffer: (c, n) => ({ getChannelData: () => new Float32Array(n) }),
+    createGain: () => ({ gain: { value: 1, cancelScheduledValues() {}, setValueAtTime() {}, linearRampToValueAtTime() {} }, connect() {}, disconnect() {} }),
+    createBufferSource: () => ({
+      buffer: null, onended: null, starts: [],
+      connect() {}, disconnect() {}, stop() {},
+      start(w) { this.starts.push(w); quellen.push(w); },
+    }),
+  };
+  const m = new G.KlavierMusik(ctx, { connect() {} });
+  assert.equal(m.bereit, false, "vor der Vorbereitung nicht bereit");
+  m.start(0);
+  assert.equal(quellen.length, 0, "ohne Vorbereitung kein Start");
+  await m.prepare();
+  assert.equal(m.bereit, true);
+  m.start(0);
+  assert.equal(quellen.length, 525, "alle 525 Noten eingeplant");
+  ctx.currentTime = 10;
+  assert.ok(Math.abs(m.currentTime - 9.95) < 1e-9, `Musikzeit ${m.currentTime}`);
+  const p = m.pause();
+  assert.ok(Math.abs(p - 9.95) < 1e-9 && !m.laeuft, "Pause merkt sich die Musikzeit");
+  quellen.length = 0;
+  m.start(p);
+  assert.ok(quellen.length > 0 && quellen.length < 525, "Weiterspielen plant nur die restlichen Noten");
+  assert.ok(quellen.every(w => w >= 0), "Startzeiten sind gültig");
+});
+
+test("Klavierlied: Hände greifen die tiefste und höchste klingende Taste im Tastenbereich", () => {
+  const h = G.klavierHaendeAt(500);
+  assert.ok(h.links !== null && h.rechts !== null, "zur Zeit 0,5 s klingen Töne");
+  for (const x of [h.links, h.rechts]) assert.ok(x >= 556 && x <= 578, `Taste bei x=${x}`);
+  assert.ok(h.links <= h.rechts, "linke Hand tiefer als rechte");
+  assert.equal(G.klavierHaendeAt(-1).links, null, "vor dem Lied keine Taste");
+  assert.equal(G.klavierHaendeAt(G.KLAVIER_DAUER_MS + 5000).links, null, "nach dem Lied keine Taste");
+});
+
+test("Klavier im Haus: Lied startet am Klavier, pausiert beim Ausblenden, Hände folgen den Tönen", () => {
+  const src = readFileSync("src/game/house.ts", "utf8");
+  assert.ok(src.includes('import { KlavierMusik, klavierHaendeAt } from "./audio/klavierVoice";'), "Import");
+  assert.ok(src.includes("    this.updateKlavier(dt);\n"), "Frame-Anbindung");
+  assert.ok(src.includes("this.klavierPausiert = this.klavierMusik.pause();"), "Pause beim Ausblenden");
+  assert.ok(src.includes("klavierHaendeAt(this.klavierMusik.currentTime * 1000)"), "Hände folgen den Tönen");
+  assert.ok(src.includes("this.klavierMusik?.dispose();"), "Freigabe beim Abbau");
+  assert.ok(src.includes('this.activity?.id === "klavier" && !this.cur && !this.pending'), "nur sitzend am Klavier");
+});
+
+
+test("Klavier: niedriger Schemel mittig vor dem Klavier, Lunis Hüfte sitzt auf der Sitzfläche", () => {
+  // Klavier 545..589 -> Mitte 567. Der Schemel ist 18 breit und liegt mit seiner Mitte bei 567.
+  near(G.SCHEMEL_X + 9, 567);
+  // Sitzpose: Hüfte 10 über dem Boden (rootY 9 + hipY -19 = -10). Die Oberkante der
+  // Sitzfläche liegt bei SCHEMEL_HOEHE, also knapp unter der Hüfte: Luni sitzt darauf.
+  assert.ok(G.SCHEMEL_HOEHE >= 8 && G.SCHEMEL_HOEHE < 10, `Sitzfläche (${G.SCHEMEL_HOEHE}) liegt knapp unter der Hüfte (10)`);
+  const c = canvas();
+  G.pianoStool(c.ctx, G.SCHEMEL_X, 200);
+  const sitz = c.shapes.find(z => z.color === "#6b3f2a");
+  assert.ok(sitz, "Sitzfläche gezeichnet");
+  near(sitz.left, 558); near(sitz.right, 576); near(sitz.top, 200 - G.SCHEMEL_HOEHE);
+  near(sitz.bottom, 200 - G.SCHEMEL_HOEHE + 4.5);
+});
+
+test("Weihnachtsbogen: Tannengrün mit drei Kerzen auf dem Klavierdeckel, Flammen ruhen (kein Blinken)", () => {
+  const mess = (t, stark = 1) => {
+    const c = canvas();
+    G.pianoBogen(c.ctx, 545, 200, t, stark);
+    const kerzen = c.shapes.filter(z => z.color === "#f4ecd8");
+    return { kerzen: kerzen.length, gruen: c.shapes.filter(z => z.color === "#2f6b3c").length, beeren: c.shapes.filter(z => z.color === "#c9302f").length,
+      flammen: c.arcs.filter(a => a.y < 200 - 58 - 10).length, top: Math.min(...c.shapes.map(z => z.top)) };
+  };
+  const a = mess(0.3), b = mess(2.9);
+  for (const m of [a, b]) {
+    assert.equal(m.kerzen, 3, "drei Kerzen");
+    assert.ok(m.gruen >= 2, "Tannenzweige");
+    assert.ok(m.beeren >= 5, "Beeren");
+  }
+  // Der Bogen steht auf dem Deckel und ragt hinauf, aber nie in den Dachbereich
+  assert.ok(a.top > 118 && a.top < 142, `Bogen von y=${a.top.toFixed(1)} bis zum Deckel (142)`);
+  // Beim Ausklingen werden die Flammen kleiner (stark 0.35) statt auszugehen.
+  const flammenHoehe = (stark) => {
+    const c = canvas();
+    G.pianoBogen(c.ctx, 545, 200, 0.3, stark);
+    const kerzenOben = 200 - 58 - 13; // mittlere Kerze: Oberkante
+    return Math.max(0, kerzenOben - Math.min(...c.shapes.filter(z => z.bottom <= kerzenOben && z.top > 118).map(z => z.top)));
+  };
+  assert.ok(flammenHoehe(1) > flammenHoehe(0.35) + 1, `Flammen werden beim Ausklingen kleiner (${flammenHoehe(1).toFixed(1)} -> ${flammenHoehe(0.35).toFixed(1)})`);
+});
+
+test("Klavier-Ausklang: nach dem Lied klingt der Klang aus, Luni steht auf, dreht sich und verbeugt sich", () => {
+  const h = haus({
+    welt: "normal", lf: 3, lx: 567, lface: 1, cur: null, pending: null, path: [], activity: G.STATIONS.find(s => s.id === "klavier"),
+    target: G.STATIONS.find(s => s.id === "klavier"), musikzimmer: null,
+    klavierSitzt: true, klavierSpielt: true, klavierFertig: false, klavierPausiert: null, klavierOutro: null, klavierOutroT: 0, klavierVorbereitung: null,
+    chain: [], smokeRequested: false, handy: null, handyDanach: null, sitIdleT: 0, rollT: 0, doorT: 0, wcT: 0,
+  });
+  let zeit = 90; // Lied ist 93,52 s lang: die letzten Sekunden
+  const aufrufe = [];
+  h.klavierMusik = { get currentTime() { return zeit; }, dauer: 93.52, blendeAuf: (z, s) => aufrufe.push(["blende", z, s]), stop: () => aufrufe.push(["stop"]) };
+  let beendet = 0;
+  h.finishActivity = function () { beendet++; this.activity = null; };
+  const folge = [];
+  let dtSum = {};
+  for (let i = 0; i < 900 && !beendet; i++) {
+    const dt = 1 / 30;
+    zeit = Math.min(93.52, zeit + dt);
+    const vor = h.klavierOutro;
+    h.updateKlavier(dt);
+    const zustand = h.klavierSpielt ? "spielt" : h.klavierOutro ?? "fertig";
+    if (folge[folge.length - 1] !== zustand) folge.push(zustand);
+    if (h.klavierOutro) dtSum[h.klavierOutro] = (dtSum[h.klavierOutro] || 0) + dt;
+    void vor;
+  }
+  assert.deepEqual(folge, ["spielt", "klang", "aufstehen", "drehen", "verbeugung", "fertig"], "Reihenfolge des Ausklangs");
+  assert.deepEqual(aufrufe[0], ["blende", 0, 4], "Klang wird in 4 s ausgeblendet");
+  assert.equal(aufrufe[1]?.[0], "stop", "Musik wird nach dem Lied gestoppt");
+  assert.equal(beendet, 1, "Aktivität nach der Verbeugung beendet");
+  assert.equal(h.klavierSitzt, false, "Luni sitzt nicht mehr");
+  assert.ok(dtSum.verbeugung > 1.5 && dtSum.verbeugung < 2.1, `Verbeugung dauert ${dtSum.verbeugung.toFixed(2)} s`);
+  assert.ok(dtSum.aufstehen > 0.8 && dtSum.aufstehen < 1.0, `Aufstehen dauert ${dtSum.aufstehen.toFixed(2)} s`);
+});
+
+test("Verbeugung: frontal zum Spieler, Füße bleiben am Boden, Kopf senkt sich", () => {
+  const mess = (phase) => {
+    const c = canvas();
+    G.drawLuni(c.ctx, 0, 0, { state: "bow", phase, face: 1, scale: 1, shadow: false, t: 0 });
+    const socken = c.shapes.filter(z => ["#ff6f61", "#35d6c0"].includes(z.color)).map(z => z.bottom);
+    return { kopf: head(c), socken, breite: Math.max(...c.shapes.map(z => z.right)) - Math.min(...c.shapes.map(z => z.left)) };
+  };
+  const oben = mess(0), tief = mess(0.5), zurueck = mess(1);
+  for (const m of [oben, tief, zurueck]) {
+    assert.ok(m.socken.every(v => Math.abs(v) < 1e-6), "Füße bleiben auf dem Boden");
+    assert.ok(m.breite < 40, `Figur kippt nicht zur Seite (Breite ${m.breite.toFixed(1)})`);
+  }
+  assert.ok(tief.kopf && oben.kopf, "Kopf gezeichnet");
+  assert.ok(tief.kopf.y > oben.kopf.y + 2, "Kopf senkt sich bei der Verbeugung");
+  assert.ok(Math.abs(zurueck.kopf.y - oben.kopf.y) < 0.6, "danach wieder aufrecht");
+});
+
+test("Kerzenlicht hellt Luni ab und liegt über ihr (nicht nur auf der Wand)", () => {
+  const src = readFileSync("src/game/house.ts", "utf8");
+  assert.ok(src.includes('c.globalCompositeOperation = "lighter";'), "additives Licht");
+  assert.ok(src.includes('"source-in"'), "Silhouette von Luni wird mit Licht gefüllt");
+  // Der Schein auf das Klavier liegt VOR Luni (sonst legt er sich als Schleier über den Kopf),
+  // das Licht auf Luni kommt danach.
+  assert.ok(src.includes("kerzenSchein(ctx, 545, FD,"), "Schein auf das Klavier");
+  assert.ok(src.includes("drawKerzenlicht(ctx, 1, this.silBuf,"), "Licht wird über Luni gelegt");
+  assert.ok(src.indexOf("this.drawKlavierBogen(ctx);") < src.indexOf("kerzenSchein(ctx, 545, FD,"), "Bogen zuerst, dann der Schein");
+  assert.ok(src.indexOf("kerzenSchein(ctx, 545, FD,") < src.indexOf("this.drawLuniLayered(ctx);"), "Schein vor Luni");
+  assert.ok(src.indexOf("this.drawLuniLayered(ctx);") < src.indexOf("drawKerzenlicht(ctx, 1, this.silBuf,"), "erst Luni, dann das Licht auf Luni");
+});
+
+
+test("Kerzen: Station am Klavier, Luni steigt zum Schalten auf den Schemel; Gruselhaus ohne Kerzen", () => {
+  const st = G.STATIONS.find(z => z.id === "kerzen");
+  assert.ok(st, "Station kerzen vorhanden");
+  assert.equal(st.floor, 3, "im Dachgeschoss");
+  assert.equal(st.state, "reachUp", "streckt sich zu den Kerzen");
+  for (const [, , w, hh] of st.hits) assert.ok(w >= 24 && hh >= 24, "Klickfläche mindestens 24×24");
+  const src = readFileSync("src/game/house.ts", "utf8");
+  assert.ok(src.includes('x.id !== "kessel" && x.id !== "kerzen"'), "Gruselhaus ohne Kerzen-Station");
+  assert.ok(src.includes("this.kerzenAn = !this.kerzenAn;"), "Umschalten an der Station");
+  assert.ok(src.includes("yOff = -(SCHEMEL_HOEHE + zehen) * hoch;"), "Luni steigt auf den Schemel");
+  // Kerzen brennen dauerhaft (Standard an), Stand wird gespeichert
+  assert.ok(src.includes("private kerzenAn = true;"), "Standard: brennen");
+  assert.ok(src.includes("kerzenAn: this.kerzenAn,"), "Speichern");
+  assert.ok(src.includes("this.kerzenAn = s.kerzenAn !== false;"), "Wiederherstellen");
+});
+
+test("Kerzenlicht: reicht nur bis zur Ellenbogenhöhe, nicht tiefer; Bodenschein entfernt", () => {
+  const src = readFileSync("src/game/house.ts", "utf8");
+  assert.ok(src.includes("const KERZEN_REICHWEITE = 28;"), "Reichweite bis Ellenbogen (28 über dem Boden)");
+  assert.ok(src.includes("c.rect(0, 0, W, grenze);"), "Alles unterhalb der Grenze abgeschnitten");
+  assert.ok(!src.includes("boden.addColorStop"), "kein Schein auf dem Boden");
+});
+
+test("Gitarre löst kein Lied mehr aus; Mikrofonständer steht, wo der Saxophonständer war", () => {
+  const src = readFileSync("src/game/house.ts", "utf8");
+  assert.ok(!src.includes('if (id === "gitarre") this.prepareSing();'), "kein Gesangs-Vorbereiten beim Klick");
+  assert.ok(!src.includes('this.target.id === "gitarre" && !this.singPhase'), "keine Gesangs-Auslösung an der Gitarre");
+  assert.ok(src.includes("const SAX_STAND_X = 618;"), "Saxophonstaender etwas weiter rechts");
+  assert.ok(src.includes("const MIC_STAND_X = 652;"), "Mikrofonständer an der alten Stelle");
+  assert.equal(G.STATIONS.find(z => z.id === "saxophon").x, 619, "Saxophon-Station mitgezogen");
+});
+
+test("Verbeugung: der Kopf bleibt am Körper (Abstand Kopf–Schultern bleibt konstant)", () => {
+  const abstand = ph => {
+    const c = canvas();
+    G.drawLuni(c.ctx, 0, 0, { state: "bow", phase: ph, face: 1, scale: 1, shadow: false, t: 0 });
+    const kopf = head(c);
+    const hemd = c.shapes.find(z => z.color === "#f6f3ea" && z.kind !== "stroke");
+    assert.ok(kopf && hemd, "Kopf und Oberkörper gezeichnet");
+    return kopf.y - hemd.top;
+  };
+  const aufrecht = abstand(0), tief = abstand(0.5), zurueck = abstand(1);
+  // Der Kopf nickt in der Verbeugung leicht nach vorn; die Verbindung zum Hals bleibt (kleine Toleranz).
+  assert.ok(Math.abs(tief - aufrecht) < 1, `Kopf wandert mit den Schultern (Abstand ${aufrecht.toFixed(2)} -> ${tief.toFixed(2)})`);
+  assert.ok(Math.abs(zurueck - aufrecht) < 0.3, "wieder aufrecht mit gleichem Abstand");
+});
+
+
+test("Klavier: heller Korpus, damit Luni sich davon abhebt", () => {
+  const c = canvas();
+  G.piano(c.ctx, 545, 200);
+  const body = c.shapes.find(s => s.color === "#63483a");
+  assert.ok(body, "Klavierkorpus in hellem Braun");
+  // Helligkeit des Korpus: deutlich über dem früheren fast schwarzen Ton
+  const h = (hex) => { const n = parseInt(hex.slice(1), 16); return 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255); };
+  assert.ok(h("#63483a") > 70, `Korpus ist hell (${h("#63483a").toFixed(0)})`);
+  assert.ok(h("#63483a") > h("#2a1f1b") + 40, "deutlich heller als vorher");
+});
+
+test("Schneedecke: gewellte Kante am Dach und Eiszapfen in verschiedenen Dicken und Längen", () => {
+  const c = canvas();
+  G.schneedecke(c.ctx);
+  // Die Schneefläche liegt über dem ganzen Dach (Verlauf, deshalb über die Größe prüfen)
+  const decke = c.shapes.filter(s => s.left < 90 && s.right > 850 && s.top < 30);
+  assert.ok(decke.length >= 1, "Schneeauflage über dem ganzen Dach");
+  // Eiszapfen: kleine hängende Flächen direkt unter der Dachkante
+  const zapfen = c.shapes.filter(s => s.top > 100 && s.top < 150 && s.bottom - s.top < 22 && s.right - s.left < 7);
+  assert.ok(zapfen.length >= 8, `Eiszapfen sichtbar (${zapfen.length})`);
+  const laengen = zapfen.map(s => s.bottom - s.top);
+  assert.ok(Math.max(...laengen) - Math.min(...laengen) > 4, "Zapfen haben verschiedene Längen");
+  const breiten = zapfen.map(s => s.right - s.left);
+  assert.ok(Math.max(...breiten) - Math.min(...breiten) > 0.5, "Zapfen haben verschiedene Dicken");
+});
+
+test("Tapeten: Weihnachtsgestaltung nur im Weihnachtshaus, normale Streifen bleiben erhalten", () => {
+  const src = readFileSync("src/game/house.ts", "utf8");
+  assert.ok(src.includes("weihnachtsTapete(c, 530, HR, 30, FD)"), "Tapete für das Musikzimmer");
+  assert.ok(src.includes("if (weihnacht && !gr) weihnachtsTapete"), "nur in der Weihnachtswelt");
+  assert.ok(src.includes('else wallBand(c, 530, HR, 30, FD, "#9a5750", "#7e433e", 30);'), "normales Haus behaelt seine Tapete");
+  assert.ok(src.includes('weihnachtsTapete(c, DG_X0, 530, 30, FD, true)'), "weihnachtliches Gamingzimmer");
+  assert.ok(src.includes("Rautenmuster"), "Rautenmuster");
+});
+
+test("Klavierhaare: der komplette Haarumriss liegt vor beiden Schultern und Armen", () => {
+  for (const face of [-1, 1]) for (const t of [0, 0.15, 0.5, 0.85, 1.2, 2.1]) {
+    const c = canvas();
+    G.drawLuni(c.ctx, 0, 0, {
+      state: "piano", back: true, pianoSeat: 1, face, scale: 1, shadow: false, t,
+      handTarget: [-9 + Math.sin(t) * 3, -31], handTarget2: [9 - Math.sin(t) * 3, -31],
+    });
+    const letzterArm = c.shapes.reduce((index, s, i) => s.kind === "stroke" &&
+      ["#dcc9a5", "#c4ad84", "#f4c9a0"].includes(s.color) ? i : index, -1);
+    const haare = c.shapes.filter(s => s.color === "#191920");
+    assert.ok(letzterArm >= 0 && haare.length >= 2);
+    assert.ok(haare.every(s => c.shapes.indexOf(s) > letzterArm), "kein Haarteil mehr hinter dem Arm");
+    assert.ok(Math.min(...haare.map(s => s.left)) < -10 || Math.max(...haare.map(s => s.right)) > 10,
+      "die breitere Seitenstraehne bleibt erhalten");
+    const hinterstesHaar = c.shapes[c.shapes.length - 1];
+    assert.equal(hinterstesHaar.color, "#191920", "Haare bilden die letzte Zeichenebene");
+    assert.equal(head(c), undefined, "Rundum-Rueckenhaar ohne Gesicht");
+  }
+});
+
+test("Mikrofon: eigene Trefferflaeche, beide Instrumente eindeutig und getrennt", () => {
+  const mic = G.STATIONS.find(s => s.id === "mikrofon"), sax = G.STATIONS.find(s => s.id === "saxophon");
+  const h = haus({ stations: G.STATIONS, musikzimmer: null, golOnShelf: true, steinStationen: [] });
+  assert.equal(mic.label, "Mikrofon");
+  assert.equal(mic.floor, 3);
+  for (const st of [mic, sax]) {
+    const [x, y, w, hh] = st.hits[0];
+    assert.ok(w >= 24 && hh >= 24);
+    assert.equal(h.pick(x + w / 2, y + hh / 2), st, `${st.label}: Klick waehlt richtiges Ziel`);
+  }
+  const [sx, , sw] = sax.hits[0], [mx] = mic.hits[0];
+  assert.ok(sx + sw < mx, "Saxophon und Mikrofon haben keine ueberlappenden Trefferflaechen");
+  const saxX = sax.x - 1;
+  assert.ok(saxX > 612 && saxX < (589 + 652) / 2, "rechts versetzt, leicht links der freien Mitte");
+  assert.ok(Math.abs((saxX - 589) - (652 - saxX)) <= 6, "harmonische Abstaende");
+});
+
+test("Mikrofon: erst hingehen, dann singen; erneuter Klick startet nicht neu, Gitarre bleibt stumm", () => {
+  const mic = G.STATIONS.find(s => s.id === "mikrofon");
+  const h = haus({
+    stations: G.STATIONS, lf: 3, lx: 567, lface: 1, cur: null, pending: null, path: [],
+    activity: null, target: null, lightT: null, musikzimmer: null, chain: [],
+    singPhase: null, singT: 0, singMusic: null, singReady: false, singPreparing: false,
+    singStarted: false, singPausedAt: null, walkP: 0, stepAcc: 0, doorHandT: -1,
+  });
+  let vorbereitet = 0, gestoppt = 0;
+  h.prepareSing = () => { vorbereitet++; };
+  h.command("mikrofon");
+  assert.equal(h.pending, mic);
+  assert.equal(h.singPhase, null, "Klick startet noch keinen Gesang");
+  h.updateLuni(0.05);
+  assert.equal(h.singPhase, null, "unterwegs kein Gesang");
+  for (let i = 0; i < 250 && !h.singPhase; i++) h.updateLuni(0.05);
+  assert.equal(h.singPhase, "sing", "bei Ankunft beginnt das Lied");
+  near(h.lx, mic.x);
+  assert.equal(h.activity, mic);
+  assert.ok(vorbereitet >= 1);
+  h.singT = 7;
+  h.command("mikrofon");
+  assert.equal(h.singT, 7, "nochmaliger Klick unterbricht das Lied nicht");
+  h.singMusic = { stop() { gestoppt++; } };
+  h.command("gitarre");
+  assert.equal(gestoppt, 1);
+  for (let i = 0; i < 250; i++) h.updateLuni(0.05);
+  assert.equal(h.activity?.id, "gitarre");
+  assert.equal(h.singPhase, null, "Gitarre loest keinen Gesang aus");
+  h.startSing();
+  assert.equal(h.singPhase, null, "auch direkter Start abseits des Mikrofons bleibt gesperrt");
+});
+
+test("Mikrofongesang: Vorbereitung und Pause verbrauchen keine Liedzeit", () => {
+  const h = haus({ singPhase: "sing", singT: 0, singStarted: false, singPausedAt: null });
+  h.tryStartSingPlayback = () => {};
+  h.updateSing(50);
+  assert.equal(h.singPhase, "sing");
+  assert.equal(h.singT, 0, "erst auf Audiofreigabe warten");
+  h.singT = 12;
+  h.singPausedAt = 12;
+  h.updateSing(50);
+  assert.equal(h.singT, 12, "Pause bleibt bei gleicher Liedposition");
+});
+
+test("Mikrofon: sichtbarer Fokusring auf der benannten Station", () => {
+  const mic = G.STATIONS.find(s => s.id === "mikrofon");
+  const h = haus({ stationFokus: mic, tvZoom: null, adventFullscreen: false });
+  const c = canvas();
+  h.drawStationFokus(c.ctx);
+  const ring = c.shapes.find(s => s.kind === "stroke" && s.color === "#f2cf68");
+  assert.ok(ring);
+  assert.ok(ring.left < mic.hits[0][0] && ring.right > mic.hits[0][0] + mic.hits[0][2]);
+});
+
+test("Schneedecke: dicke runde Polster, keine gezackten Rueckwaertssegmente", () => {
+  const c = canvas();
+  G.schneedecke(c.ctx);
+  const decke = c.shapes.find(s => s.kind === "path" && s.left < 84 && s.right > 856);
+  assert.ok(decke, "runde Ueberhaenge an beiden Dachenden");
+  assert.ok(decke.top > 0 && decke.top < 19, "mehr Schnee ueber dem First, ohne Beschnitt");
+  const profil = decke.points;
+  const oberePunkte = profil.filter(p => p[0] >= 100 && p[0] < 450 && p[1] < 22 + 0.25 * Math.abs(p[0] - 470));
+  const auflage = oberePunkte.map(([x, y]) => 22 + 0.25 * Math.abs(x - 470) - y);
+  assert.ok(Math.max(...auflage) > 16, "deutlich dickere Schneeauflage");
+  assert.ok(Math.max(...auflage) - Math.min(...auflage) > 5, "breite Wellen statt eines geraden Bandes");
+  for (const s of c.shapes) for (const p of s.points ?? []) assert.ok(p.every(Number.isFinite), "gueltige Geometrie");
+  const wieder = canvas(); G.schneedecke(wieder.ctx);
+  assert.deepEqual(c.shapes.map(s => s.points), wieder.shapes.map(s => s.points), "Polster bleiben ruhig und flackern nicht");
 });
 
 console.log(`\n${n} Hausgrafik-Tests bestanden.`);

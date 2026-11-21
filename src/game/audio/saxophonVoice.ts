@@ -54,6 +54,7 @@ function renderNote(ctx: BaseAudioContext,n: Note): AudioBuffer {
 }
 
 import { SAX_NOTES, SAX_TICKS_PER_SECOND, SAX_DURATION_SECONDS } from './saxophonNotes';
+import { MUSIK_PEGEL } from './pegel';
 
 export const SAX_PRESET = Object.freeze({model:'dirty', brightness:31, breath:50, vibrato:32, extraGrowl:0, volume:55, monophonic:true, room:false});
 // Reglerwerte wurden aus dem Screenshot angenähert; dort waren keine Zahlen sichtbar.
@@ -75,8 +76,7 @@ export class SaxophonMusic {
 
   constructor(private readonly ctx: AudioContext, master: AudioNode) {
     this.output = ctx.createGain();
-    // Preview-Lautstärke 55%, interner Pegel .38 und Dry-Anteil .86.
-    this.output.gain.value = .55 * .38 * .86;
+    this.output.gain.value = MUSIK_PEGEL.saxophon;
     this.output.connect(master);
   }
 
