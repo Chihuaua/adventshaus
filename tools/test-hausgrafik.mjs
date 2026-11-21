@@ -8,10 +8,7 @@ import { build } from "esbuild";
 const source = readFileSync("src/game/house.ts", "utf8");
 const bundle = await build({
   stdin: {
-    contents: source
-      + '\nexport { piano, bed, drawBedScene, drawBlanket, drawBedFront, drawBedEntryBlanket, bedBlanketPose, bedBlanketPushHand, SAX_GRIP_UP, SAX_GRIP_LOW, sfx };'
-      + '\nexport { drawLuni } from "./luni";'
-      ,
+    contents: source + '\nexport { piano, bed, drawBedScene, drawBlanket, drawBedFront, drawBedEntryBlanket, bedBlanketPose, bedBlanketPushHand, recordPlayer, speaker, SAX_GRIP_UP, SAX_GRIP_LOW, sfx };\nexport { drawLuni } from "./luni";\nexport { drawUfo, ufoTreffer, ufoZeileBei, UFO_MENUE } from "./ufo";\nexport { PATCH_DATEIEN, PATCH_EINTRAEGE, PATCH_ZIP, PATCH_KURZ, PATCH_NUMMER } from "./patch";\nexport { zipErzeugen } from "./zip";\nexport { PLATTEN_NOTES, PLATTEN_DURATION_SECONDS, PLATTEN_TICKS_PER_SECOND } from "./audio/plattenNotes";\nexport { plattenBassPulse } from "./audio/plattenVoice";',
     resolveDir: path.resolve("src/game"), loader: "ts",
   },
   bundle: true, write: false, format: "esm", platform: "node",
@@ -370,6 +367,115 @@ test("Schon abgelegte Brille bleibt beim Beginn des Bettgangs und Aufwachen lieg
   assert.equal(sink.glassesOn, false); assert.equal(sink.glassesInSink, true);
 });
 
+test("UFO: Trefferfläche im sicheren Bereich, Zeilen mindestens 24 hoch", () => {
+  const box = { x: 736, y: 32, w: 122, h: 58 };
+  assert.equal(G.ufoTreffer(794, 62), true);
+  assert.equal(G.ufoTreffer(700, 400), false);
+  assert.ok(box.x >= 96 && box.x + box.w <= 864, "4:3-Beschnitt rechts");
+  assert.ok(box.y >= 32, "Overscan oben");
+  assert.ok(G.UFO_MENUE.hoehe >= 24, "Zeile fernsehtauglich");
+  assert.equal(G.ufoZeileBei(G.UFO_MENUE.x + 10, G.UFO_MENUE.y + 5, 1), 0);
+  assert.equal(G.ufoZeileBei(G.UFO_MENUE.x + 10, G.UFO_MENUE.y + 45, 1), -1);
+});
+
+test("UFO bietet genau ein Archiv mit aktuell.patch und aktuell.json", () => {
+  assert.deepEqual(G.PATCH_EINTRAEGE, [G.PATCH_ZIP]);
+  assert.ok(typeof G.PATCH_KURZ === "string" && G.PATCH_KURZ.length > 0, "Kurzname");
+  assert.ok(Number.isInteger(G.PATCH_NUMMER) && G.PATCH_NUMMER > 0, "laufende Nummer");
+  const erwartet = `LCL-${G.PATCH_KURZ}-${String(G.PATCH_NUMMER).padStart(2, "0")}.zip`;
+  assert.equal(G.PATCH_ZIP, erwartet, "Namensmuster LCL-<Kurzname>-<Nummer>.zip");
+  assert.match(G.PATCH_ZIP, /^LCL-[A-Za-z0-9-]+-\d{2}\.zip$/);
+  assert.deepEqual(G.PATCH_DATEIEN.map(d => d.name), ["aktuell.patch", "aktuell.json"]);
+  // Ohne laufende Sitzung ist das Archiv leer (Stand auf main); mit Sitzung
+  // muessen Patch und Beschreibung echten Inhalt haben.
+  if (!G.PATCH_DATEIEN.some(d => d.inhalt)) return;
+  const patch = G.PATCH_DATEIEN.find(d => d.name === "aktuell.patch");
+  assert.ok(patch.inhalt.includes("diff --git"), "aktuell.patch ist ein Patch");
+  assert.ok(patch.inhalt.includes("+++ "), "aktuell.patch hat einen Anwendkopf");
+  const meta = JSON.parse(G.PATCH_DATEIEN.find(d => d.name === "aktuell.json").inhalt);
+  assert.ok(meta.basis && meta.basis.length >= 7, "Basis-Commit angegeben");
+  assert.deepEqual(meta.archiv.slice(1), ["aktuell.patch", "aktuell.json"]);
+  assert.equal(meta.archiv[0], G.PATCH_ZIP, "Archivname in der Beschreibung");
+  assert.equal(meta.patchNummer, G.PATCH_NUMMER);
+  assert.ok(Array.isArray(meta.geaenderteDateien) && meta.geaenderteDateien.length > 0);
+  assert.ok(meta.anwendung.includes("git apply"));
+});
+
+test("ZIP-Archiv ist strukturell gültig und enthält beide Dateien unbeschädigt", () => {
+  const probe = [
+    { name: "aktuell.patch", inhalt: "diff --git a/beispiel b/beispiel\n--- a/beispiel\n+++ b/beispiel\n" },
+    { name: "aktuell.json", inhalt: "{\n  \"basis\": \"12766e9\",\n  \"archiv\": [\"aktuell.patch\", \"aktuell.json\"]\n}\n" },
+  ];
+  const staemme = G.PATCH_DATEIEN.some(d => d.inhalt) ? [probe, G.PATCH_DATEIEN] : [probe];
+  pruefeArchiv(staemme[0]);
+  if (staemme.length > 1) pruefeArchiv(staemme[1]);
+});
+
+function pruefeArchiv(dateien) {
+  const bytes = G.zipErzeugen(dateien, Date.UTC(2026, 11, 24, 10, 30, 0));
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const text = (p, n) => Buffer.from(bytes.buffer, bytes.byteOffset + p, n).toString("utf8");
+  const crcTabelle = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+    return t;
+  })();
+  const crc = (p, n) => { let c = 0xffffffff; for (let i = 0; i < n; i++) c = crcTabelle[(c ^ bytes[p + i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  // Endfeld von hinten suchen
+  let ende = -1;
+  for (let i = bytes.length - 22; i >= 0; i--) if (view.getUint32(i, true) === 0x06054b50) { ende = i; break; }
+  assert.ok(ende > 0, "Endfeld vorhanden");
+  const anzahl = view.getUint16(ende + 10, true);
+  assert.equal(anzahl, 2, "zwei Eintraege");
+  let p = view.getUint32(ende + 16, true);
+  const namen = [];
+  for (let i = 0; i < anzahl; i++) {
+    assert.equal(view.getUint32(p, true), 0x02014b50, "Zentralverzeichnis-Signatur");
+    const namenLaenge = view.getUint16(p + 28, true);
+    const groesse = view.getUint32(p + 24, true);
+    const lokal = view.getUint32(p + 42, true);
+    const name = text(p + 46, namenLaenge);
+    namen.push(name);
+    assert.equal(view.getUint32(lokal, true), 0x04034b50, "lokale Signatur");
+    assert.equal(view.getUint16(lokal + 8, true), 0, "Methode 0 = gespeichert");
+    assert.equal(view.getUint32(lokal + 18, true), groesse, "Groesse stimmt");
+    const daten = text(lokal + 30 + namenLaenge, groesse);
+    assert.equal(daten, dateien[i].inhalt, `Inhalt von ${name} unbeschädigt`);
+    assert.equal(crc(lokal + 30 + namenLaenge, groesse), view.getUint32(lokal + 14, true), `CRC32 von ${name}`);
+    p += 46 + namenLaenge;
+  }
+  assert.deepEqual(namen, ["aktuell.patch", "aktuell.json"]);
+  assert.equal(view.getUint32(ende + 12, true) + view.getUint32(ende + 16, true), ende, "Groesse des Verzeichnisses");
+}
+
+test("UFO: Dreiecksform mit konstantem rotem Licht (ohne Blinken) und offenem Menü", () => {
+  const c = canvas();
+  G.drawUfo(c.ctx, 0, false, -1, [G.PATCH_ZIP]);
+  const rumpf = c.shapes.filter(s => s.color === "#23303b");
+  assert.ok(rumpf.length > 0 && Math.max(...rumpf.map(r => r.right - r.left)) >= 80, "Dreiecksrumpf");
+  // Konstanter roter Schein + Positionslichter über die Zeit (kein Blinken)
+  const rote = (zeit, hov = false) => {
+    const k = canvas();
+    G.drawUfo(k.ctx, zeit, false, -1, [G.PATCH_ZIP], hov);
+    return k.arcs.filter(a => ["#d92b28", "#e22e2a", "#ff4038", "#ff463e"].includes(a.color)).length;
+  };
+  const r0 = rote(0);
+  assert.equal(r0, 4, "Kernlicht + 3 Ecklichter");
+  for (const z of [0.25, 0.7, 1.3, 2.8, 5.1]) assert.equal(rote(z), r0, `kein Blinken bei t=${z}`);
+  assert.equal(rote(0, true), r0, "minimaler Hover ändert keine Lichtzahl");
+  const offen = canvas();
+  G.drawUfo(offen.ctx, 0, true, 0, [G.PATCH_ZIP]);
+  const panel = offen.shapes.find(s => s.color === "rgba(8,20,26,.88)");
+  assert.ok(panel, "Menüfläche");
+  assert.ok(panel.left >= 96 && panel.right <= 864, "Menü im 4:3-Beschnitt");
+  assert.equal(offen.shapes.some(s => s.kind === "stroke" && (s.color === "#eef7f2" || s.color === "#8ff2dc")), true, "Zeilenbeschriftung");
+  assert.ok(offen.texte.some(t => t.inhalt === G.PATCH_ZIP), "Archivname steht im Menü");
+  const zeile = offen.texte.find(t => t.inhalt === G.PATCH_ZIP);
+  assert.ok(zeile.font.includes("11px") && zeile.font.includes("Space Grotesk"), "Schrift wie im Hovertext");
+  assert.ok(zeile.x >= 96 && zeile.x <= 864, "Text im 4:3-Beschnitt");
+  assert.ok(["#eef7f2", "#8ff2dc"].includes(zeile.farbe), "Textfarbe");
+});
+
 test("Haare beim Hinlegen weich überblendet, nicht hart umgeschaltet", () => {
   const zaehle = k => {
     const c = canvas();
@@ -552,6 +658,16 @@ test("Brillenwurf: immer Nachttisch, nie Boden", () => {
   }
 });
 
+test("UFO-Generator erhöht die Nummer nur bei Erfolg und benennt das Archiv nach Muster", () => {
+  const gen = readFileSync("tools/ufo-bauen.mjs", "utf8");
+  assert.ok(gen.includes("naechsteNummer = vorher.nummer === null ? 22 : vorher.nummer + 1"), "Zähler wird erhöht");
+  assert.ok(gen.includes("padStart(2, \"0\")"), "zweistellig");
+  assert.ok(gen.includes("const zipName = `LCL-${kurz}-${String(nummer).padStart(2, \"0\")}.zip`"), "Namensmuster");
+  assert.ok(gen.includes("export const PATCH_NUMMER"), "Nummer im Modul");
+  assert.ok(gen.includes("createHash"), "Prüfsumme wird berechnet");
+  assert.ok(gen.includes("writeFileSync(ziel, original"), "Original wird bei Fehlern wiederhergestellt");
+});
+
 test("TV-Geräte: beide Fernseher öffnen die große Fernseh-Ansicht unabhängig von GOL", () => {
   const h = haus({
     stations: G.STATIONS, golInserted: false, golOnShelf: true, golState: null,
@@ -598,6 +714,153 @@ test("TV-Geräte: großer Fernseher bleibt im Wii-4:3- und Overscan-Bereich", ()
   assert.ok(tvText.includes("rrect(c, 116, 48, 728, 434"), "Wohnzimmer-TV innerhalb 96..864");
   assert.ok(tvText.includes("rrect(c, 104, 34, 752, 344"), "Dachgeschoss-TV innerhalb 96..864");
   assert.ok(src.includes("TV_BACK_E") && src.includes("TV_BACK_D"), "Zurück-Tasten definiert");
+});
+
+test("Plattenspieler: gtlg02.mid-Noten, alle Instrumente und Bassimpuls vorhanden", () => {
+  assert.equal(G.PLATTEN_NOTES.length, 3186);
+  assert.equal(G.PLATTEN_TICKS_PER_SECOND, 1920);
+  assert.ok(G.PLATTEN_DURATION_SECONDS > 140 && G.PLATTEN_DURATION_SECONDS < 143);
+  const insts = new Set(G.PLATTEN_NOTES.map(n => n[3]));
+  for (const i of [0, 1, 2, 3, 4]) assert.ok(insts.has(i), `Instrument ${i}`);
+  assert.equal(G.plattenBassPulse(0.5), 0, "vor dem ersten Basston ruhig");
+  assert.ok(G.plattenBassPulse(1.8) > 0.45, "Bass-Einsatz bei 1.79s");
+  assert.ok(G.plattenBassPulse(4.94) > 0.85, "Kick+Bass-Schlag bei 4.93s");
+  assert.ok(G.plattenBassPulse(4.94) > G.plattenBassPulse(5.25), "klingt nach Schlag ab");
+});
+
+test("Plattenspieler-Grafik: Platte dreht sichtbar, Tonarm hebt/dreht/senkt sich, Boxen pulsieren", () => {
+  const c0 = canvas(); G.recordPlayer(c0.ctx, 698, 200, { power: false, spin: 0, armLift: 0, armTurn: 0 });
+  const c1 = canvas(); G.recordPlayer(c1.ctx, 698, 200, { power: true, spin: 1.5, armLift: 1, armTurn: 1 });
+  const punkt = c => c.arcs.find(a => a.color === "#f7efe2");
+  assert.ok(punkt(c0) && punkt(c1), "mitdrehender Punkt auf rotem Etikett");
+  assert.notEqual(punkt(c0).x.toFixed(2), punkt(c1).x.toFixed(2), "Etikettpunkt dreht sich");
+  assert.ok(c1.arcs.some(a => a.color === "#35d6c0"), "LED leuchtet grün bei power=true");
+  const arm = c => c.shapes.find(s => s.kind === "stroke" && s.color === "#c3d0cf");
+  assert.ok(arm(c1).left < arm(c0).left - 5, "Tonarm schwenkt zur Platte");
+  assert.ok(arm(c1).top < arm(c0).top - 2, "Tonarm hebt sich sichtbar");
+
+  const b0 = canvas(); G.speaker(b0.ctx, 678, 200, 0);
+  const b1 = canvas(); G.speaker(b1.ctx, 678, 200, 0.9);
+  const woofer = c => Math.max(...c.arcs.filter(a => a.color === "#16130f").map(a => a.r));
+  assert.ok(woofer(b1) > woofer(b0) + 0.8, "Boxenmembran pulsiert nach außen");
+});
+
+test("Plattenspieler-Ablauf: Einschalten -> Wegtreten -> Heben -> Drehen -> Senken -> Abspielen -> Auslauf", () => {
+  const h = haus({
+    stations: G.STATIONS, lf: 3, lx: 696, lface: 1,
+    plattenPhase: null, plattenT: 0, plattenPower: false, plattenSpin: 0,
+    plattenArmLift: 0, plattenArmTurn: 0, plattenEndFrom: 1, plattenBass: 0,
+    plattenMusic: null, plattenReady: false, plattenPreparing: false,
+    plattenStarted: false, plattenPausedAt: null, musikzimmer: null,
+    danceSeg: 0, danceT: 0, danceStil: "danceSway", danceRueck: false,
+    danceTreppe: false, danceTreppeT: 0, danceTreppeStair: null, danceTreppeDir: 1,
+    activity: G.STATIONS.find(s => s.id === "platten"), target: null, cur: null, path: [],
+  });
+  h.preparePlatten = () => {};
+  h.startPlatten();
+  assert.equal(h.plattenPhase, "switchOn");
+  const phasen = [h.plattenPhase];
+  for (let i = 0; i < 120; i++) {
+    h.updatePlatten(0.05);
+    if (h.plattenPhase !== phasen[phasen.length - 1]) phasen.push(h.plattenPhase);
+    if (h.plattenPhase === "play") break;
+  }
+  assert.deepEqual(phasen, ["switchOn", "stepAside", "armLift", "armTurn", "armLower", "play"]);
+  assert.equal(h.plattenPower, true, "Anlage eingeschaltet");
+  assert.equal(h.lx, 668, "Luni steht frei links der Anlage");
+  assert.equal(h.plattenArmLift, 0, "Nadel liegt auf der Platte");
+  assert.ok(h.plattenArmTurn >= 1, "Tonarm über der Platte");
+
+  // Während des Spielens dreht sich die Platte und die Boxen pulsieren zum Bass
+  const spinVorher = h.plattenSpin;
+  h.plattenT = 4.94;
+  h.updatePlatten(0.02);
+  assert.notEqual(h.plattenSpin, spinVorher, "Platte dreht sich weiter");
+  assert.ok(h.plattenBass > 0.7, `Bassimpuls bei 4.94s: ${h.plattenBass}`);
+
+  // Auslauf zum Ende des Liedes
+  h.plattenT = G.PLATTEN_DURATION_SECONDS;
+  h.updatePlatten(0.02);
+  const auslauf = [h.plattenPhase];
+  for (let i = 0; i < 80; i++) {
+    h.updatePlatten(0.05);
+    if (h.plattenPhase !== auslauf[auslauf.length - 1]) auslauf.push(h.plattenPhase);
+    if (!h.plattenPhase) break;
+  }
+  assert.deepEqual(auslauf, ["armEndLift", "armEndTurn", "armEndLower", null]);
+  assert.equal(h.plattenPower, false, "Anlage am Ende ausgeschaltet");
+  assert.equal(h.plattenArmTurn, 0, "Tonarm zurück auf Ruheposten");
+});
+
+test("UFO: Prüfsumme in aktuell.json stimmt mit dem unveränderten Patch überein", () => {
+  if (!G.PATCH_DATEIEN.some(d => d.inhalt)) return;
+  const patch = G.PATCH_DATEIEN.find(d => d.name === "aktuell.patch").inhalt;
+  const meta = JSON.parse(G.PATCH_DATEIEN.find(d => d.name === "aktuell.json").inhalt);
+  const hash = createHash("sha256").update(patch, "utf8").digest("hex");
+  // Alle üblichen Feldnamen führen denselben Wert, damit jedes Prüfskript sie findet.
+  for (const feld of ["pruefsumme", "checksum", "sha256", "hash"]) {
+    assert.match(String(meta[feld]), /^[0-9a-f]{64}$/, `${feld}: 64 Hex-Zeichen`);
+    assert.equal(meta[feld], hash, `${feld} ist sha256(aktuell.patch)`);
+  }
+  assert.equal(meta.pruefsummeAlgorithmus, "sha256");
+  assert.equal(meta.algorithmus, "sha256");
+  assert.equal(meta.pruefsummeLaenge, 64);
+  assert.equal(meta.patchGroesseBytes, Buffer.byteLength(patch, "utf8"), "Größe in Bytes");
+});
+
+test("Tanzposen: Ellenbogen außen, kein Hüpfen und keine Drehungen", () => {
+  const quelle = readFileSync("src/game/luni.ts", "utf8");
+  assert.ok(!quelle.includes('"danceHop"'), "Hüpfen entfernt");
+  assert.ok(!quelle.includes('"danceSpin"'), "Drehen entfernt");
+  const posen = ["danceSway", "danceTwist", "danceDisco", "danceMoonwalk", "danceSlide"];
+  for (const p of posen) assert.ok(quelle.includes(`case "${p}"`), p);
+  for (const p of posen) {
+    const c = canvas();
+    G.drawLuni(c.ctx, 0, 0, { state: p, t: 0.7, face: 1, shadow: false, scale: 1 });
+    const arme = c.shapes.filter(z => z.kind === "stroke" &&
+      ["#dcc9a5", "#c4ad84"].includes(z.color) && z.points && z.points.length >= 3);
+    assert.ok(arme.length >= 2, `${p}: zwei ganze Arme`);
+    for (const arm of arme) {
+      const schulter = arm.points[0];
+      const ellbogen = arm.points[1];
+      assert.ok(
+        Math.abs(ellbogen[0]) >= Math.abs(schulter[0]) - 0.4,
+        `${p}: Ellenbogen liegt außen (${ellbogen[0].toFixed(1)} bei Schulter ${schulter[0].toFixed(1)})`,
+      );
+    }
+  }
+});
+
+test("Tanz-Tour: beschwingt durchs Haus, Knie-Rutscher ins Wohnzimmer, Rückkehr zur Anlage", () => {
+  const h = haus({
+    stations: G.STATIONS, lf: 3, lx: 668, lface: 1,
+    plattenPhase: "play", plattenT: 0, plattenPower: true, plattenSpin: 0,
+    plattenArmLift: 0, plattenArmTurn: 1, plattenEndFrom: 1, plattenBass: 0,
+    plattenMusic: null, plattenReady: false, plattenPreparing: false,
+    plattenStarted: false, plattenPausedAt: null, musikzimmer: null,
+    danceSeg: 0, danceT: 0, danceStil: "danceSway", danceRueck: false,
+    danceTreppe: false, danceTreppeT: 0, danceTreppeStair: null, danceTreppeDir: 1,
+    activity: null, target: null, cur: null, path: [],
+  });
+  const etagen = [];
+  let rutscher = false;
+  let moonwalk = false;
+  let maxFeder = 0;
+  for (let i = 0; i < 3200; i++) {
+    h.updatePlatten(0.05);
+    if (h.plattenPhase !== "play") break;
+    if (!etagen.includes(h.lf)) etagen.push(h.lf);
+    if (h.lf === 1 && h.danceStil === "danceSlide") rutscher = true;
+    if (h.danceStil === "danceMoonwalk") moonwalk = true;
+    if (h.plattenBass > maxFeder) maxFeder = h.plattenBass;
+  }
+  assert.deepEqual(etagen, [3, 2, 1], "alle drei Etagen besucht");
+  assert.ok(rutscher, "Knie-Rutscher im Wohnzimmer (danceSlide)");
+  assert.ok(moonwalk, "Moonwalk dabei");
+  assert.ok(maxFeder > 0.6, "Boxen pulsieren zum Bass");
+  assert.ok(h.danceRueck, "Rückweg zur Anlage eingeleitet");
+  assert.equal(h.lf, 3, "zurück im Dachgeschoss");
+  assert.ok(Math.abs(h.lx - 668) < 3, `zurück an der Anlage (x=${h.lx.toFixed(1)})`);
 });
 
 console.log(`\n${n} Hausgrafik-Tests bestanden.`);
