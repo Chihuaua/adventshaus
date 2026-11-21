@@ -3,10 +3,31 @@ import { House } from "@/game/house";
 import { sfx } from "@/game/audio";
 import { loadMuted, saveMuted } from "@/game/storage";
 import { wechsleWelt } from "@/game/welten";
+import { PATCH_DATEIEN, type PatchDatei } from "@/game/patch";
+import { zipErzeugen } from "@/game/zip";
 import { Icon } from "@/components/Icons";
 import StandTransfer from "@/components/StandTransfer";
 
 
+
+/**
+ * UFO: das Archiv der aktuellen Sitzung herunterladen – ohne Token, ohne Netz.
+ * Im Archiv liegen aktuell.patch und aktuell.json. Der Dateiname folgt
+ * LCL-<Kurzname>-<laufende Nummer>.zip.
+ */
+function patchHerunterladen(datei: string) {
+  if (!PATCH_DATEIEN.some((d: PatchDatei) => d.inhalt)) return;
+  const bytes = zipErzeugen(PATCH_DATEIEN);
+  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/zip" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = datei;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
 
 export default function HouseView({ welt = "normal" }: { welt?: "normal" | "gruesel" }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -23,7 +44,12 @@ export default function HouseView({ welt = "normal" }: { welt?: "normal" | "grue
   useEffect(() => {
     const cv = canvasRef.current;
     if (!cv) return;
-    const house = new House(cv, { welt, onWelt: wechsleWelt, onUpdate: () => setTransfer(true) });
+    const house = new House(cv, {
+      welt,
+      onWelt: wechsleWelt,
+      onUpdate: () => setTransfer(true),
+      onUfo: patchHerunterladen,
+    });
     house.mount();
     const onFonts = () => house.resize();
     if (document.fonts?.ready) void document.fonts.ready.then(onFonts);

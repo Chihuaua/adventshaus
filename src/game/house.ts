@@ -46,6 +46,8 @@ import {
 import { sfx } from "./audio";
 import { SaxophonMusic } from "./audio/saxophonVoice";
 import { SAX_DURATION_SECONDS } from "./audio/saxophonNotes";
+import { PlattenMusic, plattenBassPulse } from "./audio/plattenVoice";
+import { PLATTEN_DURATION_SECONDS } from "./audio/plattenNotes";
 import { VAMPIR_OUTFITS, naechstesOutfit } from "./gruselhaus/vampir";
 import {
   KesselAblauf, OFEN, ZAUBER_ZEIT, drawKessel, drawKesselGedanke, drawKesselSchimmer, drawOfen,
@@ -71,6 +73,8 @@ import {
 import { clipMusikzimmer, drawMusikzimmerEffects, drawMusikzimmer, drawMusiktuer, musikzimmerStationen, vorhangGriff, MUSIKZIMMER } from "./gruselhaus/musikzimmer";
 import { klavierHaende, MusikzimmerAblauf } from "./gruselhaus/musikzimmer-ablauf";
 import { drawPixelText } from "./pixel";
+import { drawUfo, ufoTreffer, ufoZeileBei } from "./ufo";
+import { PATCH_EINTRAEGE } from "./patch";
 import {
   BIO_BAD, badezimmerStationen, drawBioBadAfter, drawBioBadBefore,
   drawBioBadStatic, drawBioBadWall, drawHazmatVlies, drawLabBrush, drawLabLockerOpen,
@@ -543,7 +547,7 @@ export const STATIONS: Station[] = [
     hits: [[486, 126, 38, 24]],
   },
   {
-    id: "platten", label: "Plattenspieler", floor: 3, x: 724, face: 1, state: "danceSway", expr: "happy",
+    id: "platten", label: "Plattenspieler", floor: 3, x: 696, face: 1, state: "danceSway", expr: "happy",
     hits: [[698, 166, 52, 34], [678, 164, 16, 36], [754, 164, 16, 36], [776, 154, 30, 46]],
   },
   { id: "gitarre", label: "Gitarre", floor: 3, x: 800, face: 1, state: "act", expr: "happy", hits: [[806, 148, 24, 52]] },
@@ -1534,27 +1538,159 @@ function lowboardTV(c: C, x: number, F: number) {
 
 
 
-function recordPlayer(c: C, x: number, F: number) {
+interface RecordPlayerOpts {
+  power?: boolean;
+  spin?: number;
+  armLift?: number;
+  armTurn?: number;
+}
+
+const PLATTEN_SCHALTER: Pt = [704.5, 174];
+/** Standplatz links neben der Anlage (aus stepAside). */
+const PLATTEN_STAND_X = 668;
+
+/** Eine Station der Tanz-Tour während des Liedes. */
+interface TanzSegment {
+  floor: number;
+  x: number;
+  stil: LuniState;
+  /** Sekunden, die sie am Ziel weitertanzt. */
+  dauer: number;
+  /** Tempo auf dem Weg dorthin (Bühneneinheiten/Sekunde, kein Rennen). */
+  tempo: number;
+}
+
+/** Tanz-Tour: beschwingt durchs ganze Haus, mit Moonwalk auf dem Dachboden
+ *  und dem Knie-Rutscher ins Wohnzimmer (Tom-Cruise-Szene). */
+const PLATTEN_TOUR: readonly TanzSegment[] = [
+  { floor: 3, x: 640, stil: "danceDisco", dauer: 7, tempo: 44 },
+  { floor: 3, x: 480, stil: "danceMoonwalk", dauer: 2, tempo: 34 },
+  { floor: 3, x: 390, stil: "danceTwist", dauer: 4, tempo: 44 },
+  { floor: 2, x: 300, stil: "danceSway", dauer: 4, tempo: 46 },
+  { floor: 2, x: 560, stil: "danceDisco", dauer: 4, tempo: 46 },
+  { floor: 1, x: 660, stil: "danceSway", dauer: 0, tempo: 46 },
+  { floor: 1, x: 480, stil: "danceSway", dauer: 0, tempo: 46 },
+  { floor: 1, x: 376, stil: "danceSlide", dauer: 6, tempo: 95 },
+  { floor: 1, x: 430, stil: "danceDisco", dauer: 5, tempo: 44 },
+  { floor: 1, x: 340, stil: "danceTwist", dauer: 5, tempo: 44 },
+  { floor: 1, x: 405, stil: "danceMoonwalk", dauer: 3, tempo: 34 },
+  { floor: 1, x: 335, stil: "danceSway", dauer: 6, tempo: 46 },
+];
+
+/** Ab dieser Spielzeit kehrt sie zur Anlage zurück, damit der Tonarm pünktlich hebt. */
+const PLATTEN_RUECKKEHR = 92;
+
+function recordPlayer(c: C, x: number, F: number, opts: RecordPlayerOpts = {}) {
+  const { power = false, spin = 0, armLift = 0, armTurn = 0 } = opts;
+  // Holzschrank mit zwei Türen
   rrect(c, x, F - 24, 52, 24, 3, "#8a5a34");
   rect(c, x + 4, F - 20, 20, 12, "#7a4a28");
   rect(c, x + 28, F - 20, 20, 12, "#7a4a28");
+  // Plattenspieler-Gehäuse
   rrect(c, x + 3, F - 31, 46, 8, 2, "#1d1d22");
+  // Netzschalter und Status-LED links vorn am Gehäuse
+  rect(c, x + 4.5, F - 26.5, 4, 2.2, power ? "#5b6d72" : "#3a4246");
+  if (power) {
+    c.save();
+    c.globalAlpha = 0.35;
+    disc(c, x + 6.5, F - 29, 3.2, "#35d6c0");
+    c.restore();
+  }
+  disc(c, x + 6.5, F - 29, 1.15, power ? "#35d6c0" : "#4a2424");
+
+  // Schallplatte (leicht perspektivische Ellipse, dreht sich sichtbar)
+  const cx = x + 22;
+  const cy = F - 27;
   c.beginPath();
-  c.ellipse(x + 20, F - 27, 14, 3, 0, 0, Math.PI * 2);
+  c.ellipse(cx, cy, 14, 3, 0, 0, Math.PI * 2);
   c.fillStyle = "#0a0a0d";
   c.fill();
+  // Feine Rillen + umlaufender Lichtreflex
+  c.strokeStyle = "rgba(180,205,215,.16)";
+  c.lineWidth = 0.65;
   c.beginPath();
-  c.ellipse(x + 20, F - 27, 4, 1.2, 0, 0, Math.PI * 2);
+  c.ellipse(cx, cy, 10.2, 2.15, 0, 0, Math.PI * 2);
+  c.stroke();
+  for (const ang of [spin, spin + Math.PI]) {
+    c.strokeStyle = "rgba(220,240,248,.34)";
+    c.lineWidth = 0.9;
+    c.beginPath();
+    c.ellipse(cx, cy, 11.4, 2.4, 0, ang - 0.32, ang + 0.32);
+    c.stroke();
+  }
+  // Rotes Etikett in der Mitte mit mitdrehendem Punkt
+  c.beginPath();
+  c.ellipse(cx, cy, 4.2, 1.25, 0, 0, Math.PI * 2);
   c.fillStyle = "#c9453a";
   c.fill();
-  line(c, x + 42, F - 30, x + 28, F - 27, "#c3d0cf", 1.6);
+  disc(c, cx + Math.cos(spin) * 2.5, cy + Math.sin(spin) * 0.72, 0.78, "#f7efe2");
+  disc(c, cx, cy, 0.68, "#dfe6e8");
+
+  // Tonarm-Ruheposten rechts neben der Platte
+  rect(c, x + 40.3, F - 27, 1.4, 3, "#4c5458");
+  // Tonarm-Lager (Pivot)
+  const px = x + 43;
+  const py = F - 30;
+  disc(c, px, py, 2.1, "#7f8b8e");
+  disc(c, px, py, 1, "#c3d0cf");
+
+  // Tonarm-Spitze: Ruheposition (armTurn=0) über dem Posten (x+41),
+  // Spielposition (armTurn=1..1.45) über den Plattenrillen (x+31.5..x+27).
+  const turn = clamp(armTurn, 0, 1.6);
+  const lift = clamp(armLift, 0, 1);
+  const tipX = turn <= 1 ? lerp(x + 41, x + 31.5, turn) : lerp(x + 31.5, x + 27, (turn - 1) / 0.45);
+  const baseTipY = lerp(F - 27.1, F - 27.4, clamp(turn, 0, 1));
+  const tipY = baseTipY - lift * 6.0;
+
+  // Schatten des angehobenen Tonarms
+  if (lift > 0.05) {
+    c.save();
+    c.globalAlpha = 0.35 * lift;
+    line(c, px, py + 1.5, tipX, baseTipY + 0.5, "#05090d", 1.2);
+    c.restore();
+  }
+  // Gegengewicht hinter dem Lager
+  const cwX = px + (px - tipX) * 0.22;
+  const cwY = py - (tipY - py) * 0.22;
+  line(c, cwX, cwY, tipX, tipY, "#c3d0cf", 1.5);
+  disc(c, cwX, cwY, 1.4, "#6f7b7e");
+  // Tonabnehmerkopf und Nadel
+  rrect(c, tipX - 1.5, tipY - 0.8, 3, 1.8, 0.6, "#2a2f35");
+  line(c, tipX, tipY + 0.9, tipX, tipY + 1.8, "#e6eef0", 0.65);
 }
 
-function speaker(c: C, x: number, F: number) {
-  rrect(c, x, F - 36, 16, 36, 3, "#2a2420");
-  disc(c, x + 8, F - 26, 4.6, "#16130f");
-  disc(c, x + 8, F - 26, 2, "#4a4036");
-  disc(c, x + 8, F - 10, 3, "#16130f");
+function speaker(c: C, x: number, F: number, pulse = 0) {
+  const p = clamp(pulse, 0, 1);
+  const bounce = p * 0.45;
+  rrect(c, x - p * 0.35, F - 36 - bounce, 16 + p * 0.7, 36 + bounce, 3, "#2a2420");
+  // Oberer Tieftöner: Membran und Staubschutzkappe pulsieren zum Bass
+  const uy = F - 26 - bounce * 0.7;
+  disc(c, x + 8, uy, 4.6 + p * 1.35, "#16130f");
+  if (p > 0.04) {
+    c.save();
+    c.strokeStyle = `rgba(115,175,185,${p * 0.55})`;
+    c.lineWidth = 0.9;
+    c.beginPath();
+    c.arc(x + 8, uy, 4.7 + p * 1.45, 0, Math.PI * 2);
+    c.stroke();
+    c.restore();
+  }
+  disc(c, x + 8, uy, 2 + p * 0.75, mix("#4a4036", "#9a8a76", p * 0.7));
+  // Unterer Tieftöner
+  const ly = F - 10 - bounce * 0.4;
+  disc(c, x + 8, ly, 3 + p * 0.9, "#16130f");
+  disc(c, x + 8, ly, 1.2 + p * 0.45, mix("#302923", "#736455", p * 0.65));
+  // Schallbögen bei kräftigem Bassimpuls
+  if (p > 0.32) {
+    const a = (p - 0.32) * 0.8;
+    c.save();
+    c.strokeStyle = `rgba(238,247,242,${a})`;
+    c.lineWidth = 0.9;
+    c.beginPath();
+    c.arc(x + 8, uy, 9.5 + p * 2.5, -Math.PI * 0.78, -Math.PI * 0.22);
+    c.stroke();
+    c.restore();
+  }
 }
 
 function recordShelf(c: C, x: number, F: number) {
@@ -2522,9 +2658,9 @@ function drawHouse(
     pianoStool(c, 604, FD);
   }
   saxStand(c, 646, FD);
-  speaker(c, 678, FD);
-  recordPlayer(c, 698, FD);
-  speaker(c, 754, FD);
+  // Lautsprecher und Plattenspieler werden dynamisch über draw() gezeichnet,
+  // damit sich Platte, Tonarm und Tieftöner bewegen, ohne das Hintergrundbild
+  // in jedem Frame neu aufbauen zu müssen.
   recordShelf(c, 776, FD);
   guitar(c, 818, FD);
   if (!gr?.raumstation) ceilingLamp(c, 430, atticCeil(430) + 2, 36, "#f2d9a0");
@@ -2683,6 +2819,11 @@ export interface HouseOptions {
    * das Spiel selbst kennt keinen DOM-Code.
    */
   onUpdate?: () => void;
+  /**
+   * UFO oben rechts: eine Zeile im Menü wurde gewählt. Das Haus kennt weder
+   * Dateien noch DOM – das Herunterladen passiert in der GUI-Schicht.
+   */
+  onUfo?: (datei: string) => void;
 }
 
 function drawProp(c: C, kind: Prop, x: number, y: number, face: 1 | -1) {
@@ -2949,6 +3090,13 @@ export class House {
   /** Der Update-Dialog wurde für diesen Öffnungsvorgang schon gemeldet. */
   private kofferGemeldet = false;
   private onUpdate: (() => void) | null = null;
+  private onUfo: ((datei: string) => void) | null = null;
+  /** UFO-Menü oben rechts offen (Patch-Dateien) */
+  private ufoOffen = false;
+  /** im Menü berührte Zeile (nur Zeiger) */
+  private ufoZeile = -1;
+  /** Zeiger liegt auf dem UFO (nur minimaler Hover-Effekt) */
+  private ufoHover = false;
 
   // Bett-Routine und Traum
   private bedPhase: "toss" | null = null;
@@ -3011,6 +3159,41 @@ export class House {
   private saxPreparing = false;
   private saxStarted = false;
   private saxPausedAt: number | null = null;
+
+  // Plattenspieler: einschalten, Tonarm heben/schwenken/absenken, gtlg02.mid
+  private plattenPhase:
+    | "switchOn"
+    | "stepAside"
+    | "armLift"
+    | "armTurn"
+    | "armLower"
+    | "play"
+    | "armEndLift"
+    | "armEndTurn"
+    | "armEndLower"
+    | null = null;
+  private plattenT = 0;
+  private plattenPower = false;
+  private plattenSpin = 0;
+  private plattenArmLift = 0;
+  private plattenArmTurn = 0;
+  private plattenEndFrom = 1;
+  private plattenBass = 0;
+  private plattenMusic: PlattenMusic | null = null;
+  private plattenReady = false;
+  private plattenPreparing = false;
+  private plattenStarted = false;
+  private plattenPausedAt: number | null = null;
+
+  // Tanz-Tour während des Liedes
+  private danceSeg = 0;
+  private danceT = 0;
+  private danceStil: LuniState = "danceSway";
+  private danceRueck = false;
+  private danceTreppe = false;
+  private danceTreppeT = 0;
+  private danceTreppeStair: Stair | null = null;
+  private danceTreppeDir: 1 | -1 = 1;
   private wet = 0;
   private shPhase: ShPhase | null = null;
   private shT = 0;
@@ -3153,6 +3336,7 @@ export class House {
     const alt = opts.onTraumhaus;
     this.onWelt = opts.onWelt ?? (alt ? (z) => { if (z === "traum") alt(); } : null);
     this.onUpdate = opts.onUpdate ?? null;
+    this.onUfo = opts.onUfo ?? null;
     this.steine = steinSlots(this.welt);
     this.steinStationen = this.steine.map((sl) => ({
       id: `stein_${sl.art}`,
@@ -3202,6 +3386,10 @@ export class House {
     this.saxMusic?.dispose();
     this.saxMusic = null;
     this.saxReady = false;
+    this.stopPlatten();
+    this.plattenMusic?.dispose();
+    this.plattenMusic = null;
+    this.plattenReady = false;
     this.musikzimmer?.destroy();
     window.removeEventListener("resize", this.resize);
     window.removeEventListener("keydown", this.onKey);
@@ -3392,6 +3580,26 @@ export class House {
   private onDown = (e: PointerEvent) => {
     sfx.ensure();
     const [x, y] = this.toWorld(e);
+    // UFO oben rechts: Overlay mit den Patch-Dateien der aktuellen Sitzung
+    if (this.ufoOffen) {
+      const z = ufoZeileBei(x, y, PATCH_EINTRAEGE.length);
+      if (z >= 0) {
+        this.ufoOffen = false;
+        sfx.ui();
+        this.onUfo?.(PATCH_EINTRAEGE[z]);
+        return;
+      }
+      this.ufoOffen = false;
+      this.dirty = false;
+      if (!ufoTreffer(x, y)) return;
+      sfx.ui();
+      return;
+    }
+    if (ufoTreffer(x, y)) {
+      this.ufoOffen = true;
+      sfx.ui();
+      return;
+    }
     // Wetterstation: reine GUI, klickbar ohne Lunis Weg (auch im normalen Haus).
     const wt = wetterStationHit(wetterStationLayout(this.wetter, this.wetterAdd, this.wetterOffen, this.welt === "normal"), x, y);
     if (wt?.befehl) {
@@ -3451,6 +3659,7 @@ export class House {
     }
     if (this.tvZoom) {
       this.hover = null;
+      this.ufoHover = false;
       const inBox = (b: { x: number; y: number; w: number; h: number }) =>
         x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
       const back = this.tvZoom === "tv_e" ? TV_BACK_E : (this.golFullscreen ? GOL_BTN : TV_BACK_D);
@@ -3459,6 +3668,15 @@ export class House {
       const v = this.golFullscreen && this.golState ? golView(this.golState) : null;
       const onGrid = !!v && x >= v.x && x <= v.x + v.w && y >= v.y && y <= v.y + v.h;
       this.canvas.style.cursor = inBox(back) || inBox(pwr) || onCtrl || onGrid ? "pointer" : "default";
+      return;
+    }
+    this.ufoZeile = this.ufoOffen ? ufoZeileBei(x, y, PATCH_EINTRAEGE.length) : -1;
+    this.ufoHover = ufoTreffer(x, y);
+    const ufoAktiv = this.ufoHover || this.ufoZeile >= 0;
+    if (ufoAktiv) {
+      this.hover = null;
+      this.wetterHover = null;
+      this.canvas.style.cursor = "pointer";
       return;
     }
     this.hover = this.steinUnter(x, y) ?? this.pick(x, y);
@@ -3471,6 +3689,7 @@ export class House {
   private onLeave = () => {
     this.hover = null;
     this.wetterHover = null;
+    this.ufoHover = false;
     this.canvas.style.cursor = "default";
   };
 
@@ -3537,8 +3756,14 @@ export class House {
       if (id === "saxophon") return;
       this.stopSax();
     }
+    // Läuft der Plattenspieler, beendet jede andere Anweisung die Wiedergabe sauber.
+    if (this.plattenPhase) {
+      if (id === "platten") return;
+      this.stopPlatten();
+    }
     // Schon beim Klick die Tonpuffer berechnen: dann ist die Musik am Mund bereit.
     if (id === "saxophon") this.prepareSax();
+    if (id === "platten") this.preparePlatten();
 
     // Duschen: hinter dem Vorhang wird nichts unterbrochen. Auf dem Weg
     // dorthin bricht ein anderer Wunsch den Ablauf ab.
@@ -4341,7 +4566,7 @@ export class House {
     this.pianoRefusal = Math.max(0, this.pianoRefusal - dt);
     const musical = (s: Station | null) => !!s && ["saxophon", "platten", "gitarre"].includes(s.id);
     const approachingPiano = this.pending?.id === "klavier" || (this.target?.id === "klavier" && this.activity?.id !== "klavier");
-    const busy = musical(this.activity) || musical(this.target) || musical(this.pending) || !!this.saxPhase || this.asleep || approachingPiano;
+    const busy = musical(this.activity) || musical(this.target) || musical(this.pending) || !!this.saxPhase || !!this.plattenPhase || this.asleep || approachingPiano;
     const appearing = music.update(roomDt, busy, live);
     if (appearing && this.activity?.id === "klavier") this.leaveMusicPiano(true);
     if (this.pianoRise > 0) {
@@ -5113,6 +5338,7 @@ export class House {
     this.updateWake(dt);
     this.updateSarg(dt);
     this.updateSax(dt);
+    this.updatePlatten(dt);
     if (this.welt === "gruesel") this.raumFx.update(dt);
     // Alle paar Sekunden sichern, damit ein Absturz nichts kostet.
     this.saveT += dt;
@@ -5354,6 +5580,9 @@ export class House {
             this.lx = need ?? this.lx;
             this.startSax();
           }
+        }
+        if (this.target.id === "platten" && !this.plattenPhase) {
+          this.startPlatten();
         }
       }
       return;
@@ -5723,6 +5952,7 @@ export class House {
     }
     if (this.gruselBad) drawBioBadBefore(ctx, this.bioFx());
     this.drawSax(ctx);
+    this.drawStereo(ctx);
     this.drawCigPile(ctx);
     ashBucket(ctx, BUCKET_X, FK, this.bucketButts);
     if (this.welt === "normal") {
@@ -5787,6 +6017,7 @@ export class House {
 
 
     drawWetterStation(ctx, this.wetter, this.wetterAdd, this.wetterHover, this.wetterOffen, this.welt === "normal");
+    drawUfo(ctx, this.elapsed, this.ufoOffen, this.ufoOffen ? this.ufoZeile : -1, PATCH_EINTRAEGE, this.ufoHover);
     this.drawHoverLabel(ctx);
     if (this.tvZoom) this.drawTvFullscreen(ctx);
     if (this.adventFullscreen || this.adventZoomT > 0) this.drawAdventskalender(ctx);
@@ -6045,6 +6276,299 @@ export class House {
     this.saxT = 0;
     this.saxStarted = false;
     this.saxPausedAt = null;
+  }
+
+  /* ---------------------------- Plattenspieler --------------------------- */
+
+  /** Anlage (Plattenspieler + beide Boxen) hinter Luni im Dachgeschoss. */
+  private drawStereo(c: C) {
+    if (this.musikzimmer) return;
+    speaker(c, 678, FD, this.plattenBass);
+    recordPlayer(c, 698, FD, {
+      power: this.plattenPower,
+      spin: this.plattenSpin,
+      armLift: this.plattenArmLift,
+      armTurn: this.plattenArmTurn,
+    });
+    speaker(c, 754, FD, this.plattenBass);
+  }
+
+  private preparePlatten() {
+    sfx.ensure();
+    const shared = sfx.getSharedAudio();
+    if (!shared) return;
+    if (!this.plattenMusic) this.plattenMusic = new PlattenMusic(shared.ctx, shared.master);
+    const music = this.plattenMusic;
+    if (!this.plattenReady && !this.plattenPreparing) {
+      this.plattenPreparing = true;
+      void music
+        .prepare()
+        .then(() => {
+          this.plattenReady = true;
+        })
+        .catch(() => {
+          this.plattenReady = false;
+          music.dispose();
+          if (this.plattenMusic === music) this.plattenMusic = null;
+        })
+        .finally(() => {
+          this.plattenPreparing = false;
+        });
+    }
+  }
+
+  private startPlatten() {
+    if (this.plattenPhase) return;
+    this.plattenPhase = "switchOn";
+    this.plattenT = 0;
+    this.plattenPower = false;
+    this.plattenArmLift = 0;
+    this.plattenArmTurn = 0;
+    this.plattenEndFrom = 1;
+    this.plattenBass = 0;
+    this.plattenStarted = false;
+    this.plattenPausedAt = null;
+    this.preparePlatten();
+  }
+
+  private tryStartPlattenPlayback() {
+    if (this.plattenStarted || !this.plattenMusic || !this.plattenReady || this.plattenPausedAt !== null) return;
+    if (this.musikzimmer?.active) return;
+    const shared = sfx.getSharedAudio();
+    if (!shared) return;
+    try {
+      this.plattenMusic.playAt(shared.ctx.currentTime + 0.05, 0);
+      this.plattenStarted = true;
+    } catch {
+      // Audio noch gesperrt – im nächsten Bild erneut versuchen.
+    }
+  }
+
+  /**
+   * Ein Tanzschritt Richtung Ziel. Auf der Etage tanzt sie sich im übergebenen
+   * Tempo fort (kein Rennen), Treppen werden normal begangen. Liefert true,
+   * sobald sie am Ziel steht. `rueckwaerts` dreht die Blickrichtung (Moonwalk).
+   */
+  private tanzSchritt(dt: number, zielFloor: number, zielX: number, tempo: number, rueckwaerts: boolean): boolean {
+    if (this.danceTreppe && this.danceTreppeStair) {
+      const s = this.danceTreppeStair;
+      const len = Math.hypot(s.topX - s.footX, FLOOR_Y[s.upper] - FLOOR_Y[s.lower]);
+      this.danceTreppeT = Math.min(1, this.danceTreppeT + (tempo * dt) / len);
+      const von = this.danceTreppeDir === 1 ? s.footX : s.topX;
+      const zu = this.danceTreppeDir === 1 ? s.topX : s.footX;
+      this.lx = lerp(von, zu, this.danceTreppeT);
+      this.lface = zu > von ? 1 : -1;
+      this.advanceWalk(tempo * dt);
+      if (this.danceTreppeT >= 1) {
+        this.lf = this.danceTreppeDir === 1 ? s.upper : s.lower;
+        this.lx = zu;
+        this.danceTreppe = false;
+        this.danceTreppeT = 0;
+        this.danceTreppeStair = null;
+      }
+      return false;
+    }
+    if (this.lf === zielFloor) {
+      const dx = zielX - this.lx;
+      if (Math.abs(dx) <= 1.5) {
+        this.lx = zielX;
+        return true;
+      }
+      const schritt = Math.min(Math.abs(dx), tempo * dt);
+      this.lx += Math.sign(dx) * schritt;
+      this.lface = rueckwaerts ? (dx > 0 ? -1 : 1) : dx > 0 ? 1 : -1;
+      return false;
+    }
+    const hoch = zielFloor > this.lf;
+    const s = STAIRS[hoch ? this.lf : this.lf - 1];
+    const einstieg = hoch ? s.footX : s.topX;
+    const dx = einstieg - this.lx;
+    if (Math.abs(dx) <= 1.5) {
+      this.lx = einstieg;
+      this.danceTreppe = true;
+      this.danceTreppeT = 0;
+      this.danceTreppeStair = s;
+      this.danceTreppeDir = hoch ? 1 : -1;
+      return false;
+    }
+    const schritt = Math.min(Math.abs(dx), tempo * dt);
+    this.lx += Math.sign(dx) * schritt;
+    this.lface = dx > 0 ? 1 : -1;
+    return false;
+  }
+
+  /** Tanz-Routine während des Liedes: Tour durchs Haus, dann zurück zur Anlage. */
+  private tanzTour(dt: number, musikZeit: number) {
+    if (!this.danceRueck && musikZeit >= PLATTEN_RUECKKEHR) {
+      this.danceRueck = true;
+      this.danceT = 0;
+    }
+    const rueck = this.danceRueck;
+    const ziel = rueck
+      ? { floor: 3, x: PLATTEN_STAND_X, stil: "danceSway" as LuniState, dauer: 0, tempo: 58 }
+      : PLATTEN_TOUR[clamp(this.danceSeg, 0, PLATTEN_TOUR.length - 1)];
+    const da = this.tanzSchritt(dt, ziel.floor, ziel.x, ziel.tempo, ziel.stil === "danceMoonwalk");
+    this.danceStil = this.danceTreppe ? "walk" : ziel.stil;
+    if (!da) {
+      this.danceT = 0;
+      return;
+    }
+    if (rueck) return; // an der Anlage angekommen: dort weitertanzen bis zum Ende
+    this.danceT += dt;
+    if (this.danceT >= ziel.dauer && this.danceSeg < PLATTEN_TOUR.length - 1) {
+      this.danceT = 0;
+      this.danceSeg++;
+    }
+  }
+
+  private updatePlatten(dt: number) {
+    if (!this.plattenPhase) {
+      if (this.plattenBass > 0.001) this.plattenBass = Math.max(0, this.plattenBass - dt * 5);
+      return;
+    }
+    this.plattenT += dt;
+    // Solange eingeschaltet, dreht sich der Plattenteller (33⅓ U/min ≈ 3,5 rad/s).
+    if (this.plattenPower) {
+      this.plattenSpin = (this.plattenSpin + dt * 3.5) % (Math.PI * 2);
+    }
+
+    if (this.plattenPhase === "switchOn") {
+      if (!this.plattenPower && this.plattenT >= 0.5) {
+        this.plattenPower = true;
+        sfx.ui();
+      }
+      if (this.plattenT >= 0.95) {
+        this.plattenPhase = "stepAside";
+        this.plattenT = 0;
+      }
+      return;
+    }
+
+    if (this.plattenPhase === "stepAside") {
+      const p = clamp(this.plattenT / 0.65, 0, 1);
+      this.lx = lerp(696, 668, sanft(p));
+      if (this.plattenT >= 0.65) {
+        this.lx = 668;
+        this.plattenPhase = "armLift";
+        this.plattenT = 0;
+      }
+      return;
+    }
+
+    if (this.plattenPhase === "armLift") {
+      this.plattenArmLift = sanft(clamp(this.plattenT / 0.65, 0, 1));
+      this.plattenArmTurn = 0;
+      if (this.plattenT >= 0.65) {
+        this.plattenArmLift = 1;
+        this.plattenPhase = "armTurn";
+        this.plattenT = 0;
+      }
+      return;
+    }
+
+    if (this.plattenPhase === "armTurn") {
+      this.plattenArmLift = 1;
+      this.plattenArmTurn = sanft(clamp(this.plattenT / 0.85, 0, 1));
+      if (this.plattenT >= 0.85) {
+        this.plattenArmTurn = 1;
+        this.plattenPhase = "armLower";
+        this.plattenT = 0;
+      }
+      return;
+    }
+
+    if (this.plattenPhase === "armLower") {
+      this.plattenArmTurn = 1;
+      this.plattenArmLift = 1 - sanft(clamp(this.plattenT / 0.65, 0, 1));
+      if (this.plattenT >= 0.65) {
+        this.plattenArmLift = 0;
+        this.plattenPhase = "play";
+        this.plattenT = 0;
+        this.danceSeg = 0;
+        this.danceT = 0;
+        this.danceRueck = false;
+        this.danceTreppe = false;
+        this.danceTreppeT = 0;
+        this.danceTreppeStair = null;
+        this.danceStil = PLATTEN_TOUR[0].stil;
+        this.tryStartPlattenPlayback();
+      }
+      return;
+    }
+
+    if (this.plattenPhase === "play") {
+      this.plattenArmLift = 0;
+      if (!this.plattenStarted) this.tryStartPlattenPlayback();
+      const mt = this.plattenStarted ? (this.plattenMusic?.currentTime ?? 0) : this.plattenT;
+      const frac = clamp(mt / PLATTEN_DURATION_SECONDS, 0, 1);
+      this.plattenArmTurn = 1 + frac * 0.45;
+      const zielBass = plattenBassPulse(mt);
+      if (zielBass >= this.plattenBass) this.plattenBass = zielBass;
+      else this.plattenBass = lerp(this.plattenBass, zielBass, 1 - Math.exp(-18 * dt));
+      this.tanzTour(dt, mt);
+
+      if (mt >= PLATTEN_DURATION_SECONDS) {
+        this.plattenMusic?.stop();
+        this.plattenStarted = false;
+        this.plattenEndFrom = this.plattenArmTurn;
+        this.plattenPhase = "armEndLift";
+        this.plattenT = 0;
+      }
+      return;
+    }
+
+    // Auslauf: Tonarm hebt ab, schwenkt zurück, senkt ab, Anlage aus.
+    this.plattenBass = Math.max(0, this.plattenBass - dt * 6);
+    if (this.plattenPhase === "armEndLift") {
+      this.plattenArmLift = sanft(clamp(this.plattenT / 0.55, 0, 1));
+      if (this.plattenT >= 0.55) {
+        this.plattenArmLift = 1;
+        this.plattenPhase = "armEndTurn";
+        this.plattenT = 0;
+      }
+      return;
+    }
+    if (this.plattenPhase === "armEndTurn") {
+      this.plattenArmLift = 1;
+      this.plattenArmTurn = lerp(this.plattenEndFrom, 0, sanft(clamp(this.plattenT / 0.75, 0, 1)));
+      if (this.plattenT >= 0.75) {
+        this.plattenArmTurn = 0;
+        this.plattenPhase = "armEndLower";
+        this.plattenT = 0;
+      }
+      return;
+    }
+    if (this.plattenPhase === "armEndLower") {
+      this.plattenArmTurn = 0;
+      this.plattenArmLift = 1 - sanft(clamp(this.plattenT / 0.5, 0, 1));
+      if (this.plattenT >= 0.5) {
+        this.plattenArmLift = 0;
+        this.plattenPower = false;
+        this.plattenPhase = null;
+        this.plattenT = 0;
+        this.activity = null;
+        this.target = null;
+      }
+    }
+  }
+
+  private stopPlatten() {
+    this.plattenMusic?.stop();
+    this.plattenPhase = null;
+    this.plattenT = 0;
+    this.plattenPower = false;
+    this.plattenArmLift = 0;
+    this.plattenArmTurn = 0;
+    this.plattenBass = 0;
+    this.plattenStarted = false;
+    this.plattenPausedAt = null;
+    this.danceSeg = 0;
+    this.danceT = 0;
+    this.danceRueck = false;
+    this.danceTreppe = false;
+    this.danceTreppeT = 0;
+    this.danceTreppeStair = null;
+    this.danceStil = "danceSway";
   }
 
   /** Gedrehte Zigaretten und Schachtel auf dem Küchentisch */
@@ -6880,15 +7404,33 @@ export class House {
         this.saxPausedAt = this.saxMusic.pause();
         this.saxStarted = false;
       }
-    } else if (this.saxPausedAt !== null && this.saxPhase === "play" && this.saxMusic) {
-      const shared = sfx.getSharedAudio();
-      if (shared) {
-        try {
-          this.saxMusic.playAt(shared.ctx.currentTime + SAX_LEAD, this.saxPausedAt);
-          this.saxStarted = true;
-          this.saxPausedAt = null;
-        } catch {
-          // Audio noch gesperrt – bleibt pausiert, kein Neustart von vorn.
+      if (this.plattenPhase === "play" && this.plattenStarted && this.plattenMusic) {
+        this.plattenPausedAt = this.plattenMusic.pause();
+        this.plattenStarted = false;
+      }
+    } else {
+      if (this.saxPausedAt !== null && this.saxPhase === "play" && this.saxMusic) {
+        const shared = sfx.getSharedAudio();
+        if (shared) {
+          try {
+            this.saxMusic.playAt(shared.ctx.currentTime + SAX_LEAD, this.saxPausedAt);
+            this.saxStarted = true;
+            this.saxPausedAt = null;
+          } catch {
+            // Audio noch gesperrt – bleibt pausiert, kein Neustart von vorn.
+          }
+        }
+      }
+      if (this.plattenPausedAt !== null && this.plattenPhase === "play" && this.plattenMusic) {
+        const shared = sfx.getSharedAudio();
+        if (shared) {
+          try {
+            this.plattenMusic.playAt(shared.ctx.currentTime + 0.05, this.plattenPausedAt);
+            this.plattenStarted = true;
+            this.plattenPausedAt = null;
+          } catch {
+            // Audio noch gesperrt – bleibt pausiert.
+          }
         }
       }
     }
@@ -8923,6 +9465,46 @@ export class House {
 
     let pianoPose: number | undefined;
     let walkPhase = this.walkP;
+
+    // Plattenspieler: Anlage einschalten, dann wegtreten. Während des Liedes
+    // tanzt sie beschwingt durchs ganze Haus und kehrt zur Anlage zurück.
+    if (this.plattenPhase && !a) {
+      expr = "happy";
+      face = this.lface;
+      if (this.plattenPhase === "switchOn" && this.lf === 3) {
+        x = 696;
+        face = 1;
+        state = "act";
+        expr = "focus";
+        const p = clamp(this.plattenT / 0.95, 0, 1);
+        const reach = p < 0.5 ? sanft(p / 0.5) : 1 - sanft((p - 0.5) / 0.5);
+        const rest: Pt = [x - 7 * LUNI_SCALE, y - 22 * LUNI_SCALE];
+        saxHand = [lerp(rest[0], PLATTEN_SCHALTER[0], reach), lerp(rest[1], PLATTEN_SCHALTER[1], reach)];
+      } else if (this.plattenPhase === "stepAside" && this.lf === 3) {
+        face = 1;
+        const p = clamp(this.plattenT / 0.65, 0, 1);
+        state = "walk";
+        walkPhase = this.walkP + p * 7;
+      } else if (this.plattenPhase === "play") {
+        if (this.danceTreppe && this.danceTreppeStair) {
+          // Treppe: normales Gehen, Position entlang der Stufen
+          const s = this.danceTreppeStair;
+          y = this.danceTreppeDir === 1
+            ? lerp(FLOOR_Y[s.lower], FLOOR_Y[s.upper], this.danceTreppeT)
+            : lerp(FLOOR_Y[s.upper], FLOOR_Y[s.lower], this.danceTreppeT);
+          onStair = true;
+          state = "walk";
+        } else {
+          state = this.danceStil;
+        }
+      } else if (this.plattenPhase === "armEndLift" || this.plattenPhase === "armEndTurn" || this.plattenPhase === "armEndLower") {
+        state = "idle";
+        expr = "neutral";
+      } else {
+        state = "idle";
+      }
+    }
+
     if (this.musikzimmer && this.lf === 3 && !a && (this.activity?.id === "klavier" || this.pianoRise > 0)) {
       pianoPose = this.pianoSeat;
       state = this.pianoRise > 0 ? "standup" : "piano";
@@ -9052,8 +9634,8 @@ export class House {
         aschziel = punktMischen(ruh, [ASH_X, SIDE_TOP - 3.4 - hub], reich);
       }
     }
-    // Rechte/linke Handziele für Gesundheitstee und Eimer-Leeren
-    let handElbow: 1 | -1 = this.saxPhase ? 1 : -1;
+    // Rechte/linke Handziele für Gesundheitstee, Plattenspieler-Schalter und Eimer-Leeren
+    let handElbow: 1 | -1 = this.saxPhase || this.plattenPhase === "switchOn" ? 1 : -1;
     let handElbow2: 1 | -1 = this.saxPhase ? -1 : 1;
     if (!a && !this.standing && !this.ashMove) {
       if (tee) {

@@ -28,8 +28,9 @@ const GROUPS: { title: string; items: { k: LuniState; label: string }[] }[] = [
     items: [
       { k: "danceSway", label: "Wiegen" },
       { k: "danceTwist", label: "Twist" },
-      { k: "danceHop", label: "Hüpfen" },
-      { k: "danceSpin", label: "Drehen" },
+      { k: "danceDisco", label: "Disco" },
+      { k: "danceMoonwalk", label: "Moonwalk" },
+      { k: "danceSlide", label: "Rutschen" },
     ],
   },
   {

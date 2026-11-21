@@ -58,8 +58,9 @@ export type LuniState =
   | "lie"
   | "danceSway"
   | "danceTwist"
-  | "danceHop"
-  | "danceSpin"
+  | "danceDisco"
+  | "danceMoonwalk"
+  | "danceSlide"
   | "handstand"
   | "cartwheel"
   | "flip"
@@ -440,6 +441,14 @@ function baseRig(): Rig {
 /** Beine nutzen dieselbe Limb-Struktur: elbow = Knie, hand = Fuß. */
 function leg(knee: V, foot: V): Limb {
   return { elbow: knee, hand: foot };
+}
+
+/** Zwei Armhaltungen weich ineinander überblenden (für Tanzwechsel). */
+function misch(a: Limb, b: Limb, k: number): Limb {
+  return {
+    elbow: [lerp(a.elbow[0], b.elbow[0], k), lerp(a.elbow[1], b.elbow[1], k)],
+    hand: [lerp(a.hand[0], b.hand[0], k), lerp(a.hand[1], b.hand[1], k)],
+  };
 }
 
 /* Gang: Länge von Ober- und Unterschenkel (Bühneneinheiten). */
@@ -1001,56 +1010,102 @@ function buildRig(state: LuniState, t: number, walkP: number, phase: number, rea
     /* ----------------------------- Tanz ----------------------------- */
 
     case "danceSway": {
-      const s = Math.sin(t * 3.4);
-      const c = Math.cos(t * 3.4);
-      r.rootX = s * 2.6;
-      r.rootY = -Math.abs(c) * 1.4;
+      // Leichtes, geerdetes Wiegen: die Knie federn mit (federnder Gang),
+      // die Arme bleiben locker angewinkelt. Ellenbogen immer außen.
+      const s = Math.sin(t * 3.8);
+      const c = Math.cos(t * 3.8);
+      r.rootX = s * 2.4;
+      r.rootY = Math.abs(c) * 1.2;
       r.headTilt = s * 0.12;
-      r.armNear = { elbow: [8 + s * 2, -33], hand: [7 + s * 4, -43 - c * 3] };
-      r.armFar = { elbow: [-8 + s * 2, -33], hand: [-7 + s * 4, -43 + c * 3] };
-      r.legFar = leg([-4 + s, -10], [-5 + s * 1.5, 0]);
-      r.legNear = leg([4 + s, -10], [5 + s * 1.5, 0]);
+      r.armNear = { elbow: [8.5 + s * 1.5, -27], hand: [6 + s * 5, -35 - c * 2] };
+      r.armFar = { elbow: [-8.5 + s * 1.5, -27], hand: [-6 + s * 5, -35 + c * 2] };
+      r.legFar = leg(gangKnie([-2.6, r.hipY], [-4.8 + s * 1.3, -r.rootY]), [-4.8 + s * 1.3, -r.rootY]);
+      r.legNear = leg(gangKnie([2.6, r.hipY], [4.8 + s * 1.3, -r.rootY]), [4.8 + s * 1.3, -r.rootY]);
       r.hairFlow = -s * 2.4;
       break;
     }
 
     case "danceTwist": {
-      const s = Math.sin(t * 4.2);
-      r.scaleX = 0.55 + 0.45 * Math.cos(t * 4.2);
-      r.rootY = -Math.abs(s) * 1.2;
-      r.hipY = HIP_Y + Math.abs(s) * 1.6;
-      r.headTilt = -s * 0.1;
-      r.armNear = { elbow: [8, -31], hand: [10, -37 - s * 2] };
-      r.armFar = { elbow: [-8, -31], hand: [-10, -37 + s * 2] };
-      r.legFar = leg([-4.5, -9.5 + Math.abs(s)], [-5, 0]);
-      r.legNear = leg([4.5, -9.5 + Math.abs(s)], [5, 0]);
-      r.hairFlow = s * 2.6;
+      // Twist ohne 2D-Stauchung (kein scaleX, keine Drehung): Hüfte und Füße
+      // arbeiten geerdet gegeneinander, die angewinkelten Arme pendeln außen.
+      const s = Math.sin(t * 5.0);
+      const b = Math.abs(s);
+      r.rootX = s * 1.6;
+      r.rootY = b * 1.4;
+      r.hipY = HIP_Y + b * 1.0;
+      r.headTilt = -s * 0.11;
+      r.armNear = { elbow: [9 - s * 2, -26], hand: [5.5 - s * 5.5, -21 + b] };
+      r.armFar = { elbow: [-9 - s * 2, -26], hand: [-5.5 - s * 5.5, -21 + b] };
+      r.legFar = leg([-2.6 - s * 2.4, -10], [-4.6 - s * 1.6, -r.rootY]);
+      r.legNear = leg([2.6 - s * 2.4, -10], [4.6 - s * 1.6, -r.rootY]);
+      r.footFarAng = -s * 0.14;
+      r.footNearAng = -s * 0.14;
+      r.hairFlow = -s * 2.6;
       break;
     }
 
-    case "danceHop": {
-      const ph = (t * 2.6) % 1;
-      const air = Math.sin(ph * Math.PI);
-      r.rootY = -air * 9;
-      r.headTilt = -air * 0.1;
-      r.armNear = { elbow: [8, -38 - air * 3], hand: [9, -47 - air * 6] };
-      r.armFar = { elbow: [-8, -38 - air * 3], hand: [-9, -47 - air * 6] };
-      const tuck = air * 5;
-      r.legFar = leg([-4, -11 - tuck * 0.4], [-5.5, -tuck]);
-      r.legNear = leg([4, -11 - tuck * 0.4], [5.5, -tuck]);
-      r.hairFlow = -air * 3.4;
+    case "danceDisco": {
+      // Saturday-Night-Fever-Pose: ein Arm diagonal nach oben, die andere Hand
+      // an der Hüfte; wechselt weich und federt im Takt am Boden.
+      const beat = Math.abs(Math.sin(t * 4.2));
+      const sw = ease((Math.sin(t * 1.05) + 1) / 2);
+      r.rootY = beat * 1.8;
+      r.rootX = (1 - 2 * sw) * -1.2 * beat;
+      r.headTilt = -0.1 * (1 - sw) + 0.08 * sw - beat * 0.05;
+      const hoch = (sgn: number): Limb => ({ elbow: [sgn * 9.2, -40], hand: [sgn * 6.8, -50.5 - beat] });
+      const seit = (sgn: number): Limb => ({ elbow: [sgn * 8.2, -28], hand: [sgn * 5, -23.5] });
+      r.armNear = misch(seit(1), hoch(1), sw);
+      r.armFar = misch(hoch(-1), seit(-1), sw);
+      r.legFar = leg(gangKnie([-2.6, r.hipY], [-5.2, -r.rootY]), [-5.2, -r.rootY]);
+      r.legNear = leg(gangKnie([2.6, r.hipY], [5.2, -r.rootY]), [5.2, -r.rootY]);
+      r.hairFlow = (1 - 2 * sw) * -1.8;
       break;
     }
 
-    case "danceSpin": {
-      r.scaleX = Math.cos(t * 5.4);
-      r.rootY = -Math.abs(Math.sin(t * 5.4)) * 1.2;
-      r.headTilt = 0.05;
-      r.armNear = { elbow: [9, -34], hand: [13, -38] };
-      r.armFar = { elbow: [-9, -34], hand: [-13, -38] };
-      r.legFar = leg([-4, -10], [-5, 0]);
-      r.legNear = leg([3, -12], [4.5, -4]);
-      r.hairFlow = 3.8;
+    case "danceMoonwalk": {
+      // Moonwalk: ein Fuß gleitet flach zurück, der andere steht auf der Spitze;
+      // die Arme bleiben lässig angewinkelt (Ellenbogen außen, Hüfthöhe).
+      const cyc = ((t * 2.0) % 2 + 2) % 2;
+      const first = cyc < 1;
+      const p = first ? cyc : cyc - 1;
+      const flatX = lerp(5.5, -5.5, p);
+      const toeX = lerp(-5.5, 5.5, ease(p));
+      const ab = p < 0.12 ? 1 - p / 0.12 : p > 0.88 ? (p - 0.88) / 0.12 : 0;
+      const flatY = -ab * 1.8;
+      const flatAng = ab * 0.48;
+      const toeY = -1.8;
+      const toeAng = 0.48;
+      r.rootY = 0.8 + Math.sin(p * Math.PI) * 0.5;
+      const nearFoot: V = [first ? flatX : toeX, (first ? flatY : toeY) - r.rootY];
+      const farFoot: V = [first ? toeX : flatX, (first ? toeY : flatY) - r.rootY];
+      r.legNear = leg(gangKnie([2.6, r.hipY], nearFoot), nearFoot);
+      r.legFar = leg(gangKnie([-2.6, r.hipY], farFoot), farFoot);
+      r.footNearAng = first ? flatAng : toeAng;
+      r.footFarAng = first ? toeAng : flatAng;
+      const bob = Math.sin(t * 4.0) * 0.7;
+      r.armNear = { elbow: [9, -27 + bob * 0.3], hand: [7, -22 - bob] };
+      r.armFar = { elbow: [-9, -26 - bob * 0.3], hand: [-6.5, -23 + bob] };
+      r.headTilt = 0.12 + Math.sin(t * 2.0) * 0.03;
+      r.hairFlow = 1.2;
+      break;
+    }
+
+    case "danceSlide": {
+      // Tom-Cruise-Rutscher auf dem Knie: ein Bein vorgestreckt auf der Ferse,
+      // das andere kniet; Oberkörper leicht zurück, Arme zum Gleichgewicht.
+      const wob = Math.sin(t * 6) * 1.2;
+      r.rootY = 9.4 + Math.sin(t * 8) * 0.3;
+      r.rootRot = -0.12;
+      r.pivotY = -10;
+      r.headTilt = 0.08;
+      r.armNear = { elbow: [10, -32], hand: [14.5, -38 + wob] };
+      r.armFar = { elbow: [-9, -28], hand: [-13, -23 - wob] };
+      r.legNear = leg([9.5, -15.5], [15, -9.4]);
+      r.legFar = leg([-2, -9.4], [-11, -11.5]);
+      r.footNearAng = -0.18;
+      r.footFarDir = -1;
+      r.footFarAng = -0.4;
+      r.hairFlow = -3.0;
       break;
     }
 
