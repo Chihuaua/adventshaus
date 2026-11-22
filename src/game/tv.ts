@@ -1,6 +1,6 @@
 /** Gemeinsame, rein datenbasierte TV-Bedienung fuer Zeiger und Steuerkreuz. */
 export type TVId = "tv_e" | "tv_d";
-export type TVKanal = "garten" | "musik" | "konsole" | "gol";
+export type TVKanal = "garten" | "musik" | "konsole" | "gol" | "flauschi";
 export type TVInhalt = TVKanal | "cozy" | "console" | "off";
 export interface TVGeraet { kanal: TVKanal | null; lautstaerke: number }
 export type TVStand = Record<TVId, TVGeraet>;
@@ -8,19 +8,26 @@ export type TVBefehl = "kanal_runter" | "kanal_hoch" | "leiser" | "lauter" | "po
 
 export const TV_KANAL_NAMEN: Record<TVKanal, string> = {
   garten: "Garten", musik: "Musikvideo", konsole: "Konsole", gol: "Spiel des Lebens",
+  flauschi: "Teleflauschi",
 };
 
 export function neuerTVStand(): TVStand {
   return { tv_e: { kanal: null, lautstaerke: 50 }, tv_d: { kanal: null, lautstaerke: 50 } };
 }
 
-export function tvKanaele(id: TVId, spielEingelegt: boolean): TVKanal[] {
-  return id === "tv_e" ? ["garten", "musik"]
-    : spielEingelegt ? ["garten", "musik", "konsole", "gol"] : ["garten", "musik", "konsole"];
+/** Das Teleflauschi-Modul hat einen eigenen Programmplatz auf dem Dachgeschoss-TV. */
+export function tvKanaele(id: TVId, spielEingelegt: boolean, flauschiEingelegt = false): TVKanal[] {
+  if (id === "tv_e") return ["garten", "musik"];
+  const liste: TVKanal[] = ["garten", "musik", "konsole"];
+  if (spielEingelegt) liste.push("gol");
+  if (flauschiEingelegt) liste.push("flauschi");
+  return liste;
 }
 
-export function tvNaechsterKanal(id: TVId, aktuell: TVKanal, richtung: 1 | -1, spielEingelegt: boolean): TVKanal {
-  const liste = tvKanaele(id, spielEingelegt);
+export function tvNaechsterKanal(
+  id: TVId, aktuell: TVKanal, richtung: 1 | -1, spielEingelegt: boolean, flauschiEingelegt = false,
+): TVKanal {
+  const liste = tvKanaele(id, spielEingelegt, flauschiEingelegt);
   const i = Math.max(0, liste.indexOf(aktuell));
   return liste[(i + richtung + liste.length) % liste.length];
 }
@@ -32,7 +39,7 @@ export function leseTVStand(roh: unknown): TVStand {
   for (const id of ["tv_e", "tv_d"] as const) {
     const quelle = (roh as Partial<TVStand>)[id];
     if (!quelle || typeof quelle !== "object") continue;
-    if (quelle.kanal && tvKanaele(id, true).includes(quelle.kanal)) stand[id].kanal = quelle.kanal;
+    if (quelle.kanal && tvKanaele(id, true, true).includes(quelle.kanal)) stand[id].kanal = quelle.kanal;
     if (typeof quelle.lautstaerke === "number" && Number.isFinite(quelle.lautstaerke)) {
       stand[id].lautstaerke = Math.max(0, Math.min(100, Math.round(quelle.lautstaerke)));
     }

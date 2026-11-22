@@ -207,3 +207,23 @@ hund-apollo | src/game/hunde.ts | drawApollo
 hund-stationen | src/game/house.ts | "apollo"
 hund-streicheln | src/game/luni.ts | case "pet"
 hunde-tests | tools/test-hunde.mjs | Odin und Apollo
+
+## Teleflauschi „Flauschi“ (Weihnachtshaus)
+
+flauschi-datei | src/game/flauschi.ts | drawFlauschi
+flauschi-einlegen | src/game/house.ts | flauschi_modul
+flauschi-aktionen | src/game/house.ts | flauschiAktionAusloesen
+flauschi-balken | src/game/flauschi.ts | drawFlauschiHud
+flauschi-geschenke | src/game/flauschi.ts | FLAUSCHI_GESCHENKE
+flauschi-kanaele | src/game/tv.ts | flauschi
+flauschi-tests | tools/test-flauschi.mjs | Flauschi
+flauschi-anfassen | src/game/flauschi.ts | flauschiBeruehren
+flauschi-zonen | src/game/house.ts | flauschiZoneBei
+flauschi-dinge | src/game/flauschi-dinge.ts | FLAUSCHI_DINGE
+flauschi-figur | src/game/flauschi-figur.ts | drawFlauschi
+flauschi-zimmer | src/game/flauschi-zimmer.ts | drawFlauschiSzene
+flauschi-halten | src/game/house.ts | flauschiKraulenHalten
+flauschi-wachstum | src/game/flauschi.ts | phasePruefen
+flauschi-pakete | src/game/flauschi.ts | flauschiAuspacken
+flauschi-album | src/game/flauschi.ts | drawFlauschiAlbum
+flauschi-grund | src/game/flauschi-dinge.ts | Futternapf

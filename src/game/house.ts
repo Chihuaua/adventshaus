@@ -42,6 +42,34 @@ import {
   toggleCellAt,
   type GOLState,
 } from "./gol";
+import {
+  FLAUSCHI_KNOEPE,
+  FLAUSCHI_ZURUECK,
+  drawFlauschiAlbum,
+  drawFlauschiGeschenke,
+  drawFlauschiHud,
+  drawFlauschiHuelle,
+  drawFlauschiKnoepfe,
+  drawFlauschiSzene,
+  drawFlauschiZonen,
+  flauschiAktion,
+  flauschiAuspacken,
+  flauschiBeruehren,
+  flauschiKlang,
+  flauschiKnopfBei,
+  flauschiPakete,
+  flauschiKraulenHalten,
+  flauschiTick,
+  flauschiVersprochen,
+  flauschiZoneBei,
+  flauschiZonen,
+  leseFlauschiStand,
+  neuerFlauschiStand,
+  type FlauschiAktion,
+  type FlauschiZielId,
+  type FlauschiBeruehrung,
+  type FlauschiStand,
+} from "./flauschi";
 
 import { sfx } from "./audio";
 import { SaxophonMusic } from "./audio/saxophonVoice";
@@ -565,6 +593,11 @@ export const STATIONS: Station[] = [
     hits: [[486, 126, 38, 24]],
   },
   {
+    // Teleflauschi „Flauschi“: das Spielmodul liegt eine Brettreihe tiefer.
+    id: "flauschi_modul", label: "Teleflauschi", floor: 3, x: 502, face: 1, state: "act", expr: "focus",
+    hits: [[486, 164, 38, 24]],
+  },
+  {
     id: "platten", label: "Plattenspieler", floor: 3, x: 696, face: 1, state: "danceSway", expr: "happy",
     hits: [[698, 166, 52, 34], [678, 164, 16, 36], [754, 164, 16, 36], [776, 154, 30, 46]],
   },
@@ -805,7 +838,8 @@ function bookshelf(
   rows: number,
   seed: number,
   games = false,
-  gap?: { row: number; index: number; item?: (c: C, x: number, y: number, w: number, h: number) => void },
+  /** Reservierte Fächer der Reihe nach – für die Spielmodule im Regal. */
+  gap?: readonly { row: number; index: number; item?: (c: C, x: number, y: number, w: number, h: number) => void }[],
 ) {
   rect(c, x, F - h, w, h, "#6f4f2c");
   rect(c, x + 3, F - h + 3, w - 6, h - 6, "#35261a");
@@ -818,9 +852,10 @@ function bookshelf(
       const bw0 = games ? 6 + ((i + r + seed) % 3) : 3 + ((i * 7 + r * 3 + seed) % 4);
       const bw = Math.min(bw0, x + w - 4 - bx);
       const bh = rh - 5 - ((i * 5 + r + seed) % (games ? 3 : 6));
-      const reserved = gap && r === gap.row && i === gap.index;
-      if (reserved) {
-        if (gap.item) gap.item(c, bx, base - bh, bw, bh);
+      const fach = gap?.find((g) => g.row === r && g.index === i);
+      const reserved = !!fach;
+      if (reserved && fach) {
+        if (fach.item) fach.item(c, bx, base - bh, bw, bh);
       } else {
         rect(c, bx, base - bh, bw, bh, BOOK_COLS[(i * 3 + r * 5 + seed) % BOOK_COLS.length]);
       }
@@ -2908,6 +2943,8 @@ function drawHouse(
   /** Gesundheitstee: was Luni gerade in der Hand hält, fehlt auf der Zeile */
   tee: { kanne: boolean; tasse: boolean; fill: number } = { kanne: true, tasse: true, fill: 0 },
   weihnacht = false,
+  /** Teleflauschi-Modul liegt im Regal (nur das Weihnachtshaus). */
+  flauschiOnShelf = false,
 ) {
   drawExterior(c);
 
@@ -3086,11 +3123,19 @@ function drawHouse(
   } else {
     beanbag(c, 296, FD);
     lowboardTV(c, 404, FD);
-    bookshelf(c, 486, FD, 38, 74, 4, 5, true, {
-      row: 0,
-      index: 1,
-      item: golOnShelf ? (cc, bx, by, bw, bh) => golCartridge(cc, bx, by, bw, bh) : undefined,
-    });
+    bookshelf(c, 486, FD, 38, 74, 4, 5, true, [
+      {
+        row: 0,
+        index: 1,
+        item: golOnShelf ? (cc, bx, by, bw, bh) => golCartridge(cc, bx, by, bw, bh) : undefined,
+      },
+      {
+        // Zweite Brettreihe: die Hülle des Teleflauschis, sobald der Nikolaus es brachte.
+        row: 2,
+        index: 1,
+        item: flauschiOnShelf ? (cc, bx, by, bw, bh) => drawFlauschiHuelle(cc, bx, by, bw, bh, 0) : undefined,
+      },
+    ]);
     picture(c, 276, 108, 22, 30, "#35d6c0");
   }
   // Das normale Klavier mit zentriertem Hocker davor (Mitte x = 567); das Musikzimmer zeichnet sein eigenes.
@@ -3507,6 +3552,43 @@ export class House {
     return this.tvZoom === "tv_d" && this.tvContent("tv_d") === "gol";
   }
 
+  /* ---- Teleflauschi „Flauschi“ (nur das Weihnachtshaus) ---- */
+  private flauschiState: FlauschiStand | null = null;
+  /** Modul liegt noch im Regal. */
+  private flauschiOnShelf = true;
+  /** Modul steckt in der Konsole unter dem Fernseher. */
+  private flauschiInserted = false;
+  /** greifen, zum Fernseher tragen, einlegen, dabeisitzen */
+  private flauschiPhase: "reach" | "carry" | "insert" | "watch" | null = null;
+  private flauschiAnimT = 0;
+  private flauschiFokus: FlauschiAktion = "fuettern";
+  private flauschiHover: FlauschiAktion | null = null;
+  private flauschiZurueckFokus = false;
+  /** Flauschi selbst als Ziel: Kopf (streicheln) oder Bauch (kitzeln). */
+  private flauschiZoneFokus: FlauschiZielId | null = null;
+  private flauschiZoneHover: FlauschiZielId | null = null;
+  /** Der Zeiger wird auf Flauschis Kopf gedrückt gehalten (langes Kraulen). */
+  private flauschiHaelt = false;
+
+  private get flauschiWelt(): boolean {
+    return this.welt === "weihnacht";
+  }
+  private get flauschiAktiv(): boolean {
+    return this.flauschiWelt && this.flauschiInserted;
+  }
+  /** Offene Türchen dieser Hauswelt (Eigen-Schlüssel, siehe welten.ts). */
+  private flauschiOffen(): number[] {
+    this.adventStandPruefen();
+    return this.adventStand.offen;
+  }
+  /** Ab Türchen 6 liegt das Modul überhaupt erst im Regal. */
+  private get flauschiModulSichtbar(): boolean {
+    return this.flauschiWelt && this.flauschiOnShelf && flauschiVersprochen(this.flauschiOffen());
+  }
+  private get flauschiFullscreen(): boolean {
+    return this.tvZoom === "tv_d" && this.tvContent("tv_d") === "flauschi";
+  }
+
   // Adventskalender (Zielbild aus dem Spielkonzept; Prototyp: alle Türchen frei)
   private adventFullscreen = false;
   /** 0 = an der Wand, 1 = voll herangezoomt */
@@ -3851,6 +3933,8 @@ export class House {
     this.canvas.addEventListener("pointerdown", this.onDown);
     this.canvas.addEventListener("pointermove", this.onMove);
     this.canvas.addEventListener("pointerleave", this.onLeave);
+    this.canvas.addEventListener("pointerup", this.onUp);
+    this.canvas.addEventListener("pointercancel", this.onUp);
     this.last = performance.now();
     this.raf = requestAnimationFrame(this.frame);
   }
@@ -3884,6 +3968,8 @@ export class House {
     this.canvas.removeEventListener("pointerdown", this.onDown);
     this.canvas.removeEventListener("pointermove", this.onMove);
     this.canvas.removeEventListener("pointerleave", this.onLeave);
+    this.canvas.removeEventListener("pointerup", this.onUp);
+    this.canvas.removeEventListener("pointercancel", this.onUp);
   }
 
   resize = () => {
@@ -3964,6 +4050,9 @@ export class House {
       lighterOnTable: this.lightAufTisch,
       kerzenAn: this.kerzenAn,
       tv: this.tvDaten,
+      flauschi: this.flauschiState,
+      flauschiEingelegt: this.flauschiInserted,
+      flauschiOnShelf: this.flauschiOnShelf,
       hunde: this.istNormalHaus ? this.hunde.snapshot() : undefined,
     };
   }
@@ -4000,6 +4089,15 @@ export class House {
       this.tvMode = "gol";
       if (!this.golState) this.golState = createState();
     }
+    // Teleflauschi: der Zustand wandert mit, das Modul nie verloren.
+    this.flauschiState = leseFlauschiStand(s.flauschi) ?? (this.flauschiWelt ? neuerFlauschiStand() : null);
+    this.flauschiInserted = !!s.flauschiEingelegt && this.flauschiWelt;
+    this.flauschiOnShelf = s.flauschiOnShelf !== false || !this.flauschiInserted;
+    if (this.flauschiInserted && this.flauschiState) {
+      this.tvDaten.tv_d.kanal = "flauschi";
+      this.tvManual.tv_d = true;
+      flauschiTick(this.flauschiState, Date.now());
+    }
     this.smoke = clamp(s.smoke, 0, 1);
     this.burnLeft = typeof s.burnLeft === "number" ? Math.max(0, s.burnLeft) : 0;
     this.burnTotal = typeof s.burnTotal === "number" ? Math.max(0, s.burnTotal) : (this.burnLeft > 0 ? Math.max(this.burnLeft, 240) : 0);
@@ -4035,6 +4133,8 @@ export class House {
     for (const st of this.stations) {
       // Leeres Fach: das Modul ist schon heruntergenommen.
       if (st.id === "gol_game" && !this.golOnShelf) continue;
+      // Das Teleflauschi-Modul ist nur im Weihnachtshaus und nur im Regal da.
+      if (st.id === "flauschi_modul" && !this.flauschiModulSichtbar) continue;
       // Instrumente sind im Musikzimmer des Gruselhauses entfernt (nur dort).
       if (this.musikzimmer && (st.id === "saxophon" || st.id === "platten" || st.id === "gitarre")) continue;
       // Brille und Bürste sind nur Ziele, wenn sie wirklich da liegen.
@@ -4155,13 +4255,19 @@ export class House {
       this.ufoHover = false;
       const inBox = (b: { x: number; y: number; w: number; h: number }) =>
         x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
-      const back = this.tvZoom === "tv_e" ? TV_BACK_E : (this.golFullscreen ? GOL_BTN : TV_BACK_D);
+      const back = this.tvZoom === "tv_e" ? TV_BACK_E
+        : (this.golFullscreen ? GOL_BTN : this.flauschiFullscreen ? FLAUSCHI_ZURUECK : TV_BACK_D);
       const pwr = this.tvZoom === "tv_e" ? TV_PWR_E : TV_PWR_D;
       const onCtrl = this.golFullscreen && !!golCtrlAt(x, y);
+      const kn = this.flauschiFullscreen ? flauschiKnopfBei(x, y) : null;
+      this.flauschiHover = kn?.id ?? null;
+      // Flauschi selbst ist anklickbar: oben streicheln, unten kitzeln.
+      const zone = this.flauschiFullscreen && !kn ? flauschiZoneBei(x, y, this.flauschiOffen(), this.flauschiState ?? undefined) : null;
+      this.flauschiZoneHover = zone?.id ?? null;
       const v = this.golFullscreen && this.golState ? golView(this.golState) : null;
       const onGrid = !!v && x >= v.x && x <= v.x + v.w && y >= v.y && y <= v.y + v.h;
       this.tvFernHover = tvFernTreffer(x, y);
-      this.canvas.style.cursor = this.tvFernHover || inBox(back) || inBox(pwr) || onCtrl || onGrid ? "pointer" : "default";
+      this.canvas.style.cursor = this.tvFernHover || inBox(back) || inBox(pwr) || onCtrl || onGrid || kn || zone ? "pointer" : "default";
       return;
     }
     this.ufoZeile = this.ufoOffen ? ufoZeileBei(x, y, PATCH_EINTRAEGE.length) : -1;
@@ -4180,9 +4286,17 @@ export class House {
       ? "pointer" : this.walkTargetAt(x, y) ? "crosshair" : "default";
   };
 
+  /** Loslassen beendet das lange Kraulen. */
+  private onUp = () => {
+    this.flauschiHaelt = false;
+  };
+
   private onLeave = () => {
     this.hover = null;
     this.tvFernHover = null;
+    this.flauschiHover = null;
+    this.flauschiZoneHover = null;
+    this.flauschiHaelt = false;
     this.wetterHover = null;
     this.ufoHover = false;
     this.canvas.style.cursor = "default";
@@ -4353,6 +4467,13 @@ export class House {
     // und legt das Modul zurück ins Regal, falls es noch nicht steckt.
     if (this.golPhase === "insert" || this.golPhase === "press") return;
     if ((this.golPhase === "reach" || this.golPhase === "carry") && id !== "gol_game") this.cancelGolFetch();
+    // Dasselbe für das Teleflauschi-Modul: ein anderer Wunsch bricht das Holen ab.
+    if (this.flauschiPhase === "insert") return;
+    if ((this.flauschiPhase === "reach" || this.flauschiPhase === "carry") && id !== "flauschi_modul") this.cancelFlauschiFetch();
+    if (this.flauschiPhase === "watch" && id !== "flauschi_modul") {
+      this.flauschiPhase = null;
+      this.flauschiAnimT = 0;
+    }
     if (
       (this.golPhase === "rise" || this.golPhase === "toButton" || this.golPhase === "back" || this.golPhase === "watch") &&
       id !== "gol_game"
@@ -4663,6 +4784,16 @@ export class House {
       return;
     }
 
+    // Teleflauschi: aus dem Regal holen, zur Konsole tragen, einstecken.
+    if (id === "flauschi_modul") {
+      if (this.flauschiPhase || !this.flauschiModulSichtbar) return;
+      this.smokeRequested = false;
+      this.flauschiPhase = "reach";
+      this.flauschiAnimT = 0;
+      this.goTo("flauschi_modul");
+      return;
+    }
+
     // Datenkoffer (Osterei): Luni geht hin, öffnet den Koffer, und die
     // Oberfläche zeigt den Stand-Übertragungsdialog. Ein zweiter Klick auf
     // den Koffer lässt den Deckel wieder zufallen.
@@ -4684,7 +4815,7 @@ export class House {
     this.smokeRequested = false;
     const st = typeof request === "string" ? find(id) : request;
     if (st) {
-      if (id === "gol_tv") {
+      if (id === "gol_tv" && !this.flauschiPhase) {
         this.golPhase = "toButton";
         this.golAnimT = 0;
       }
@@ -5854,6 +5985,8 @@ export class House {
     }
 
     this.updateGolCarry(dt);
+    this.updateFlauschiCarry(dt);
+    this.updateFlauschi(dt);
     this.updateShower(dt);
     this.updateBedEinstieg(dt);
     this.updateBedToss(dt);
@@ -6281,6 +6414,7 @@ export class House {
       this.bettRendered,
       { kanne: !this.teaKanneWeg, tasse: !this.teaTasseWeg, fill: this.teaFuellung },
       this.welt === "weihnacht",
+      this.flauschiModulSichtbar,
     );
     // Raum 02 wird als eigene Canvas-Szene über die frühere Musikzimmerfläche
     // gemalt. Der Bereich beginnt hinter der Trennwand; kein Nachbarraum ändert sich.
@@ -6479,6 +6613,7 @@ export class House {
     this.drawTvButton(ctx);
     // Eingestecktes Modul sitzt in der Konsole, Luni geht davor vorbei.
     if (this.golInserted && this.golPhase !== "insert") golCartridge(ctx, 446, 167, 6, 11);
+    if (this.flauschiAktiv && this.flauschiPhase !== "insert") drawFlauschiHuelle(ctx, 456, 168, 6, 11, this.elapsed);
     if (this.welt === "gruesel") this.drawClock(ctx);
     if (this.welt === "gruesel") this.raumFx.draw(ctx, atticCeil);
     if (this.musikzimmer) {
@@ -6541,6 +6676,7 @@ export class House {
     this.drawSargPass(ctx, true);
     this.drawGlassesMoving(ctx);
     this.drawGolInHand(ctx);
+    this.drawFlauschiInHand(ctx);
     // Rauch liegt über allem – Luni sieht erst wieder etwas, wenn die Tür auf ist
     this.drawSmoke(ctx);
     // Abzug durch die Gartentür: Schwaden ziehen sichtbar nach draußen
@@ -7949,7 +8085,7 @@ export class House {
     if (this.tvManual[which] === false) return "off";
     const gewaehlt = this.tvDaten[which].kanal;
     if (gewaehlt && ((this.activity?.screen === which && !this.cur) || this.tvManual[which] === true)) {
-      return tvKanaele(which, this.golInserted).includes(gewaehlt) ? gewaehlt : "garten";
+      return tvKanaele(which, this.golInserted, this.flauschiAktiv).includes(gewaehlt) ? gewaehlt : "garten";
     }
     if (which === "tv_d" && this.golInserted && this.tvMode === "gol" && this.golState) return "gol";
     if ((this.activity?.screen === which && !this.cur) || this.tvManual[which] === true) {
@@ -7973,7 +8109,7 @@ export class House {
     const daten = this.tvDaten[which];
     if (id === "power") this.toggleTvPower(which);
     else if (id === "kanal_hoch" || id === "kanal_runter") {
-      daten.kanal = tvNaechsterKanal(which, this.tvKanal(which), id === "kanal_hoch" ? 1 : -1, this.golInserted);
+      daten.kanal = tvNaechsterKanal(which, this.tvKanal(which), id === "kanal_hoch" ? 1 : -1, this.golInserted, this.flauschiAktiv);
       this.tvManual[which] = true;
       if (daten.kanal === "gol" && !this.golState) this.golState = createState();
     } else daten.lautstaerke = clamp(daten.lautstaerke + (id === "lauter" ? 10 : -10), 0, 100);
@@ -8177,6 +8313,9 @@ export class House {
       c.fillText(tt < TV_RICK_AT ? "CH1" : "CH2", x + 2, y + 5);
       c.fillStyle = "#ff5d8f";
       c.fillText("♪", x + w - 6, y + 5);
+    } else if (mode === "flauschi" && this.flauschiState) {
+      // Kleine Bühne im Haus: dieselbe Szene, nur kleiner.
+      drawFlauschiSzene(c, x, y, w, h, this.elapsed, this.flauschiState, this.flauschiOffen());
     } else if (mode === "gol" && this.golState) {
       drawGridCoarse(c, this.golState, x, y, w, h);
     } else {
@@ -8217,6 +8356,47 @@ export class House {
     if (e.code === "Escape" && this.tvZoom) {
       this.tvZoom = null;
       sfx.ui();
+      e.preventDefault();
+      return;
+    }
+    if (this.tvZoom && this.flauschiFullscreen) {
+      // Durchschalten + Bestätigen: vier Pflegeknöpfe, Flauschi selbst
+      // (streicheln, kitzeln) und „zurück“ – alles ohne Maus erreichbar.
+      const ziele: (FlauschiAktion | FlauschiZielId | "zurueck")[] = [
+        ...FLAUSCHI_KNOEPE.map(k => k.id), ...flauschiZonen(this.flauschiOffen(), this.flauschiState ?? undefined).map(zone => zone.id), "zurueck",
+      ];
+      const n = ziele.length;
+      const i = Math.max(0, ziele.indexOf(
+        this.flauschiZurueckFokus ? "zurueck" : this.flauschiZoneFokus ?? this.flauschiFokus));
+      const vor = e.code === "ArrowRight" || (e.code === "Tab" && !e.shiftKey);
+      const zurueckK = e.code === "ArrowLeft" || (e.code === "Tab" && e.shiftKey);
+      // Hoch/Runter bleibt der Fernbedienung vorbehalten: Kanal wechseln
+      // geht auch mitten im Spiel ganz ohne Maus.
+      if (e.code === "ArrowUp" || e.code === "ArrowDown") {
+        const befehl: TVBefehl = e.code === "ArrowUp" ? "kanal_hoch" : "kanal_runter";
+        this.tvFernFokus = befehl;
+        this.tvBefehl(befehl);
+      } else if (vor || zurueckK) {
+        const ziel = ziele[(i + (vor ? 1 : -1) + n) % n];
+        const knopf = FLAUSCHI_KNOEPE.find(k => k.id === ziel);
+        this.flauschiZurueckFokus = ziel === "zurueck";
+        this.flauschiZoneFokus = flauschiZonen(this.flauschiOffen(), this.flauschiState ?? undefined).find(zone => zone.id === ziel)?.id ?? null;
+        if (knopf) this.flauschiFokus = knopf.id;
+        sfx.ui();
+      } else if (e.code === "Enter" || e.code === "Space") {
+        if (e.repeat) {
+          // Bestätigen gedrückt halten = langes Kraulen (wie Zeiger gedrückt halten).
+          if (this.flauschiZoneFokus === "kraulen" && this.flauschiState) flauschiKraulenHalten(this.flauschiState, 0.04);
+          e.preventDefault();
+          return;
+        }
+        if (this.flauschiZurueckFokus) {
+          this.tvZoom = null;
+          sfx.ui();
+        } else if (this.flauschiZoneFokus === "paket") this.flauschiAuspackenAusloesen();
+        else if (this.flauschiZoneFokus) this.flauschiBeruehrenAusloesen(this.flauschiZoneFokus);
+        else this.flauschiAktionAusloesen(this.flauschiFokus);
+      } else return;
       e.preventDefault();
       return;
     }
@@ -9474,6 +9654,133 @@ export class House {
     disc(c, x, y, pressed ? 1.1 : 1.5, pressed ? "#fff6d0" : "#35d6c0");
   }
 
+  /* ------------------------ Teleflauschi: Einlegen ------------------------ */
+
+  /** Holen abbrechen. Liegt das Modul noch nicht in der Konsole, kommt es ins Regal zurück. */
+  private cancelFlauschiFetch() {
+    this.flauschiPhase = null;
+    this.flauschiAnimT = 0;
+    if (!this.flauschiInserted && !this.flauschiOnShelf) {
+      this.flauschiOnShelf = true;
+      this.dirty = true;
+    }
+  }
+
+  /** Greifen, zum Fernseher tragen, einlegen – danach läuft Flauschi auf dem Bild. */
+  private updateFlauschiCarry(dt: number) {
+    if (!this.flauschiWelt) return;
+    const arrived = !this.cur && this.path.length === 0 && !this.pending;
+    if (this.flauschiPhase === "reach" && arrived && this.activity?.id === "flauschi_modul") {
+      this.flauschiAnimT += dt;
+      if (this.flauschiAnimT >= 0.95) {
+        this.flauschiOnShelf = false;
+        this.dirty = true;
+        sfx.ui();
+        this.flauschiPhase = "carry";
+        this.flauschiAnimT = 0;
+        this.goTo(this.golTvStand());
+      }
+      return;
+    }
+    if (this.flauschiPhase === "carry" && arrived && this.activity?.id === "gol_tv") {
+      this.flauschiPhase = "insert";
+      this.flauschiAnimT = 0;
+      return;
+    }
+    if (this.flauschiPhase === "insert") {
+      this.flauschiAnimT += dt;
+      if (this.flauschiAnimT >= 0.75) {
+        this.flauschiInserted = true;
+        this.flauschiOnShelf = false;
+        if (!this.flauschiState) this.flauschiState = neuerFlauschiStand();
+        this.tvDaten.tv_d.kanal = "flauschi";
+        this.tvManual.tv_d = true;
+        this.updateTVAudio();
+        sfx.ui();
+        this.speichern();
+        this.flauschiPhase = "watch";
+        this.flauschiAnimT = 0;
+        this.goTo("gaming");
+      }
+      return;
+    }
+    if (this.flauschiPhase === "watch" && arrived && this.activity?.id === "gaming") {
+      this.flauschiPhase = null;
+    }
+  }
+
+  /** Echtzeit-Pflege: abwesende Stunden zählen als Schlaf, nicht als Verlust. */
+  private updateFlauschi(dt: number) {
+    if (!this.flauschiWelt) return;
+    // Erster Besuch im Weihnachtshaus: Flauschi wird frisch angelegt,
+    // damit der Speicherstand nicht mit Stunden Verzögerung startet.
+    if (!this.flauschiState) this.flauschiState = neuerFlauschiStand();
+    flauschiTick(this.flauschiState, Date.now());
+    // Zeiger gedrückt auf dem Kopf: Flauschi wird weitergekrault und dabei schläfrig.
+    if (this.flauschiHaelt) {
+      if (this.flauschiFullscreen) flauschiKraulenHalten(this.flauschiState, dt);
+      else this.flauschiHaelt = false;
+    }
+  }
+
+  /**
+   * Flauschi direkt anfassen: Kopf streicheln oder Bauch kitzeln – derselbe Weg
+   * für Zeiger und Steuerkreuz. Der Fokus-Ring bleibt, wo er war: Ein Klick
+   * mit dem Zeiger soll keinen Rahmen quer über Flauschis Gesicht hinterlassen.
+   */
+  private flauschiBeruehrenAusloesen(art: FlauschiBeruehrung) {
+    if (!this.flauschiState || !this.flauschiAktiv) return;
+    sfx.ensure();
+    const flocks = flauschiBeruehren(this.flauschiState, art, Date.now(), this.flauschiOffen());
+    // Jede Berührung und jeder Gegenstand hat sein eigenes, rein synthetisches Klangrezept.
+    for (const [f, dauer, form, pegel, wann, f2] of flauschiKlang(this.flauschiState, art)) sfx.ton(f, dauer, form, pegel, wann, f2);
+    if (flocks) sfx.sparkle();
+    this.speichern();
+  }
+
+  /** Ein Paket auspacken: Der Gegenstand steht danach im Zimmer bereit. */
+  private flauschiAuspackenAusloesen() {
+    if (!this.flauschiState || !this.flauschiAktiv) return;
+    const tuer = flauschiAuspacken(this.flauschiState, this.flauschiOffen());
+    if (tuer === null) return;
+    // War es das letzte Paket, wandert der Fokus zurück auf die Knöpfe.
+    if (!flauschiPakete(this.flauschiOffen(), this.flauschiState).length) this.flauschiZoneFokus = null;
+    sfx.ensure();
+    sfx.wish();
+    sfx.complete(5);
+    this.speichern();
+  }
+
+  /** Pflegeaktion aus dem Vollbild – derselbe Weg für Zeiger und Steuerkreuz. */
+  private flauschiAktionAusloesen(id: FlauschiAktion) {
+    if (!this.flauschiState || !this.flauschiAktiv) return;
+    this.flauschiFokus = id;
+    this.flauschiZurueckFokus = false;
+    this.flauschiZoneFokus = null;
+    sfx.ensure();
+    const flocks = flauschiAktion(this.flauschiState, id, Date.now());
+    if (id === "fuettern") sfx.tick();
+    else if (id === "streicheln") sfx.pet();
+    else if (id === "spielen") sfx.jump();
+    else sfx.pause();
+    if (flocks) sfx.sparkle();
+    this.speichern();
+  }
+
+  /** Modul an der Hand; beim Einlegen legt es die letzten Millimeter in die Konsole. */
+  private drawFlauschiInHand(c: C) {
+    if (!this.flauschiWelt || this.flauschiInserted || this.flauschiOnShelf || this.handUnterDecke()) return;
+    let x = this.hand[0] - 3;
+    let y = this.hand[1] - 11;
+    if (this.flauschiPhase === "insert") {
+      const t = clamp((this.flauschiAnimT - 0.4) / 0.32, 0, 1);
+      const e = t * t * (3 - 2 * t);
+      x = lerp(x, 456, e);
+      y = lerp(y, 168, e);
+    }
+    drawFlauschiHuelle(c, x, y, 6, 11, this.elapsed);
+  }
+
   /** Holen abbrechen. Liegt das Modul noch nicht in der Konsole, kommt es ins Regal zurück. */
   private cancelGolFetch() {
     this.golPhase = null;
@@ -9890,6 +10197,10 @@ export class House {
       c.fillStyle = "rgba(185,216,205,.35)";
       c.font = '700 12px "Silkscreen", monospace';
       c.fillText("STANDBY", sx + 16, sy + 26);
+    } else if (mode === "flauschi" && this.flauschiState) {
+      // Vergrößerung: Flauschi groß, mit klassischem Balken-Interface unten.
+      drawFlauschiSzene(c, sx, sy, sw, sh, this.elapsed, this.flauschiState, this.flauschiOffen());
+      drawFlauschiHud(c, sx, sy + sh - 40, sw, this.flauschiState);
     } else if (mode === "gol" && this.golState) {
       this.drawGolGridInTv(c, this.golState);
     } else {
@@ -9924,7 +10235,15 @@ export class House {
     c.fillText(an ? "AUS" : "EIN", TV_PWR_D.x + TV_PWR_D.w / 2, TV_PWR_D.y + 17);
     c.textAlign = "left";
 
-    if (mode === "gol" && this.golState) {
+    if (mode === "flauschi" && this.flauschiState) {
+      // Vier Pflegeknöpfe links, Geschenktafel darunter, „zurück“ rechts.
+      // Der Ring sitzt immer nur auf einem Ziel: Knopf, Flauschi oder „zurück“.
+      drawFlauschiKnoepfe(c, this.flauschiState, this.flauschiHover,
+        this.flauschiZoneFokus || this.flauschiZurueckFokus ? null : this.flauschiFokus, this.flauschiZurueckFokus);
+      drawFlauschiAlbum(c, 120, 354, this.flauschiState);
+      drawFlauschiGeschenke(c, 120, 450, 500, 96, this.flauschiOffen());
+      drawFlauschiZonen(c, this.flauschiZoneHover, this.flauschiZoneFokus);
+    } else if (mode === "gol" && this.golState) {
       const g = this.golState;
       drawGolControls(c);
       const fade = clamp(this.golMeterT / 0.4, 0, 1);
@@ -10008,7 +10327,8 @@ export class House {
     }
     const inBox = (b: { x: number; y: number; w: number; h: number }) =>
       x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
-    const back = which === "tv_e" ? TV_BACK_E : (this.golFullscreen ? GOL_BTN : TV_BACK_D);
+    const back = which === "tv_e" ? TV_BACK_E
+      : (this.golFullscreen ? GOL_BTN : this.flauschiFullscreen ? FLAUSCHI_ZURUECK : TV_BACK_D);
     if (inBox(back)) {
       this.tvZoom = null;
       sfx.ui();
@@ -10018,6 +10338,25 @@ export class House {
     if (inBox(pwr)) {
       this.toggleTvPower(which);
       sfx.ui();
+      return;
+    }
+    if (this.flauschiFullscreen) {
+      const kn = flauschiKnopfBei(x, y);
+      if (kn) {
+        this.flauschiAktionAusloesen(kn.id);
+        return;
+      }
+      // Flauschi oder ein Gegenstand angeklickt – oder ein wartendes Paket.
+      const zone = flauschiZoneBei(x, y, this.flauschiOffen(), this.flauschiState ?? undefined);
+      if (zone) {
+        if (zone.id === "paket") {
+          this.flauschiAuspackenAusloesen();
+          return;
+        }
+        this.flauschiBeruehrenAusloesen(zone.id);
+        // Zeiger auf dem Kopf gedrückt halten = langes Kraulen; endet beim Loslassen.
+        this.flauschiHaelt = zone.id === "kraulen";
+      }
       return;
     }
     if (!this.golFullscreen || !this.golState) return;
