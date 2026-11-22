@@ -325,6 +325,8 @@ export function drawSteelBeam(c: C, x0: number, x1: number, y: number, h: number
 }
 
 /** Rundes Raumschiff-Bullauge mit Sternenhimmel und einem kleinen Gast. */
+import { rundReif } from "../reif";
+
 export function drawSpaceWindow(c: C, cx: number, cy: number, r: number) {
   // Rahmen
   disc(c, cx, cy, r + 5.2, "#6a6a78");
@@ -367,6 +369,8 @@ export function drawSpaceWindow(c: C, cx: number, cy: number, r: number) {
   c.stroke();
   disc(c, ax - 4.8, ay - 12.4, 1, "#0b3d1c");
   disc(c, ax + 4.8, ay - 12.4, 1, "#0b3d1c");
+  // Eisblumen auf dem Bullauge.
+  rundReif(c, cx, cy, r, cx);
   c.restore();
   // Reflexlinien
   c.strokeStyle = "rgba(255,255,255,.45)";

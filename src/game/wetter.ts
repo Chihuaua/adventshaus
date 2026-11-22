@@ -144,6 +144,7 @@ const WINDOWS: readonly [number, number, number, number][] = [
   [330, 358, 64, 38], [624, 364, 50, 36], [740, 236, 44, 78],
   [334, 244, 62, 46], [330, 98, 56, 44],
 ];
+type VorhangPfade = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => void;
 const PALETTE: Record<Jahreszeit, [string, string]> = {
   fruehling: ["rgba(190,230,160,.20)", "rgba(255,236,170,.16)"],
   sommer: ["rgba(255,226,140,.18)", "rgba(160,220,230,.10)"],
@@ -219,8 +220,13 @@ function niederschlag(c: CanvasRenderingContext2D, w: WetterState, t: number, b:
   c.restore();
 }
 
-function wetterImFenster(c: CanvasRenderingContext2D, w: WetterState, t: number) {
+function wetterImFenster(c: CanvasRenderingContext2D, w: WetterState, t: number, vorhang?: VorhangPfade) {
   c.save(); fensterPfad(c); c.clip();
+  if (vorhang) {
+    c.beginPath(); c.rect(0, 0, 960, 600);
+    for (const fenster of WINDOWS) vorhang(c, ...fenster);
+    c.clip("evenodd");
+  }
   // Jahreszeitliche Tönung der Scheiben
   c.fillStyle = farbton(c, w.season); c.globalAlpha = .5;
   for (const [x, y, ww, hh] of WINDOWS) c.fillRect(x, y, ww, hh);
@@ -260,7 +266,7 @@ function wetterImFenster(c: CanvasRenderingContext2D, w: WetterState, t: number)
 }
 
 /** Zeichnet das Wetter ausschließlich hinter dem Haus und in den Fenstern. */
-export function drawWetter(c: CanvasRenderingContext2D, w: WetterState, t: number) {
+export function drawWetter(c: CanvasRenderingContext2D, w: WetterState, t: number, vorhang?: VorhangPfade) {
   c.save();
   aussenPfad(c); c.clip("evenodd");
   c.fillStyle = farbton(c, w.season); c.fillRect(0, 0, 960, 600);
@@ -312,7 +318,7 @@ export function drawWetter(c: CanvasRenderingContext2D, w: WetterState, t: numbe
     }
   }
   c.restore();
-  wetterImFenster(c, w, t);
+  wetterImFenster(c, w, t, vorhang);
 }
 function lineFrost(c: CanvasRenderingContext2D, x: number, y: number) {
   c.beginPath(); c.moveTo(x - 3, y); c.lineTo(x + 3, y); c.moveTo(x, y - 3); c.lineTo(x, y + 3); c.stroke();

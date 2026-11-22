@@ -207,6 +207,27 @@ adventskalender-schmuck | src/game/advent-schmuck.ts | adventSchmuck
 adventskalender-schmuckliste | src/game/advent-schmuck.ts | ADVENT_SCHMUCK
 adventskalender-ecken | src/game/advent-schmuck.ts | adventSchmuckGlanz
 adventskalender-tuerchenbilder | src/game/advent-spielbilder.ts | adventBildSpiel
+adventskalender-gruss | src/game/advent.ts | adventGruss
+treppengelaender-kurz | src/game/house.ts | GELAENDER_HOEHE
+bruestung-kurz | src/game/house.ts | BRUESTUNG_HOEHE
+fenster-reif | src/game/reif.ts | fensterReif
+rundfenster-reif | src/game/reif.ts | rundReif
+treppenfenster-vorgelaender | src/game/house.ts | Geländer
+hausdetails-tests | tools/test-hausdetails.mjs | Streben
+haus-ohne-deko | src/game/house.ts | weihnachtsdeko
+traumhaus-haus | src/App.tsx | welt="traum"
+luni-handflaechen | src/game/luni.ts | Handflächen nach außen
+luni-schulter | src/game/luni.ts | const SCHULTER_ANSATZ = 4.4
+patch-download | src/game/house.ts | this.onUfo?.(PATCH_ZIP)
+zimmertapeten | src/game/house.ts | ZimmerTapete
+fensterkranz | src/game/fensterkranz.ts | fensterKranz
+rundfensterkranz | src/game/fensterkranz.ts | rundFensterKranz
+adventwand-geschmueckt | src/game/advent-wand.ts | adventWandWeihnacht
+weihnachtshaus-farbkonzept | src/game/weihnachtshaus.ts | WEIHNACHTS_FARBEN
+weihnachtshaus-warmes-licht | src/game/house.ts | zeichneWeihnachtsAbendlicht
+weihnachtshaus-weihnachtsbaum | src/game/weihnachtshaus.ts | wohnzimmerWeihnachtsbaum
+weihnachtshaus-samtvorhaenge | src/game/weihnachtshaus.ts | goldstangeMitSamt
+weihnachtshaus-steppdecke | src/game/weihnachtshaus.ts | winterSteppdecke
 
 ## Hunde Odin & Apollo
 

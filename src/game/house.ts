@@ -15,7 +15,7 @@ import { coughPulse, drawLuni, drawZzz, LUNI_COLORS, SITZ_HUB, SITZ_MUND, smokeC
 import {
   ADVENT_NACH_DATUM, ADVENT_TAGE, ADVENT_WAND, adventFrei, adventHinweis, adventMischung,
   adventOeffnen, adventRahmen, adventSternVerdient, adventTuer, adventTuerBei, adventTueren, adventWand,
-  ladeAdvent, RAHMEN, adventSchmuck, adventSchmuckGlanz, adventsSonntage, type AdventStand,
+  ladeAdvent, RAHMEN, adventGruss, adventSchmuck, adventSchmuckGlanz, adventsSonntage, type AdventStand,
 } from "./advent";
 import { HundeWelt, type HundId } from "./hunde";
 import { HandyAblauf, HANDY_TASCHE_SICHTBAR } from "./handy";
@@ -110,7 +110,19 @@ import { clipMusikzimmer, drawMusikzimmerEffects, drawMusikzimmer, drawMusiktuer
 import { klavierHaende, MusikzimmerAblauf } from "./gruselhaus/musikzimmer-ablauf";
 import { drawPixelText } from "./pixel";
 import { drawUfo, drawWeihnachtsschlitten, ufoTreffer, ufoZeileBei } from "./ufo";
-import { PATCH_EINTRAEGE } from "./patch";
+import { fensterReif, rundReif } from "./reif";
+import { fensterKranz, rundFensterKranz } from "./fensterkranz";
+import { adventWandWeihnacht } from "./advent-wand";
+import {
+  WEIHNACHTS_FARBEN, WEIHNACHTS_ORTE, WEIHNACHTSBAUM_X, ZIMMER_TAPETEN,
+  esstischAdventskranz, festzweig, goldstangeMitSamt, kellerWinterdeko,
+  ruhigeWeihnachtswand, samtvorhangPfade, weihnachtsAbendlicht, weihnachtsBettgestell,
+  weihnachtsKerzenflammen, weihnachtsLichtfleck, weihnachtsWandkranz, weihnachtsstrumpf,
+  winterBadAblage, winterSteppdecke, wohnzimmerBuch, wohnzimmerWeihnachtsbaum,
+  type ZimmerTapete,
+} from "./weihnachtshaus";
+export { ZIMMER_TAPETEN, type ZimmerTapete } from "./weihnachtshaus";
+import { PATCH_EINTRAEGE, PATCH_ZIP } from "./patch";
 import {
   BIO_BAD, badezimmerStationen, drawBioBadAfter, drawBioBadBefore,
   drawBioBadStatic, drawBioBadWall, drawHazmatVlies, drawLabBrush, drawLabLockerOpen,
@@ -707,7 +719,7 @@ function windowRect(
   y: number,
   w: number,
   h: number,
-  opt: { mull?: number; curtain?: string } = {},
+  opt: { mull?: number; curtain?: string; kranz?: boolean } = {},
 ) {
   rect(c, x - 3, y - 3, w + 6, h + 6, "#efe6d2");
   c.save();
@@ -718,29 +730,39 @@ function windowRect(
   c.globalAlpha = 0.12;
   poly(c, [[x + w * 0.1, y + h], [x + w * 0.5, y], [x + w * 0.72, y], [x + w * 0.32, y + h]], "#ffffff");
   c.globalAlpha = 1;
+  // Eisblumen: Von den Scheibenrändern wächst leichter Reif nach innen.
+  fensterReif(c, x, y, w, h, x * 7 + y);
   c.restore();
   const m = opt.mull ?? 2;
   for (let i = 1; i < m; i++) line(c, x + (w / m) * i, y, x + (w / m) * i, y + h, "#efe6d2", 2.2);
   if (h > 30) line(c, x, y + h * 0.5, x + w, y + h * 0.5, "#efe6d2", 2.2);
   rect(c, x - 6, y + h + 3, w + 12, 4, "#d9cfb8");
   rect(c, x - 6, y + h + 7, w + 12, 2, "rgba(0,0,0,.25)");
-  if (opt.curtain) {
+  if (opt.kranz) goldstangeMitSamt(c, x, y, w, h);
+  else if (opt.curtain) {
     rrect(c, x - 5, y - 4, w * 0.24, h + 8, 3, opt.curtain);
     rrect(c, x + w - w * 0.24 + 5, y - 4, w * 0.24, h + 8, 3, opt.curtain);
     rect(c, x - 7, y - 6, w + 14, 2.4, "#3a2e28");
   }
+  // Weihnachtshaus: Tannenzweig-Kranz im Stil des geschmückten Adventskalenders.
+  if (opt.kranz) fensterKranz(c, x, y, w, h);
 }
 
-function roundWindow(c: C, sky: HTMLCanvasElement, cx: number, cy: number, r: number) {
+function roundWindow(c: C, sky: HTMLCanvasElement, cx: number, cy: number, r: number, kranz = false) {
   disc(c, cx, cy, r + 3, "#efe6d2");
   c.save();
   c.beginPath();
   c.arc(cx, cy, r, 0, Math.PI * 2);
   c.clip();
   c.drawImage(sky, 0, 0, W, H);
+  rundReif(c, cx, cy, r, cx);
   c.restore();
   line(c, cx - r, cy, cx + r, cy, "#efe6d2", 2);
   line(c, cx, cy - r, cx, cy + r, "#efe6d2", 2);
+  if (kranz) {
+    goldstangeMitSamt(c, cx - r + 1, cy - r + 1.8, 2 * r - 2, 2 * r - 1.8);
+    rundFensterKranz(c, cx, cy, r);
+  }
 }
 
 function picture(c: C, x: number, y: number, w: number, h: number, col: string) {
@@ -758,12 +780,18 @@ function ceilingLamp(c: C, x: number, y0: number, len: number, col = "#e9d9a8") 
   disc(c, x, y0 + len + 10, 3.4, "#fff3c4");
 }
 
+/** Höhe der kleinen Brüstungen an den Treppenaustritten: Die Streben sind halb so hoch wie früher. */
+export const BRUESTUNG_HOEHE = 13;
+
 function railing(c: C, x: number, F: number, w: number) {
-  line(c, x, F - 26, x + w, F - 26, "#2a2420", 3);
-  for (let px = x; px <= x + w + 0.1; px += w / 2) line(c, px, F - 26, px, F, "#2a2420", 2);
+  line(c, x, F - BRUESTUNG_HOEHE, x + w, F - BRUESTUNG_HOEHE, "#2a2420", 3);
+  for (let px = x; px <= x + w + 0.1; px += w / 2) line(c, px, F - BRUESTUNG_HOEHE, px, F, "#2a2420", 2);
 }
 
 /* --- Treppen --- */
+
+/** Höhe der Treppengeländer über den Stufen: Die Streben sind um die Hälfte gekürzt, der Handlauf folgt. */
+export const GELAENDER_HOEHE = 27;
 
 function drawStair(c: C, s: Stair) {
   const fy = FLOOR_Y[s.lower];
@@ -788,19 +816,19 @@ function drawStair(c: C, s: Stair) {
     rect(c, x0, y, w, 1.6, "rgba(255,230,190,.35)");
     rect(c, x0, y + 5, w, 1.5, "rgba(0,0,0,.28)");
   }
-  line(c, fx, fy - 54, tx, ty - 54, "#2a2420", 3.4);
-  line(c, fx, fy - 56, tx, ty - 56, "rgba(255,255,255,.14)", 1.2);
+  line(c, fx, fy - GELAENDER_HOEHE, tx, ty - GELAENDER_HOEHE, "#2a2420", 3.4);
+  line(c, fx, fy - GELAENDER_HOEHE - 2, tx, ty - GELAENDER_HOEHE - 2, "rgba(255,255,255,.14)", 1.2);
   for (let i = 0; i <= N; i += 2) {
     const px = fx + ((tx - fx) * i) / N;
     const py = fy + ((ty - fy) * i) / N;
-    line(c, px, py - 54, px, py, "#2a2420", 2);
+    line(c, px, py - GELAENDER_HOEHE, px, py, "#2a2420", 2);
   }
   c.restore();
 }
 
 /* --- Möbel: Erdgeschoss --- */
 
-function haustuer(c: C, sky: HTMLCanvasElement, x: number, F: number) {
+function haustuer(c: C, sky: HTMLCanvasElement, x: number, F: number, kranz = false) {
   rect(c, x - 4, F - 86, 60, 86, "#ddd3bc");
   rect(c, x, F - 82, 52, 82, "#6e4a2f");
   rect(c, x + 5, F - 38, 42, 32, "#5a3b25");
@@ -810,18 +838,24 @@ function haustuer(c: C, sky: HTMLCanvasElement, x: number, F: number) {
   c.rect(x + 10, F - 72, 32, 24);
   c.clip();
   c.drawImage(sky, 0, 0, W, H);
+  fensterReif(c, x + 10, F - 72, 32, 24, 3);
   c.restore();
   line(c, x + 26, F - 72, x + 26, F - 48, "#6e4a2f", 2);
   disc(c, x + 44, F - 40, 2.4, "#e6c36a");
   rrect(c, x + 2, F - 3, 48, 3, 1.5, "#9c4a3a");
+  if (kranz) {
+    goldstangeMitSamt(c, x + 10, F - 72, 32, 24);
+    fensterKranz(c, x + 10, F - 72, 32, 24);
+  }
 }
 
-function garderobe(c: C, x: number, F: number) {
+function garderobe(c: C, x: number, F: number, weihnacht = false) {
+  const farben = weihnacht ? WEIHNACHTS_FARBEN.moebel.garderobe : ["#c9453a", "#e2b24a", "#2f4a6b"];
   rect(c, x, F - 74, 44, 5, "#6b4a2a");
   for (let i = 0; i < 4; i++) disc(c, x + 6 + i * 11, F - 70, 1.8, "#d9c38a");
-  rrect(c, x + 3, F - 68, 12, 32, 4, "#c9453a");
-  rrect(c, x + 17, F - 68, 12, 28, 4, "#e2b24a");
-  rrect(c, x + 31, F - 68, 12, 34, 4, "#2f4a6b");
+  rrect(c, x + 3, F - 68, 12, 32, 4, farben[0]);
+  rrect(c, x + 17, F - 68, 12, 28, 4, farben[1]);
+  rrect(c, x + 31, F - 68, 12, 34, 4, farben[2]);
   rect(c, x + 2, F - 9, 40, 2.5, "#5a4630");
   rrect(c, x + 4, F - 14, 10, 5, 2, "#202833");
   rrect(c, x + 18, F - 14, 10, 5, 2, "#a6483c");
@@ -840,6 +874,7 @@ function bookshelf(
   games = false,
   /** Reservierte Fächer der Reihe nach – für die Spielmodule im Regal. */
   gap?: readonly { row: number; index: number; item?: (c: C, x: number, y: number, w: number, h: number) => void }[],
+  farben: readonly string[] = BOOK_COLS,
 ) {
   rect(c, x, F - h, w, h, "#6f4f2c");
   rect(c, x + 3, F - h + 3, w - 6, h - 6, "#35261a");
@@ -857,7 +892,7 @@ function bookshelf(
       if (reserved && fach) {
         if (fach.item) fach.item(c, bx, base - bh, bw, bh);
       } else {
-        rect(c, bx, base - bh, bw, bh, BOOK_COLS[(i * 3 + r * 5 + seed) % BOOK_COLS.length]);
+        rect(c, bx, base - bh, bw, bh, farben[(i * 3 + r * 5 + seed) % farben.length]);
       }
       bx += bw + 0.8;
       i++;
@@ -877,6 +912,7 @@ function drawBedScene(
   sarg = false,
   outfit: "dressed" | "towel" | "none" = "dressed",
   glasses = false,
+  weihnacht = false,
 ) {
   const zug = clamp(o.pull, 0, 1);
   const links = lerp(338, 320, zug);
@@ -903,7 +939,7 @@ function drawBedScene(
     c.restore();
   }
   c.restore();
-  drawBlanket(c, t, o.pull, sarg);
+  drawBlanket(c, t, o.pull, sarg, weihnacht);
 }
 
 /**
@@ -927,6 +963,7 @@ function clipBedCover(c: C, links: number, oben: number) {
 function drawBedCloth(
   c: C, links: number, oben: number, falten: number, t: number,
   rechts = 386, unten = FLOOR_Y[2] - 16, gather = 0, welle = 0,
+  weihnacht = false,
 ) {
   const w = rechts - links, h = unten - oben;
   const g = clamp(gather, 0, 1);
@@ -967,14 +1004,17 @@ function drawBedCloth(
   c.quadraticCurveTo(links, naheUnten - 2, links, naheUnten - 7);
   c.lineTo(links, naheOben + 7);
   c.quadraticCurveTo(links, naheOben, links + 4, naheOben);
-  c.fillStyle = "#3f7f8c";
-  c.fill();
+  if (weihnacht) winterSteppdecke(c, links, oben, w, h, g);
+  else {
+    c.fillStyle = "#3f7f8c";
+    c.fill();
+  }
 
   // Aufgerollte Nahkante: der Stoff stapelt sich, statt als Platte zu wandern
   if (g > 0.03) {
     c.save();
     c.globalAlpha = 0.9 * g;
-    c.fillStyle = "#5da0a8";
+    c.fillStyle = weihnacht ? WEIHNACHTS_FARBEN.decke.licht : "#5da0a8";
     c.beginPath();
     c.ellipse(links + 3.4, (naheOben + naheUnten) / 2, 3.4 + g * 1.6, (naheUnten - naheOben) / 2 - 1.5, 0, 0, Math.PI * 2);
     c.fill();
@@ -992,7 +1032,7 @@ function drawBedCloth(
 
   c.lineCap = "round";
   c.lineWidth = 1.7;
-  c.strokeStyle = "#5da0a8";
+  c.strokeStyle = weihnacht ? WEIHNACHTS_FARBEN.creme : "#5da0a8";
   c.beginPath();
   c.moveTo(links + 3, ry(links + 3, naheOben + 2.6));
   c.bezierCurveTo(
@@ -1016,7 +1056,7 @@ function drawBedCloth(
   const faltenKraft = Math.max(falten, g);
   if (faltenKraft > 0.01) {
     c.globalAlpha = faltenKraft * 0.55;
-    c.strokeStyle = "#275d68";
+    c.strokeStyle = weihnacht ? WEIHNACHTS_FARBEN.decke.falte : "#275d68";
     c.lineWidth = 1;
     const stauch = 1 - 0.4 * g;
     for (let i = 0; i < 3; i++) {
@@ -1034,12 +1074,12 @@ function drawBedCloth(
 
 /** Eine einzige Decke auf der Matratze. Im normalen Haus hat sie beim Liegen
  *  dieselbe Dicke wie beim Zudecken (Oberkante 281, Unterkante 308). */
-function drawBlanket(c: C, t: number, pull = 1, sarg = false) {
+function drawBlanket(c: C, t: number, pull = 1, sarg = false, weihnacht = false) {
   const p = clamp(pull, 0, 1);
   const x = lerp(338, 320, p);
   if (!sarg) {
     const y = lerp(288, 281, p) + Math.sin(t * 1.1) * 0.15;
-    drawBedCloth(c, x, y, 0, t);
+    drawBedCloth(c, x, y, 0, t, 386, FLOOR_Y[2] - 16, 0, 0, weihnacht);
     return;
   }
   const y = FLOOR_Y[2] - 36 - 12 * p + Math.sin(t * 1.1) * 0.15;
@@ -1076,9 +1116,9 @@ function bedBlanketPushHand(p: number): Pt {
   return [lerp(BETT_STAND_X + 8, 349.7, sanft(p)), pose.oben + 4];
 }
 
-function drawBedEntryBlanket(c: C, t: number, phase: BedEntryPhase, p: number) {
+function drawBedEntryBlanket(c: C, t: number, phase: BedEntryPhase, p: number, weihnacht = false) {
   const pose = bedBlanketPose(phase, p);
-  drawBedCloth(c, pose.links, pose.oben, pose.falten, t, 386, FLOOR_Y[2] - 16, pose.gather, pose.welle);
+  drawBedCloth(c, pose.links, pose.oben, pose.falten, t, 386, FLOOR_Y[2] - 16, pose.gather, pose.welle, weihnacht);
 }
 
 /** Schlaf-Zzz: steigen in kleinen Gruppen auf (Pixelschrift, keine Webschrift). */
@@ -1120,14 +1160,21 @@ function golCartridge(c: C, x: number, y: number, w: number, h: number) {
   c.fillRect(x + 1.1, y + 1.1 + s * 2.5, s, s);
 }
 
-function sofa(c: C, x: number, F: number) {
-  rrect(c, x, F - 26, 90, 26, 7, "#3f7f8c");
-  rrect(c, x + 6, F - 46, 78, 24, 8, "#59a3ac");
-  rrect(c, x + 8, F - 30, 36, 14, 5, "#6bb4bb");
-  rrect(c, x + 46, F - 30, 36, 14, 5, "#6bb4bb");
-  rrect(c, x - 6, F - 36, 14, 36, 6, "#2f6470");
-  rrect(c, x + 82, F - 36, 14, 36, 6, "#2f6470");
-  rrect(c, x + 12, F - 44, 16, 14, 5, "#e2b24a");
+function sofa(c: C, x: number, F: number, weihnacht = false) {
+  const farben = weihnacht ? WEIHNACHTS_FARBEN.moebel.sofa
+    : { kasten: "#3f7f8c", lehne: "#59a3ac", sitz: "#6bb4bb", arm: "#2f6470", kissen: "#e2b24a" };
+  rrect(c, x, F - 26, 90, 26, 7, farben.kasten);
+  rrect(c, x + 6, F - 46, 78, 24, 8, farben.lehne);
+  rrect(c, x + 8, F - 30, 36, 14, 5, farben.sitz);
+  rrect(c, x + 46, F - 30, 36, 14, 5, farben.sitz);
+  rrect(c, x - 6, F - 36, 14, 36, 6, farben.arm);
+  rrect(c, x + 82, F - 36, 14, 36, 6, farben.arm);
+  rrect(c, x + 12, F - 44, 16, 14, 5, farben.kissen);
+  if (weihnacht) {
+    rrect(c, x + 68, F - 43, 13.5, 12, 3.8, WEIHNACHTS_FARBEN.leinen);
+    line(c, x + 10, F - 19, x + 42, F - 19, "rgba(90,61,44,.27)", 0.8);
+    line(c, x + 48, F - 19, x + 80, F - 19, "rgba(90,61,44,.27)", 0.8);
+  }
 }
 
 function floorLamp(c: C, x: number, F: number) {
@@ -1136,8 +1183,8 @@ function floorLamp(c: C, x: number, F: number) {
   poly(c, [[x - 12, F - 74], [x + 12, F - 74], [x + 8, F - 90], [x - 8, F - 90]], "#e8dcc4");
 }
 
-function tvSet(c: C, x: number, F: number) {
-  rrect(c, x, F - 20, 54, 20, 3, "#8a6a3c");
+function tvSet(c: C, x: number, F: number, weihnacht = false) {
+  rrect(c, x, F - 20, 54, 20, 3, weihnacht ? WEIHNACHTS_FARBEN.holz : "#8a6a3c");
   rect(c, x + 3, F - 14, 22, 1.4, "rgba(0,0,0,.3)");
   rect(c, x + 29, F - 14, 22, 1.4, "rgba(0,0,0,.3)");
   rrect(c, x + 4, F - 56, 46, 36, 4, "#1d242a");
@@ -1270,19 +1317,19 @@ function kellerTuer(c: C, x: number, F: number) {
   disc(c, x + 38, F - 40, 2.2, "#e6c36a");
 }
 
-function fridge(c: C, x: number, F: number) {
-  rrect(c, x, F - 78, 38, 78, 4, "#e6ecec");
+function fridge(c: C, x: number, F: number, weihnacht = false) {
+  rrect(c, x, F - 78, 38, 78, 4, weihnacht ? WEIHNACHTS_FARBEN.moebel.kueche.kuehlschrank : "#e6ecec");
   rect(c, x, F - 50, 38, 3, "#c3d0cf");
   rect(c, x + 5, F - 70, 3, 14, "#93a5a4");
   rect(c, x + 5, F - 44, 3, 12, "#93a5a4");
-  rect(c, x + 16, F - 68, 8, 8, "#ff6f61");
-  rect(c, x + 26, F - 62, 8, 10, "#ffd166");
+  rect(c, x + 16, F - 68, 8, 8, weihnacht ? WEIHNACHTS_FARBEN.rot : "#ff6f61");
+  rect(c, x + 26, F - 62, 8, 10, weihnacht ? WEIHNACHTS_FARBEN.gold : "#ffd166");
 }
 
-function kitchenCounter(c: C, x: number, F: number, w: number) {
-  rect(c, x, F - 36, w, 36, "#3f5a6b");
+function kitchenCounter(c: C, x: number, F: number, w: number, weihnacht = false) {
+  rect(c, x, F - 36, w, 36, weihnacht ? WEIHNACHTS_FARBEN.moebel.kueche.front : "#3f5a6b");
   for (const dx of [0, w * 0.34, w * 0.67, w - 1.5]) rect(c, x + dx, F - 36, 1.5, 36, "rgba(0,0,0,.28)");
-  rect(c, x - 1, F - 40, w + 2, 4, "#efe8d8");
+  rect(c, x - 1, F - 40, w + 2, 4, weihnacht ? WEIHNACHTS_FARBEN.moebel.kueche.platte : "#efe8d8");
   rrect(c, x + 6, F - 41, 24, 4, 2, "#aeb8bb");
   line(c, x + 22, F - 41, x + 22, F - 52, "#8fa6b2", 2);
   line(c, x + 22, F - 52, x + 28, F - 52, "#8fa6b2", 2);
@@ -1429,9 +1476,9 @@ function cigPile(c: C, x: number, F: number, n: number) {
 }
 
 /** Küchentisch: Platte, auf der Luni stopft. Oberkante = F-36. */
-function kitchenTable(c: C, x: number, F: number, w: number) {
+function kitchenTable(c: C, x: number, F: number, w: number, weihnacht = false) {
   const top = F - 36;
-  rrect(c, x, top, w, 5, 2, "#a67c52");
+  rrect(c, x, top, w, 5, 2, weihnacht ? WEIHNACHTS_FARBEN.moebel.kueche.tisch : "#a67c52");
   rect(c, x + 4, top + 5, 4, F - top - 5, "#6f4a2a");
   rect(c, x + w - 8, top + 5, 4, F - top - 5, "#6f4a2a");
   rect(c, x + 4, top + 18, w - 8, 3, "#7a5a34");
@@ -1446,36 +1493,42 @@ function chair(c: C, x: number, F: number, backLeft: boolean) {
 
 /* --- Möbel: 1. Stock --- */
 
-function bed(c: C, x: number, F: number, belegt = false) {
-  rrect(c, x, F - 52, 8, 52, 3, "#6f4a2a");
-  rrect(c, x + 104, F - 34, 8, 34, 3, "#6f4a2a");
-  rect(c, x + 6, F - 18, 100, 12, "#8a5a34");
-  rrect(c, x + 8, F - 30, 98, 14, 5, "#f2efe6");
-  rrect(c, x + 12, F - 38, 30, 12, 6, "#ffffff");
+function bed(c: C, x: number, F: number, belegt = false, weihnacht = false) {
+  if (weihnacht) weihnachtsBettgestell(c, x, F);
+  else {
+    rrect(c, x, F - 52, 8, 52, 3, "#6f4a2a");
+    rrect(c, x + 104, F - 34, 8, 34, 3, "#6f4a2a");
+    rect(c, x + 6, F - 18, 100, 12, "#8a5a34");
+    rrect(c, x + 8, F - 30, 98, 14, 5, "#f2efe6");
+    rrect(c, x + 12, F - 38, 30, 12, 6, "#ffffff");
+  }
   if (!belegt) {
-    drawBedCloth(c, x + 46, F - 36, 0, 0, x + 104, F - 16);
+    drawBedCloth(c, x + 46, F - 36, 0, 0, x + 104, F - 16, 0, 0, weihnacht);
+    if (weihnacht) weihnachtsstrumpf(c, x + 108, F - 26, 0.83);
   }
 }
 
 /** Vorderkante des Bettes, vor der Luni sichtbar bleibt. */
-function drawBedFront(c: C, x: number, F: number) {
-  rect(c, x + 6, F - 16, 100, 10, "#8a5a34");
-  rrect(c, x + 104, F - 34, 8, 34, 3, "#6f4a2a");
+function drawBedFront(c: C, x: number, F: number, weihnacht = false) {
+  rect(c, x + 6, F - 16, 100, 10, weihnacht ? WEIHNACHTS_FARBEN.holz : "#8a5a34");
+  rrect(c, x + 104, F - 34, 8, 34, 3, weihnacht ? WEIHNACHTS_FARBEN.holztief : "#6f4a2a");
+  if (weihnacht) weihnachtsstrumpf(c, x + 108, F - 26, 0.83);
 }
 
-function nightstand(c: C, x: number, F: number) {
-  rect(c, x, F - 26, 26, 26, "#8a6a3c");
-  rect(c, x + 3, F - 22, 20, 8, "#7a5a30");
+function nightstand(c: C, x: number, F: number, weihnacht = false) {
+  rect(c, x, F - 26, 26, 26, weihnacht ? WEIHNACHTS_FARBEN.holz : "#8a6a3c");
+  rect(c, x + 3, F - 22, 20, 8, weihnacht ? WEIHNACHTS_FARBEN.holztief : "#7a5a30");
   disc(c, x + 13, F - 18, 1.4, "#e6c36a");
   rect(c, x + 12, F - 36, 2.5, 10, "#20343c");
   poly(c, [[x + 4, F - 36], [x + 22, F - 36], [x + 18, F - 50], [x + 8, F - 50]], "#f2d9a0");
 }
 
-function wardrobe(c: C, x: number, F: number) {
-  rrect(c, x, F - 84, 48, 84, 3, "#9b7447");
+function wardrobe(c: C, x: number, F: number, weihnacht = false) {
+  rrect(c, x, F - 84, 48, 84, 3, weihnacht ? WEIHNACHTS_FARBEN.holzlicht : "#9b7447");
   rect(c, x + 23, F - 80, 2, 76, "rgba(0,0,0,.3)");
-  rect(c, x + 3, F - 80, 18, 76, "#8a6a3c");
-  rect(c, x + 27, F - 80, 18, 76, "#8a6a3c");
+  const tuer = weihnacht ? WEIHNACHTS_FARBEN.holz : "#8a6a3c";
+  rect(c, x + 3, F - 80, 18, 76, tuer);
+  rect(c, x + 27, F - 80, 18, 76, tuer);
   disc(c, x + 20, F - 42, 1.6, "#e6c36a");
   disc(c, x + 28, F - 42, 1.6, "#e6c36a");
 }
@@ -1483,19 +1536,19 @@ function wardrobe(c: C, x: number, F: number) {
 
 /* --- Möbel: Dachgeschoss --- */
 
-function beanbag(c: C, x: number, F: number) {
+function beanbag(c: C, x: number, F: number, weihnacht = false) {
   c.beginPath();
   c.moveTo(x, F);
   c.quadraticCurveTo(x - 2, F - 20, x + 18, F - 24);
   c.quadraticCurveTo(x + 30, F - 28, x + 40, F - 20);
   c.quadraticCurveTo(x + 58, F - 12, x + 56, F);
   c.closePath();
-  c.fillStyle = "#ff6f61";
+  c.fillStyle = weihnacht ? WEIHNACHTS_FARBEN.moebel.gaming.sitzsack : "#ff6f61";
   c.fill();
-  c.globalAlpha = 0.25;
+  c.globalAlpha = weihnacht ? 0.58 : 0.25;
   c.beginPath();
   c.ellipse(x + 26, F - 17, 14, 4, -0.2, 0, Math.PI * 2);
-  c.fillStyle = "#ffffff";
+  c.fillStyle = weihnacht ? WEIHNACHTS_FARBEN.moebel.gaming.sitzsacklicht : "#ffffff";
   c.fill();
   c.globalAlpha = 1;
 }
@@ -1784,12 +1837,12 @@ function drawKerzenlicht(
   c.restore();
 }
 
-function lowboardTV(c: C, x: number, F: number) {
-  rrect(c, x, F - 22, 66, 22, 3, "#2a2a38");
+function lowboardTV(c: C, x: number, F: number, weihnacht = false) {
+  rrect(c, x, F - 22, 66, 22, 3, weihnacht ? WEIHNACHTS_FARBEN.moebel.gaming.fernsehtisch : "#2a2a38");
   rect(c, x + 4, F - 16, 26, 1.4, "rgba(255,255,255,.12)");
   rrect(c, x + 3, F - 66, 60, 44, 3, "#15171c");
   rect(c, x + 6, F - 63, 54, 34, "#0a0d12");
-  rect(c, x + 38, F - 20, 20, 4, "#3b3f4a");
+  rect(c, x + 38, F - 20, 20, 4, weihnacht ? WEIHNACHTS_FARBEN.moebel.gaming.fach : "#3b3f4a");
   disc(c, x + 56, F - 18, 1, "#35d6c0");
 }
 
@@ -2005,7 +2058,8 @@ function guitar(c: C, x: number, F: number) {
 
 /* --- Möbel: Keller --- */
 
-function shelving(c: C, x: number, F: number, w: number, h: number, seed: number) {
+function shelving(c: C, x: number, F: number, w: number, h: number, seed: number, weihnacht = false) {
+  const farben = weihnacht ? WEIHNACHTS_FARBEN.moebel.kellerregal : ["#b9915a", "#6f9a6a", "#c9453a", "#8a7a62"];
   rect(c, x, F - h, 3, h, "#5b6064");
   rect(c, x + w - 3, F - h, 3, h, "#5b6064");
   const rows = 4;
@@ -2019,10 +2073,9 @@ function shelving(c: C, x: number, F: number, w: number, h: number, seed: number
       const bw = 7 + ((i * 5 + seed) % 9);
       const bh = 8 + ((i * 3 + r) % 10);
       const cw = Math.min(bw, x + w - 6 - bx);
-      if (kind === 0) rect(c, bx, y - 2 - bh, cw, bh, "#b9915a");
-      else if (kind === 1) rrect(c, bx, y - 13, Math.min(8, cw), 11, 2, "#6f9a6a");
-      else if (kind === 2) rect(c, bx, y - 11, Math.min(9, cw), 9, "#c9453a");
-      else rect(c, bx, y - 2 - bh, cw, bh, "#8a7a62");
+      if (kind === 1) rrect(c, bx, y - 13, Math.min(8, cw), 11, 2, farben[kind]);
+      else if (kind === 2) rect(c, bx, y - 11, Math.min(9, cw), 9, farben[kind]);
+      else rect(c, bx, y - 2 - bh, cw, bh, farben[kind]);
       bx += cw + 2;
       i++;
     }
@@ -2391,10 +2444,12 @@ function saxStand(c: C, x: number, F: number) {
 
 /** Mikrofonstaender: Stange, Fuss und Mikrofonkopf am Gesangsplatz. */
 function micStand(c: C, x: number, F: number) {
-  line(c, x, F, x, F - 44, "#2a2420", 2);
+  // Kurz: Der Mikrofonkopf liegt knapp unter Lunis Mund (etwa F - 27 bis F - 18),
+  // damit er ihr Gesicht und den Mund frei lässt.
+  line(c, x, F, x, F - 18, "#2a2420", 2);
   line(c, x - 7, F - 1, x + 7, F - 1, "#2a2420", 2.2);
-  rrect(c, x - 2.6, F - 52, 5.2, 9, 2.4, "#3a3430");
-  rect(c, x - 2.6, F - 50, 5.2, 1, "rgba(255,255,255,.22)");
+  rrect(c, x - 2.6, F - 27, 5.2, 9, 2.4, "#3a3430");
+  rect(c, x - 2.6, F - 25, 5.2, 1, "rgba(255,255,255,.22)");
 }
 
 /** Zigarette in der Hand, mit glimmender Spitze */
@@ -2559,7 +2614,7 @@ function zuendPose(x: number, y: number, face: 1 | -1, t: number, aufTisch: bool
 }
 
 /** Draußen rechts: Garten mit Weg zur Kellertür */
-function gardenOutside(c: C) {
+function gardenOutside(c: C, deko = true) {
   // Hinterschneidung: das Erdreich hinter dem Haus
   rect(c, HR + 12, FK + 14, W - HR - 12, H - FK - 14, "#3a2c22");
   // Gartenfläche auf Kellerhöhe
@@ -2576,11 +2631,11 @@ function gardenOutside(c: C) {
     rect(c, x - 0.5, FK - 24, 7, 3, "#ffffff");
   }
   rect(c, HR + 20, FK - 17, 104, 2, "#d9cfb8");
-  fir(c, W - 22, FK, 118, true);
-  snowman(c, HR + 62, FK);
+  fir(c, W - 22, FK, 118, deko);
+  if (deko) snowman(c, HR + 62, FK);
 }
 
-function drawExterior(c: C) {
+function drawExterior(c: C, deko = true) {
   // links: Vorgarten auf Erdgeschoss-Höhe über dem Erdreich
   rect(c, 0, FE + 12, CEL_X0, H - FE - 12, "#4a382c");
   for (let i = 0; i < 34; i++) {
@@ -2590,9 +2645,9 @@ function drawExterior(c: C) {
   }
   rect(c, 0, FE, 100, 12, "#eef4fa");
   rect(c, 0, FE, 100, 2.4, "#ffffff");
-  fir(c, 20, FE, 110, true);
+  fir(c, 20, FE, 110, deko);
   mailbox(c, 68, FE);
-  gardenOutside(c);
+  gardenOutside(c, deko);
 }
 
 function drawRoof(c: C) {
@@ -2734,23 +2789,43 @@ export function schneedecke(c: C) {
   c.restore();
 }
 
-/**
- * Weihnachtliche Tapete für das Musikzimmer (Dachgeschoss): dunkles Grün mit
- * cremefarbenem Rautenmuster, kleinen Tännchen und goldenen Punkten, unten eine
- * Bordüre. Reine Canvas-Primitive, keine Bilddatei.
- */
-export function weihnachtsTapete(c: C, x0: number, x1: number, yTop: number, yBot: number, rot = false) {
-  const grund = rot ? "#56323b" : "#2c4638";
-  const creme = "rgba(240,232,205,.28)";
-  const gold = "rgba(240,203,112,.5)";
+/** Weihnachtstapeten als reine Canvas-Zeichnung; das Musikzimmer bleibt unveraendert. */
+export function weihnachtsTapete(c: C, x0: number, x1: number, yTop: number, yBot: number, zimmer: ZimmerTapete = "musik") {
+  if (zimmer !== "musik") {
+    ruhigeWeihnachtswand(c, x0, yTop, x1 - x0, yBot - yTop, zimmer);
+    return;
+  }
+  const { grund, bord } = ZIMMER_TAPETEN.musik;
   rect(c, x0, yTop, x1 - x0, yBot - yTop, grund);
   c.globalAlpha = 0.05;
   for (let x = x0 + 8; x < x1; x += 22) rect(c, x, yTop, 9, yBot - yTop, "#ffffff");
   c.globalAlpha = 1;
-  // Rautenmuster mit Tännchen
+  const bordure = 26;
+  // Das Muster bleibt über der Bordüre und innerhalb der Wand.
+  c.save();
+  c.beginPath();
+  c.rect(x0, yTop + 3, x1 - x0, yBot - bordure - yTop - 3);
+  c.clip();
+  musikzimmerTapetenMuster(c, x0, x1, yTop, yBot, bordure);
+  c.restore();
+  rect(c, x0, yTop, x1 - x0, 2.4, "rgba(240,203,112,.45)");
+  rect(c, x0, yBot - bordure, x1 - x0, bordure, bord);
+  rect(c, x0, yBot - bordure, x1 - x0, 1.4, "rgba(240,203,112,.45)");
+  for (let x = x0 + 10; x < x1 - 6; x += 22) {
+    c.fillStyle = "rgba(240,203,112,.35)";
+    c.beginPath();
+    c.arc(x, yBot - bordure / 2, 1.1, 0, Math.PI * 2);
+    c.fill();
+  }
+}
+
+// Rautenmuster mit Taennchen: das bestehende Muster des Musikzimmers.
+function musikzimmerTapetenMuster(c: C, x0: number, x1: number, yTop: number, yBot: number, bordure: number) {
+  const creme = "rgba(240,232,205,.28)";
+  const gold = "rgba(240,203,112,.5)";
   const breite = 28, hoehe = 32;
   let reihe = 0;
-  for (let y = yTop + 12; y < yBot - 8; y += hoehe, reihe++) {
+  for (let y = yTop + 12; y < yBot - bordure; y += hoehe, reihe++) {
     const versatz = (reihe % 2) * (breite / 2);
     for (let x = x0 + 10 + versatz; x < x1 - 6; x += breite) {
       c.strokeStyle = creme;
@@ -2781,17 +2856,6 @@ export function weihnachtsTapete(c: C, x0: number, x1: number, yTop: number, yBo
       c.arc(tx, ty - 5.6, 0.75, 0, Math.PI * 2);
       c.fill();
     }
-  }
-  // Bordüre oben und unten
-  rect(c, x0, yTop, x1 - x0, 2.4, "rgba(240,203,112,.45)");
-  const bord = 26;
-  rect(c, x0, yBot - bord, x1 - x0, bord, rot ? "#40232c" : "#22382d");
-  rect(c, x0, yBot - bord, x1 - x0, 1.4, "rgba(240,203,112,.45)");
-  for (let x = x0 + 10; x < x1 - 6; x += 22) {
-    c.fillStyle = "rgba(240,203,112,.35)";
-    c.beginPath();
-    c.arc(x, yBot - bord / 2, 1.1, 0, Math.PI * 2);
-    c.fill();
   }
 }
 
@@ -2856,22 +2920,26 @@ const hashTile = (r: number, q: number) => {
 };
 
 /** Fliesen nach Vorlage: gleichmäßige grüne Quadrate mit dunkler Fuge. */
-function bathTiles(c: C, x0: number, x1: number, yTop: number, yBot: number) {
-  rect(c, x0, yTop, x1 - x0, yBot - yTop, TILE_GROUT);
+function bathTiles(c: C, x0: number, x1: number, yTop: number, yBot: number, weihnacht = false) {
+  const fugen = weihnacht ? ZIMMER_TAPETEN.badezimmer.bord : TILE_GROUT;
+  const { helleFliese, dunkleFliese } = WEIHNACHTS_FARBEN.moebel.bad;
+  const inset = weihnacht ? 0.48 : 1;
+  rect(c, x0, yTop, x1 - x0, yBot - yTop, fugen);
   const cols = Math.ceil((x1 - x0) / TILE);
   const rows = Math.ceil((yBot - yTop) / TILE);
   for (let r = 0; r < rows; r++) {
     for (let q = 0; q < cols; q++) {
-      const tx = x0 + q * TILE + 1;
-      const ty = yTop + r * TILE + 1;
-      const tw = Math.min(TILE - 2, x1 - 1 - tx);
-      const th = Math.min(TILE - 2, yBot - 1 - ty);
+      const tx = x0 + q * TILE + inset;
+      const ty = yTop + r * TILE + inset;
+      const tw = Math.min(TILE - 2 * inset, x1 - inset - tx);
+      const th = Math.min(TILE - 2 * inset, yBot - inset - ty);
       if (tw <= 0 || th <= 0) continue;
-      rect(c, tx, ty, tw, th, hashTile(r, q) > 0.5 ? TILE_A : TILE_B);
-      rect(c, tx, ty, tw, 1, "rgba(255,255,255,.14)");
+      const hell = hashTile(r, q) > 0.5;
+      rect(c, tx, ty, tw, th, weihnacht ? (hell ? helleFliese : dunkleFliese) : (hell ? TILE_A : TILE_B));
+      rect(c, tx, ty, tw, 1, weihnacht ? "rgba(230,215,189,.07)" : "rgba(255,255,255,.14)");
     }
   }
-  rect(c, x0, yBot - 3, x1 - x0, 3, TILE_GROUT);
+  rect(c, x0, yBot - 3, x1 - x0, 3, fugen);
 }
 
 /**
@@ -2945,8 +3013,12 @@ function drawHouse(
   weihnacht = false,
   /** Teleflauschi-Modul liegt im Regal (nur das Weihnachtshaus). */
   flauschiOnShelf = false,
+  /** false = das normale Haus ohne Weihnachtsdeko: keine Weihnachtskiste, draußen keine Lichter und kein Schneemann. */
+  weihnachtsdeko = true,
 ) {
-  drawExterior(c);
+  const festlich = weihnacht && !gr;
+  const farben = WEIHNACHTS_FARBEN.moebel;
+  drawExterior(c, weihnachtsdeko);
 
   /* ---- Wände ---- */
   // Dachgeschoss (innerhalb der Dachschräge)
@@ -2958,7 +3030,8 @@ function drawHouse(
   c.lineTo(270, FO);
   c.closePath();
   c.clip();
-  wallBand(c, HL, 270, 30, FO, "#8a8fb3", "#7075a0", 26);
+  if (weihnacht && !gr) weihnachtsTapete(c, HL, 270, 30, FO, "gamingRand");
+  else wallBand(c, HL, 270, 30, FO, "#8a8fb3", "#7075a0", 26);
   c.restore();
 
   c.save();
@@ -2971,37 +3044,46 @@ function drawHouse(
   c.closePath();
   c.clip();
   if (gr?.raumstation) drawMetalWall(c, DG_X0, 530, 30, FD, atticCeil);
-  else if (weihnacht && !gr) weihnachtsTapete(c, DG_X0, 530, 30, FD, true);
+  else if (weihnacht && !gr) weihnachtsTapete(c, DG_X0, 530, 30, FD, "gaming");
   else wallBand(c, DG_X0, 530, 30, FD, "#4a4f92", "#383d7c", 30);
-  if (weihnacht && !gr) weihnachtsTapete(c, 530, HR, 30, FD);
+  if (weihnacht && !gr) weihnachtsTapete(c, 530, HR, 30, FD, "musik");
   else wallBand(c, 530, HR, 30, FD, "#9a5750", "#7e433e", 30);
   c.restore();
 
   // 1. Stock
   if (gr?.schlafzimmer) {
     drawBurgWand(c, 270, 490, FD + SLAB, FO);
-  } else {
-    wallBand(c, 270, 490, FD + SLAB, FO, "#b9808f", "#9c6676", 30);
-  }
+  } else if (festlich) weihnachtsTapete(c, 270, 490, FD + SLAB, FO, "schlafzimmer");
+  else wallBand(c, 270, 490, FD + SLAB, FO, "#b9808f", "#9c6676", 30);
   if (gr?.badezimmer) drawBioBadWall(c);
-  else bathTiles(c, 490, OG_X1, FD + SLAB, FO);
+  else bathTiles(c, 490, OG_X1, FD + SLAB, FO, festlich);
   // Treppenhaus rechts (über EG und 1. Stock)
-  wallBand(c, OG_X1, HR, FD + SLAB, FE, "#cdb78f", "#b79f74", 30);
+  if (weihnacht && !gr) weihnachtsTapete(c, OG_X1, HR, FD + SLAB, FE, "treppenhaus");
+  else wallBand(c, OG_X1, HR, FD + SLAB, FE, "#cdb78f", "#b79f74", 30);
   // Erdgeschoss
-  wallBand(c, HL, 250, FO + SLAB, FE, "#7d93a3", "#5f7584", 30);
-  wallBand(c, 250, 560, FO + SLAB, FE, "#6f9a93", "#55807a", 30);
-  wallBand(c, 560, OG_X1, FO + SLAB, FE, "#dcbc70", "#c9a458", 34);
+  if (weihnacht && !gr) weihnachtsTapete(c, HL, 250, FO + SLAB, FE, "flur");
+  else wallBand(c, HL, 250, FO + SLAB, FE, "#7d93a3", "#5f7584", 30);
+  if (weihnacht && !gr) weihnachtsTapete(c, 250, 560, FO + SLAB, FE, "wohnzimmer");
+  else wallBand(c, 250, 560, FO + SLAB, FE, "#6f9a93", "#55807a", 30);
+  if (weihnacht && !gr) weihnachtsTapete(c, 560, OG_X1, FO + SLAB, FE, "kueche");
+  else wallBand(c, 560, OG_X1, FO + SLAB, FE, "#dcbc70", "#c9a458", 34);
   // Keller
-  wallBand(c, CEL_X0, 590, FE + SLAB, FK, "#6f746f", "#5a5f5a", 26);
-  wallBand(c, 590, HR, FE + SLAB, FK, "#6f746f", "#5a5f5a", 26);
+  if (festlich) weihnachtsTapete(c, CEL_X0, HR, FE + SLAB, FK, "keller");
+  else {
+    wallBand(c, CEL_X0, 590, FE + SLAB, FK, "#6f746f", "#5a5f5a", 26);
+    wallBand(c, 590, HR, FE + SLAB, FK, "#6f746f", "#5a5f5a", 26);
+  }
 
   /* ---- Böden ---- */
   const WOOD = "#a06f45";
-  slab(c, CEL_X0, HR, FK, [[CEL_X0, 590, "#8a8d88", "none"], [590, HR, "#777a74", "none"]], "#2a2522");
-  slab(c, 98, HR, FE, [[98, 560, WOOD, "wood"], [560, HR, "#e8e2d2", "tile"]]);
-  slab(c, 98, OG_X1 + 2, FO, [[98, 490, "#a87a52", "wood"],
-    [490, OG_X1 + 2, gr?.badezimmer ? "#536260" : "#4d9a66", "tile"]]);
-  slab(c, DG_X0, HR, FD, [[DG_X0, 530, gr?.raumstation ? "#5a5a6a" : "#3e3b52", "none"], [530, HR, WOOD, "wood"]]);
+  slab(c, CEL_X0, HR, FK, [[CEL_X0, 590, festlich ? farben.boeden.keller : "#8a8d88", "none"],
+    [590, HR, festlich ? farben.boeden.rauchraum : "#777a74", "none"]], "#2a2522");
+  slab(c, 98, HR, FE, [[98, 560, festlich ? farben.boeden.holz : WOOD, "wood"],
+    [560, HR, festlich ? farben.boeden.fliesen : "#e8e2d2", "tile"]]);
+  slab(c, 98, OG_X1 + 2, FO, [[98, 490, festlich ? farben.boeden.holz : "#a87a52", "wood"],
+    [490, OG_X1 + 2, gr?.badezimmer ? "#536260" : festlich ? farben.bad.boden : "#4d9a66", "tile"]]);
+  slab(c, DG_X0, HR, FD, [[DG_X0, 530, gr?.raumstation ? "#5a5a6a" : festlich ? farben.boeden.gaming : "#3e3b52", "none"],
+    [530, HR, WOOD, "wood"]]);
   if (gr?.raumstation) drawMetalFloor(c, DG_X0, 530, FD);
   // Hexenküche und rechtes Treppenhaus: Bruchstein, Pflaster, Einrichtung.
   if (gr?.kueche) drawHexenkuecheRaum(c);
@@ -3025,6 +3107,10 @@ function drawHouse(
   partition(c, 530, atticCeil(530), FD);
   partition(c, 590, FE + SLAB, FK);
 
+  // Das hohe Fenster im rechten Treppenhaus kommt vor die Treppe: Ihr Geländer
+  // läuft davor, nicht dahinter.
+  if (!gr?.kueche) windowRect(c, sky, 740, 236, 44, 78, { mull: 2, kranz: weihnacht && !gr });
+
   /* ---- Treppen ---- */
   // Im Gruselhaus kommt die Treppe zum 1. Stock als Steintreppe erst nach
   // dem Fenster – so liegt ihr Geländer davor statt dahinter.
@@ -3039,36 +3125,45 @@ function drawHouse(
   }
 
   /* ---- Fenster ---- */
-  windowRect(c, sky, 330, 358, 64, 38, { curtain: "#c9453a" });
-  if (!gr?.kueche) windowRect(c, sky, 624, 364, 50, 36);
+  windowRect(c, sky, 330, 358, 64, 38, { curtain: "#c9453a", kranz: weihnacht && !gr });
+  if (!gr?.kueche) windowRect(c, sky, 624, 364, 50, 36, { kranz: weihnacht && !gr });
   if (gr?.kueche) {
     drawKuchenFenster(c, sky);
     const st = STAIRS.find((x) => x.id === "eg_og");
     if (st) drawSteintreppe(c, st.footX, FLOOR_Y[st.lower], st.topX, FLOOR_Y[st.upper]);
-  } else windowRect(c, sky, 740, 236, 44, 78, { mull: 2 });
+  }
   if (!gr?.schlafzimmer) {
-    windowRect(c, sky, 334, 244, 62, 46, { curtain: "#7a3f55" });
+    windowRect(c, sky, 334, 244, 62, 46, { curtain: "#7a3f55", kranz: weihnacht && !gr });
   }
   if (gr?.raumstation) drawSpaceWindow(c, RS.fenster.x, RS.fenster.y, RS.fenster.r);
-  else windowRect(c, sky, 330, 98, 56, 44, { mull: 2 });
-  roundWindow(c, sky, 590, 104, 20);
+  else windowRect(c, sky, 330, 98, 56, 44, { mull: 2, kranz: weihnacht && !gr });
+  roundWindow(c, sky, 590, 104, 20, weihnacht && !gr);
 
   /* ---- Erdgeschoss ---- */
-  haustuer(c, sky, 135, FE);
-  garderobe(c, 198, FE);
+  if (festlich) weihnachtsLichtfleck(c, [HL, FO + SLAB, 250 - HL, FE - FO - SLAB], 163, FE - 2, 71, 45, 0.19);
+  haustuer(c, sky, 135, FE, festlich);
+  if (festlich) weihnachtsWandkranz(c, 161, FE - 28, 7.3, true);
+  garderobe(c, 198, FE, festlich);
   ceilingLamp(c, 170, FO + SLAB, 14);
-  bookshelf(c, 258, FE, 32, 92, 5, 2);
+  if (!festlich) bookshelf(c, 258, FE, 32, 92, 5, 2);
   c.beginPath();
   c.ellipse(388, FE + 3, 112, 6, 0, 0, Math.PI * 2);
-  c.fillStyle = "#b0524a";
+  c.fillStyle = festlich ? farben.teppich[0] : "#b0524a";
   c.fill();
   c.beginPath();
   c.ellipse(388, FE + 3, 78, 4, 0, 0, Math.PI * 2);
-  c.fillStyle = "#d9a86a";
+  c.fillStyle = festlich ? farben.teppich[2] : "#d9a86a";
   c.fill();
-  sofa(c, 312, FE);
-  floorLamp(c, 302, FE);
-  tvSet(c, 438, FE);
+  sofa(c, WEIHNACHTS_ORTE.sofa, FE, festlich);
+  if (festlich) {
+    const links = WEIHNACHTS_ORTE.wohnzimmerLinks;
+    const wand = [links, FO + SLAB, 560 - links, FE + 5 - FO - SLAB] as const;
+    weihnachtsLichtfleck(c, wand, WEIHNACHTSBAUM_X, FE - 45, 70, 71, 0.25);
+    weihnachtsLichtfleck(c, wand, WEIHNACHTSBAUM_X + 3, FE - 1, 58, 12, 0.37);
+    wohnzimmerWeihnachtsbaum(c, FE);
+    wohnzimmerBuch(c, WEIHNACHTS_ORTE.buch, FE - 35.4);
+  } else floorLamp(c, 302, FE);
+  tvSet(c, 438, FE, festlich);
   kellerTuer(c, 500, FE);
   // Gruselhaus: Küche ist leer geräumt. Wand, Boden und Fenster bleiben;
   // die Stationen bleiben unsichtbar funktionsfähig, bis das Zimmer neu kommt.
@@ -3078,34 +3173,38 @@ function drawHouse(
     hexenofenOhneRohr(c, (c) => drawOfen(c, FE, 0, 0));
     drawKessel(c, FE, 0);
   } else {
-    fridge(c, 574, FE);
-    kitchenCounter(c, 614, FE, 76);
+    fridge(c, 574, FE, festlich);
+    kitchenCounter(c, 614, FE, 76, festlich);
+    if (festlich) festzweig(c, 619, FE - 40.9, 9.3);
     teaPot(c, tee.kanne, tee.tasse, tee.fill);
     stove(c, 690, FE);
     ceilingLamp(c, 650, FO + SLAB, 14);
-    kitchenTable(c, 724, FE, 74);
+    kitchenTable(c, 724, FE, 74, festlich);
     tobaccoTin(c, 766, FE);
     chair(c, 732, FE, true);
     chair(c, 796, FE, false);
+    if (festlich) esstischAdventskranz(c, FE);
   }
 
   /* ---- 1. Stock ---- */
-  rrect(c, 236, FO - 18, 16, 18, 3, "#c96f4a");
+  rrect(c, 236, FO - 18, 16, 18, 3, festlich ? WEIHNACHTS_FARBEN.rosa : "#c96f4a");
   for (let i = 0; i < 5; i++) {
     const a = -Math.PI / 2 + (i - 2) * 0.5;
-    line(c, 244, FO - 18, 244 + Math.cos(a) * 18, FO - 18 + Math.sin(a) * 26, "#3f8f5f", 3);
-    disc(c, 244 + Math.cos(a) * 18, FO - 18 + Math.sin(a) * 26, 4, i % 2 ? "#54b071" : "#3f8f5f");
+    line(c, 244, FO - 18, 244 + Math.cos(a) * 18, FO - 18 + Math.sin(a) * 26, festlich ? WEIHNACHTS_FARBEN.blatt : "#3f8f5f", 3);
+    const blatt = festlich ? (i % 2 ? WEIHNACHTS_FARBEN.nadel : WEIHNACHTS_FARBEN.blattlicht) : (i % 2 ? "#54b071" : "#3f8f5f");
+    disc(c, 244 + Math.cos(a) * 18, FO - 18 + Math.sin(a) * 26, 4, blatt);
   }
   if (gr?.schlafzimmer) {
     drawVampirSchlafzimmer(c, FO);
   } else {
     c.beginPath();
     c.ellipse(340, FO + 3, 90, 5, 0, 0, Math.PI * 2);
-    c.fillStyle = "#8a4f63";
+    c.fillStyle = festlich ? farben.teppich[1] : "#8a4f63";
     c.fill();
-    bed(c, 282, FO, bettBelegt);
-    nightstand(c, 396, FO);
-    wardrobe(c, 434, FO);
+    if (festlich) weihnachtsWandkranz(c, 302, FO - 77, 8.6);
+    bed(c, 282, FO, bettBelegt, festlich);
+    nightstand(c, 396, FO, festlich);
+    wardrobe(c, 434, FO, festlich);
     ceilingLamp(c, 340, FD + SLAB, 14, "#f2d9a0");
   }
   if (gr?.badezimmer) drawBioBadStatic(c);
@@ -3114,6 +3213,7 @@ function drawHouse(
     wcTuer(c, WC_DOOR_X, FO);
     waschbeckenMitSpiegel(c, SINK_X, FO);
     bathCeilingLamp(c, 590, FD + SLAB, FO, 490, OG_X1);
+    if (festlich) winterBadAblage(c, FO);
   }
 
   /* ---- Dachgeschoss ---- */
@@ -3121,8 +3221,8 @@ function drawHouse(
     // Horror-Raumstation: Sessel, Terminal, Lagerregal und alle Details
     drawRaumstationMoebel(c, atticCeil, golOnShelf ? (cc, bx, by, bw, bh) => golCartridge(cc, bx, by, bw, bh) : undefined);
   } else {
-    beanbag(c, 296, FD);
-    lowboardTV(c, 404, FD);
+    beanbag(c, 296, FD, festlich);
+    lowboardTV(c, 404, FD, festlich);
     bookshelf(c, 486, FD, 38, 74, 4, 5, true, [
       {
         row: 0,
@@ -3135,8 +3235,8 @@ function drawHouse(
         index: 1,
         item: flauschiOnShelf ? (cc, bx, by, bw, bh) => drawFlauschiHuelle(cc, bx, by, bw, bh, 0) : undefined,
       },
-    ]);
-    picture(c, 276, 108, 22, 30, "#35d6c0");
+    ], festlich ? farben.buecher : BOOK_COLS);
+    picture(c, 276, 108, 22, 30, festlich ? farben.gaming.bild : "#35d6c0");
   }
   // Das normale Klavier mit zentriertem Hocker davor (Mitte x = 567); das Musikzimmer zeichnet sein eigenes.
   if (!gr) {
@@ -3153,14 +3253,15 @@ function drawHouse(
   ceilingLamp(c, 700, atticCeil(700) + 2, 30, "#f2d9a0");
 
   /* ---- Keller ---- */
-  shelving(c, 354, FK, 56, 104, 1);
-  shelving(c, 528, FK, 60, 92, 3);
+  shelving(c, 354, FK, 56, 104, 1, festlich);
+  shelving(c, 528, FK, 60, 92, 3, festlich);
   cardboard(c, 446, FK, 30, 24);
   cardboard(c, 478, FK, 24, 18);
   cardboard(c, 452, FK - 24, 22, 16);
-  xmasBox(c, 526, FK);
+  if (weihnachtsdeko) xmasBox(c, 526, FK);
   bulb(c, 470, FE + SLAB, 14);
   coatBoard(c, 604, FK);
+  if (festlich) kellerWinterdeko(c, FK);
   abstellkammer(c, SIDE_X + 26, FK);
   smokerChair(c, ASH_STAND_X - 12, FK);
   sideTable(c, SIDE_X, FK);
@@ -3296,7 +3397,7 @@ export interface HouseOptions {
   /** sichtbarer Traumstein wechselt in die leere Traumhausansicht (alt) */
   onTraumhaus?: () => void;
   /** Welche Hauswelt dieses Haus zeigt: normal, Gruselhaus oder Weihnachtshaus */
-  welt?: "normal" | "gruesel" | "weihnacht";
+  welt?: "normal" | "gruesel" | "weihnacht" | "traum";
   /** Ein Klick auf einen Wechselstein: Ziel-Hauswelt */
   onWelt?: (ziel: WeltId) => void;
   /**
@@ -3410,10 +3511,15 @@ export class House {
   private stationFokus: Station | null = null;
 
   /* ------------------------------ Hauswelt ------------------------------- */
-  private welt: "normal" | "gruesel" | "weihnacht" = "normal";
-  /** Normales Haus und Weihnachtshaus teilen 1:1 dieselbe Hauslogik. */
+  private welt: "normal" | "gruesel" | "weihnacht" | "traum" = "normal";
+  /** Normales Haus, Weihnachtshaus und das Haus ohne Weihnachtsdeko teilen 1:1 dieselbe Hauslogik. */
   private get istNormalHaus(): boolean {
-    return this.welt === "normal" || this.welt === "weihnacht";
+    return this.welt === "normal" || this.welt === "weihnacht" || this.welt === "traum";
+  }
+
+  /** Das Haus über den Traumstein ist das normale Haus ohne Weihnachtsdeko. */
+  private get weihnachtsdeko(): boolean {
+    return this.welt !== "traum";
   }
   private onWelt: ((ziel: WeltId) => void) | null = null;
   private steine: SteinSlot[] = [];
@@ -3610,6 +3716,8 @@ export class House {
   private adventSchmuckKey = "";
   /** Goldener Schimmer für das Stück, das gerade neu dazugekommen ist (Sekunden übrig). */
   private adventGlanzT = 0;
+  /** Der Weihnachtsgruß beim 24. Türchen steht, bis er weggeklickt wird. */
+  private adventGruss = false;
 
   // Lunis zwei Hunde: Odin (schmaler Fang, helles Braun) & Apollo (breiter Kopf, gestromt)
   private hunde = new HundeWelt();
@@ -3897,6 +4005,15 @@ export class House {
     } else {
       // Eigene Kopien der Hunde-Stationen, damit bewegte Trefferflächen STATIONS nie verändern.
       this.stations = STATIONS.map((s) => (s.id === "odin" || s.id === "apollo" ? { ...s, hits: [...s.hits] } : s));
+      if (this.welt === "weihnacht") {
+        const buch = WEIHNACHTS_ORTE.buch;
+        this.stations = this.stations.map((s) => s.id === "buecher"
+          ? { ...s, label: "Buch", x: buch + 12, face: -1, hits: [[buch - 12, FE - 45, 24, 24]] } : s);
+      }
+      // Ohne Weihnachtsdeko gibt es keinen Kalender, keine Klavierkerzen und keine Weihnachtskiste.
+      if (!this.weihnachtsdeko) {
+        this.stations = this.stations.filter((x) => x.id !== "adventskalender" && x.id !== "kerzen" && x.id !== "xmaskiste");
+      }
     }
     const alt = opts.onTraumhaus;
     this.onWelt = opts.onWelt ?? (alt ? (z) => { if (z === "traum") alt(); } : null);
@@ -4193,7 +4310,9 @@ export class House {
       return;
     }
     if (ufoTreffer(x, y)) {
-      this.ufoOffen = true;
+      // Ein Klick aufs UFO bzw. den Weihnachtsmann lädt direkt das Archiv mit
+      // allen Patch-Dateien herunter; es gibt kein Menü und keine Einzeldateien mehr.
+      this.onUfo?.(PATCH_ZIP);
       sfx.ui();
       return;
     }
@@ -4317,7 +4436,7 @@ export class House {
     const find = (k: string) => this.stations.find((s) => s.id === k) ?? null;
     if (id === "mikrofon" && !this.istNormalHaus) return;
     if (id === "laufziel" && (this.bedPhase || this.sleepPhase)) return;
-    if (id === "adventskalender" && !this.istNormalHaus) return;
+    if (id === "adventskalender" && (!this.istNormalHaus || !this.weihnachtsdeko)) return;
     if ((id === "odin" || id === "apollo") && !this.istNormalHaus) return;
     // Laufendes Streicheln oder Hunde-Zuruf sauber beenden, wenn etwas anderes gewünscht ist
     if (this.petHund && id !== this.petHund) {
@@ -6402,6 +6521,7 @@ export class House {
   private renderStatic() {
     const s = this.scale * this.dpr;
     const hour = this.clock.hour + this.clock.min / 60;
+    const weihnacht = this.welt === "weihnacht";
 
     this.skyc.setTransform(s, 0, 0, s, 0, 0);
     this.skyc.clearRect(0, 0, W, H);
@@ -6418,8 +6538,9 @@ export class House {
       this.welt === "gruesel" ? GRUSELRAEUME : null,
       this.bettRendered,
       { kanne: !this.teaKanneWeg, tasse: !this.teaTasseWeg, fill: this.teaFuellung },
-      this.welt === "weihnacht",
+      weihnacht,
       this.flauschiModulSichtbar,
+      this.weihnachtsdeko,
     );
     // Raum 02 wird als eigene Canvas-Szene über die frühere Musikzimmerfläche
     // gemalt. Der Bereich beginnt hinter der Trennwand; kein Nachbarraum ändert sich.
@@ -6446,29 +6567,33 @@ export class House {
     const str = clamp((night - 0.12) / 0.5, 0, 1);
     if (str > 0) {
       for (const l of LAMPS) {
+        if (weihnacht && l.x === 302 && l.y === 372) continue; // Die Stehlampe ist dem Baum gewichen.
         // Im Gruselhaus ist die Kuechenzeile entfernt; dort gibt es an
         // dieser Stelle auch keine Lampe. Das normale Haus bleibt unberuehrt.
         if (this.welt === "gruesel" && GRUSELRAEUME.kueche && l.x === 650 && l.y === 360) continue;
         // Mit kueche: die zweite Kellerlampe leuchtet die Gruselhaus-Küche
         // nicht durch die Decke.»
         if (this.welt === "gruesel" && GRUSELRAEUME.kueche && l.kueche === true) continue;
+        const musikLampe = l.x === 700 && l.y === 150;
+        const lampenStaerke = str * (weihnacht && !musikLampe ? 0.67 : 1);
         const r1 = l.r * 0.78;
         const g1 = m.createRadialGradient(l.x, l.y, 4, l.x, l.y, r1);
-        g1.addColorStop(0, `rgba(255,255,255,${0.9 * str})`);
-        g1.addColorStop(0.45, `rgba(255,255,255,${0.3 * str})`);
+        g1.addColorStop(0, `rgba(255,255,255,${0.9 * lampenStaerke})`);
+        g1.addColorStop(0.45, `rgba(255,255,255,${0.3 * lampenStaerke})`);
         g1.addColorStop(1, "rgba(255,255,255,0)");
         m.fillStyle = g1;
         m.beginPath();
         m.arc(l.x, l.y, r1, 0, Math.PI * 2);
         m.fill();
         const g2 = a.createRadialGradient(l.x, l.y, 4, l.x, l.y, r1);
-        g2.addColorStop(0, `rgba(255,190,110,${0.26 * str})`);
+        g2.addColorStop(0, `rgba(255,190,110,${0.26 * lampenStaerke})`);
         g2.addColorStop(1, "rgba(255,190,110,0)");
         a.fillStyle = g2;
         a.beginPath();
         a.arc(l.x, l.y, r1, 0, Math.PI * 2);
         a.fill();
       }
+      if (weihnacht) this.zeichneWeihnachtsAbendlicht(m, a, str);
     }
     // Hexenküche: Kerze und Fackel sind die einzigen Lichtquellen dort.
     if (str > 0 && this.welt === "gruesel" && GRUSELRAEUME.kueche) kuecheLichtpools(m, a, str);
@@ -6492,6 +6617,36 @@ export class House {
       a.clearRect(491, 212, 202, 112); a.restore();
     }
     this.dirty = false;
+  }
+
+  private zeichneWeihnachtsAbendlicht(m: C, a: C, str: number) {
+    const og = FD + SLAB;
+    const eg = FO + SLAB;
+    const kg = FE + SLAB;
+    const wohnzimmer = [250, eg, 310, FE - eg + 5] as const;
+    weihnachtsAbendlicht(m, a, wohnzimmer, WEIHNACHTSBAUM_X + 24, FE - 57, str, 0.62);
+    weihnachtsLichtfleck(m, wohnzimmer, WEIHNACHTSBAUM_X, FE - 47, 74, 79, str * 0.63);
+    weihnachtsLichtfleck(a, wohnzimmer, WEIHNACHTSBAUM_X, FE - 47, 65, 69, str * 0.14);
+    weihnachtsLichtfleck(a, wohnzimmer, WEIHNACHTSBAUM_X, FE - 5, 60, 19, str * 0.16);
+    for (const [bereich, x, y, kraft] of [
+      [[HL, eg, 250 - HL, FE - eg + 3], 163, FE - 32, 0.9],
+      [[560, eg, OG_X1 - 560, FE - eg + 3], 644, FE - 49, 0.87],
+      [[OG_X1, og, HR - OG_X1, FE - og + 3], WEIHNACHTS_ORTE.adventskranz - 14, FE - 42, 1.04],
+      [[270, og, 220, FO - og + 3], 376, FO - 46, 0.89],
+      [[490, og, OG_X1 - 490, FO - og + 3], 626, FO - 44, 0.67],
+      [[CEL_X0, kg, 590 - CEL_X0, FK - kg + 3], 469, FK - 55, 0.67],
+      [[590, kg, HR - 590, FK - kg + 3], 700, FK - 57, 0.55],
+    ] as const) weihnachtsAbendlicht(m, a, bereich, x, y, str, kraft);
+
+    // Das Dach und der helle Bereich vor dem Haus werden nicht mitgefaerbt.
+    for (const c of [m, a]) {
+      c.save(); c.beginPath();
+      c.moveTo(DG_X0, FD); c.lineTo(DG_X0, atticCeil(DG_X0));
+      c.lineTo(470, atticCeil(470)); c.lineTo(530, atticCeil(530));
+      c.lineTo(530, FD); c.closePath(); c.clip();
+    }
+    weihnachtsAbendlicht(m, a, [DG_X0, 40, 530 - DG_X0, FD - 40], 404, FD - 46, str, 0.81);
+    m.restore(); a.restore();
   }
 
   /** Schimmer, Blitze und Denkblase – nach der Nachtabdunkelung, damit sie leuchten. */
@@ -6547,6 +6702,7 @@ export class House {
   }
 
   private draw() {
+    const weihnacht = this.welt === "weihnacht";
     const bettBelegt = this.welt === "normal" || this.welt === "weihnacht"
       ? (this.lf === 2 && !this.cur && !this.pending
         && this.path.length === 0 && (this.lieDown || !!this.sleepPhase || this.asleep ||
@@ -6567,7 +6723,7 @@ export class House {
     // Der Schein der Kerzen liegt VOR Luni, das Licht auf Luni kommt danach.
     this.drawKlavierBogen(ctx);
     if (this.istNormalHaus && this.welt !== "gruesel" && this.kerzenAn) {
-      kerzenSchein(ctx, 545, FD, this.klavierOutro === "klang" ? 0.55 + 0.45 * (1 - this.klavierOutroT / KLAVIER_AUSKLINGEN) : 1);
+      if (this.weihnachtsdeko) kerzenSchein(ctx, 545, FD, this.klavierOutro === "klang" ? 0.55 + 0.45 * (1 - this.klavierOutroT / KLAVIER_AUSKLINGEN) : 1);
     }
 
     // Wetter früh, damit Fenstermaske, Truhe und Luni danach sauber darüber liegen.
@@ -6610,7 +6766,11 @@ export class House {
       if (this.welt === "gruesel" && GRUSELRAEUME.kueche) drawFensterMaske(ctx);
     }
     // Im normalen Haus bleibt das Fensterwetter hinter Luni.
-    if (!(this.welt === "gruesel" && GRUSELRAEUME.kueche)) drawWetter(ctx, this.wetter, this.elapsed);
+    if (!(this.welt === "gruesel" && GRUSELRAEUME.kueche)) {
+      drawWetter(ctx, this.wetter, this.elapsed, weihnacht ? samtvorhangPfade : undefined);
+    }
+    const adventSonntage = weihnacht ? adventsSonntage(Date.now()) : 0;
+    if (weihnacht) weihnachtsKerzenflammen(ctx, FE, FO, FK, this.elapsed, adventSonntage);
 
     this.drawKellerDoor(ctx);
     cellarDoor(ctx, 590, FK - 80, 80, this.cellarDoorV);
@@ -6633,9 +6793,14 @@ export class House {
     this.drawStereo(ctx);
     this.drawCigPile(ctx);
     ashBucket(ctx, BUCKET_X, FK, this.bucketButts);
-    if (this.istNormalHaus) {
+    if (this.istNormalHaus && this.weihnachtsdeko) {
       this.adventStandPruefen();
-      adventWand(ctx, this.adventStand.offen, this.adventStand.jahr || new Date().getFullYear());
+      if (weihnacht) {
+        // Weihnachtshaus: der kleine Kalender trägt denselben Schmuck wie der große.
+        adventWandWeihnacht(ctx, this.adventStand.offen, this.adventStand.jahr || new Date().getFullYear(), adventSonntage);
+      } else {
+        adventWand(ctx, this.adventStand.offen, this.adventStand.jahr || new Date().getFullYear());
+      }
     }
     this.drawAshtrayTray(ctx);
     // Zigarette im Aschenbecher liegt AUF der Platte: Luni geht davor vorbei
@@ -6644,7 +6809,8 @@ export class House {
     if (this.welt === "gruesel" && GRUSELRAEUME.schlafzimmer) {
       drawGothicWardrobeOpen(ctx, 434, FLOOR_Y[2], this.wardrobeOpen, this.outfit !== "dressed" || this.towelOnRod);
     } else {
-      drawWardrobeOpen(ctx, 434, FLOOR_Y[2], this.wardrobeOpen, this.outfit !== "dressed" || this.towelOnRod);
+      drawWardrobeOpen(ctx, 434, FLOOR_Y[2], this.wardrobeOpen, this.outfit !== "dressed" || this.towelOnRod,
+        weihnacht ? WEIHNACHTS_FARBEN.holz : undefined);
     }
     if (this.glassesInSink) glassesObj(ctx, SINK_DROP[0], SINK_DROP[1], 0.12, 0.45);
     if (this.gruselSarg) this.drawBedToss(ctx);
@@ -6655,7 +6821,7 @@ export class House {
     this.drawSargPass(ctx, false);
   // Osterei: der Datenkoffer steht hinter Luni, nicht vor ihrem Laufweg.
   this.drawKoffer(ctx);
-  if (this.bettRendered) drawBedFront(ctx, 282, FO);
+  if (this.bettRendered) drawBedFront(ctx, 282, FO, weihnacht);
   this.drawLuniLayered(ctx);
   // Sitzt Luni im normalen Haus / Weihnachtshaus mit dem Rücken zum Spieler am Klavier,
   // steht der Hocker vor ihrem Gesäß und ihren Beinen.
@@ -7149,7 +7315,7 @@ export class House {
   /** Weihnachtsbogen auf dem Klavier; die Flammen brennen, solange `kerzenAn` gilt. */
   private drawKlavierBogen(c: C) {
     if (!this.istNormalHaus || this.welt === "gruesel") return;
-    pianoBogen(c, 545, FD, this.elapsed, 1, this.kerzenAn);
+    if (this.weihnachtsdeko) pianoBogen(c, 545, FD, this.elapsed, 1, this.kerzenAn);
   }
 
   private stopKlavier() {
@@ -8346,6 +8512,15 @@ export class House {
     if (ziel !== this.canvas && ziel?.closest?.("input, textarea, select, button, a, [contenteditable='true']")) return;
     if (e.code === "KeyM") this.musikzimmer?.unlock();
     if (this.adventFullscreen) {
+      // Der Weihnachtsgruß wird mit Enter, Leertaste oder Esc weggeklickt.
+      if (this.adventGruss) {
+        if (e.code === "Enter" || e.code === "Space" || e.code === "Escape") {
+          this.adventGruss = false;
+          sfx.ui();
+        }
+        e.preventDefault();
+        return;
+      }
       // Jeder Adventskalender lässt sich komplett ohne Maus bedienen.
       const spalten = 6;
       if (e.code === "Escape") this.adventZu();
@@ -9935,6 +10110,8 @@ export class House {
     if (adventOeffnen(this.adventStand, tue.tag, true, this.welt)) {
       this.adventAnims.set(index, 0.001);
       this.adventGlanzT = 1.6;
+      this.dirty = true; // der kleine Kalender an der Wand zeigt das neue Türchen
+      if (tue.tag === ADVENT_TAGE) this.adventGruss = true;
       if (adventSternVerdient(this.adventStand)) this.adventSternT = 4;
       sfx.ui();
     }
@@ -9942,6 +10119,12 @@ export class House {
 
   private adventKlick(x: number, y: number) {
     if (this.adventZoomT < 0.9) return;
+    // Der Weihnachtsgruß geht mit jedem Klick weg; erst danach reagieren die Türchen wieder.
+    if (this.adventGruss) {
+      this.adventGruss = false;
+      sfx.ui();
+      return;
+    }
     const b = ADVENT_ZURUECK;
     if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
       this.adventZu();
@@ -9969,6 +10152,7 @@ export class House {
         this.adventSchliessen = false;
         // Geschlossen bleibt geschlossen: Die Wartezeit darf nicht im selben Bild erneut öffnen.
         this.adventWarteT = 0;
+        this.dirty = true;
         if (this.activity?.id === "adventskalender") this.finishActivity();
       }
     }
@@ -10035,7 +10219,8 @@ export class House {
     if (this.adventSternT > 0) {
       const k = Math.min(1, (4 - this.adventSternT) / 0.6) * Math.min(1, this.adventSternT / 0.8);
       c.save();
-      c.translate(W / 2, H / 2);
+      // Mit dem Weihnachtsgruß rückt der Stern über die Tafel.
+      c.translate(W / 2, this.adventGruss ? H / 2 - 100 : H / 2);
       c.rotate(Math.sin(this.adventT * 1.4) * 0.06);
       c.scale(0.6 + 0.4 * k, 0.6 + 0.4 * k);
       c.fillStyle = `rgba(232,194,90,${0.95 * k})`;
@@ -10051,11 +10236,8 @@ export class House {
       c.closePath();
       c.fill();
       c.restore();
-      c.fillStyle = `rgba(255,241,196,${k})`;
-      c.font = '700 13px "Silkscreen", monospace';
-      c.textAlign = "center";
-      c.fillText("ALLE 24 IN REIHENFOLGE!", W / 2, H / 2 + 74);
-      c.textAlign = "left";
+    // Beim 24. Türchen: der Weihnachtsgruß. Er bleibt stehen, bis er weggeklickt wird.
+    if (this.adventGruss) adventGruss(c, kalenderStil);
     }
 
     // Zurück-Knopf im warmen Holz-Gold-Stil
@@ -10550,17 +10732,18 @@ export class House {
       const p = clamp(this.bedEinstiegT / d, 0, 1);
       const e = sanft(p);
       const f = FLOOR_Y[2];
+      const weihnacht = this.welt === "weihnacht";
       this.lastPose = ph === "umschlagen" ? "act" : "sit";
       const decke = bedBlanketPose(ph, p);
       const deckeZeichnen = () => {
         const s = this.scale * this.dpr;
         c.save();
         c.setTransform(s, 0, 0, s, 0, 0);
-        drawBedEntryBlanket(c, this.elapsed, ph, p);
+        drawBedEntryBlanket(c, this.elapsed, ph, p, weihnacht);
         c.restore();
       };
       if (ph === "umschlagen") {
-        drawBedEntryBlanket(c, this.elapsed, ph, p);
+        drawBedEntryBlanket(c, this.elapsed, ph, p, weihnacht);
         const hand = drawLuni(c, BETT_STAND_X, f, {
           t: this.elapsed, state: "idle", expr: "focus", face: 1,
           scale: LUNI_SCALE, shadow: false, glasses: this.glassesOn,
@@ -10645,7 +10828,7 @@ export class House {
       this.bedSitHair = Math.max(this.bedSitHair, e);
       const inSarg = this.welt === "gruesel" && GRUSELRAEUME.schlafzimmer;
       if (inSarg) drawBlanket(c, this.elapsed, e, true);
-      else drawBedEntryBlanket(c, this.elapsed, "hinlegen", e);
+      else drawBedEntryBlanket(c, this.elapsed, "hinlegen", e, this.welt === "weihnacht");
       return;
     }
     const ruhtImBett = this.istNormalHaus && !a && this.activity?.id === "bett" && !this.bedEinstieg;
@@ -10671,7 +10854,7 @@ export class House {
       this.lastPose = "sleep";
       const inSarg = this.welt === "gruesel" && GRUSELRAEUME.schlafzimmer;
       drawBedScene(c, x, y + yOff, this.elapsed, this.gruselSarg ? this.pyjama : this.bedPyjama,
-        pr, inSarg, this.gruselSarg ? "dressed" : this.bedKleidungAn, this.glassesOn);
+        pr, inSarg, this.gruselSarg ? "dressed" : this.bedKleidungAn, this.glassesOn, this.welt === "weihnacht");
       if (this.asleep || ruhtImBett) drawSleepZ(c, 312, y - 52, this.asleep ? this.sleepT : this.elapsed);
       return;
     }

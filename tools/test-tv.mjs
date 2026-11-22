@@ -52,9 +52,9 @@ test("Tapeten sind pro Hauswelt getrennt", () => {
   const wand = (ops, x, farbe) => ops.some(o => o.art === "rect" && o.x === x && o.y === 30 && o.farbe === farbe);
   assert.ok(wand(normal, 530, "#9a5750"), "normales Musikzimmer wieder rot gestreift");
   assert.ok(wand(normal, 262, "#4a4f92"), "normales Gamingzimmer bleibt violett");
-  assert.ok(!wand(normal, 530, "#2c4638") && !wand(normal, 262, "#56323b"));
+  assert.ok(!wand(normal, 530, "#2c4638") && !wand(normal, 262, "#5a1a1f"));
   assert.ok(wand(winter, 530, "#2c4638"), "Weihnachts-Musikzimmer gruen");
-  assert.ok(wand(winter, 262, "#56323b"), "Weihnachts-Gamingzimmer weinrot");
+  assert.ok(wand(winter, 262, "#5a1a1f"), "Weihnachts-Gamingzimmer in ruhigem Bordeaux");
   assert.ok(wand(malen(true, {}), 530, "#9a5750"), "Gruselhaus bleibt unveraendert");
 });
 

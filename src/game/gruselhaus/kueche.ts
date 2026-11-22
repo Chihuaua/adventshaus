@@ -209,7 +209,8 @@ export const KUECHE_WAND = {
   kerze: [621.2, 390] as [number, number],
   fackel: [808, 284] as [number, number],
   /** Geländer liegt jetzt vor dem Fenster und 4 Einheiten tiefer. */
-  gelaenderHoehe: 50,
+  /** Streben und Handlauf der Steintreppe: halb so hoch wie früher (50 %). */
+  gelaenderHoehe: 25,
 } as const;
 
 const W2 = 960, H2 = 600;
@@ -370,6 +371,8 @@ export function drawHexenkuecheRaum(c: C) {
 
 /** Spitzbogenfenster aus Stein. Glas = exakt das Wetterfenster (x, y, w, h). */
 /** Rundbogenlaibung und Steinsims; Glas bleibt für das Wetter frei. */
+import { fensterReif } from "../reif";
+
 export function drawKuchenFenster(c: C, sky: CanvasImageSource) {
   const { x0, x1, boden, spring, r } = KUECHE_WAND.bogen;
   const mid = (x0 + x1) / 2, rIn = r - 9;
@@ -390,6 +393,8 @@ export function drawKuchenFenster(c: C, sky: CanvasImageSource) {
   const gg = c.createRadialGradient(gmid, gcy, 2, gmid, gcy, rad);
   gg.addColorStop(0, "rgba(110,160,245,.45)"); gg.addColorStop(0.6, "rgba(55,100,195,.42)"); gg.addColorStop(1, "rgba(18,40,92,.75)");
   c.fillStyle = gg; c.fillRect(gx, gy, gw, gh);
+  // Eisblumen auch auf dem runden Küchenfenster.
+  fensterReif(c, gx, gy, gw, gh, 11);
   for (let i = 0; i < 8; i++) {
     const a = (i * Math.PI) / 4 + 0.2;
     strich(c, gmid, gcy, gmid + Math.cos(a) * rad, gcy + Math.sin(a) * rad, "#101823", 1.7);
@@ -655,12 +660,13 @@ export function drawSteintreppe(c: C, fx: number, fy: number, tx: number, ty: nu
 
 /** Eiserne Brüstung am oberen Treppenaustritt (ersetzt das Holzgeländer). */
 export function drawEisenBruestung(c: C, x: number, F: number, w: number) {
-  strich(c, x, F - 26, x + w, F - 26, "#141316", 2.4);
-  strich(c, x, F - 26.8, x + w, F - 26.8, "rgba(190,180,170,.35)", 0.5);
-  for (let px = x; px <= x + w + 0.1; px += w / 2) strich(c, px, F - 26, px, F, "#1b1a1d", 1.3);
+  // Halbe Höhe: Der Handlauf liegt 13 über dem Boden, die Zierkreise in der Mitte der Streben.
+  strich(c, x, F - 13, x + w, F - 13, "#141316", 2.4);
+  strich(c, x, F - 13.8, x + w, F - 13.8, "rgba(190,180,170,.35)", 0.5);
+  for (let px = x; px <= x + w + 0.1; px += w / 2) strich(c, px, F - 13, px, F, "#1b1a1d", 1.3);
   c.strokeStyle = "#1b1a1d"; c.lineWidth = 0.7;
-  c.beginPath(); c.arc(x + w / 4, F - 13, 2, 0, Math.PI * 2); c.stroke();
-  c.beginPath(); c.arc(x + (3 * w) / 4, F - 13, 2, 0, Math.PI * 2); c.stroke();
+  c.beginPath(); c.arc(x + w / 4, F - 6.5, 1.6, 0, Math.PI * 2); c.stroke();
+  c.beginPath(); c.arc(x + (3 * w) / 4, F - 6.5, 1.6, 0, Math.PI * 2); c.stroke();
 }
 
 /** Nachtlicht: Kerze und Fackel hellen die Multiplikationsebene auf (nur in ihrem Raum). */

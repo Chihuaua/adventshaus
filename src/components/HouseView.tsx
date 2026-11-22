@@ -26,7 +26,7 @@ function patchAktion(eintrag: string) {
   patchZipHerunterladen(eintrag);
 }
 
-export default function HouseView({ welt = "normal" }: { welt?: "normal" | "gruesel" | "weihnacht" }) {
+export default function HouseView({ welt = "normal" }: { welt?: "normal" | "gruesel" | "weihnacht" | "traum" }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [muted, setMuted] = useState(false);
   // Osterei „Datenkoffer“: Luni hat den Koffer im Keller geöffnet.
@@ -88,7 +88,9 @@ export default function HouseView({ welt = "normal" }: { welt?: "normal" | "grue
                 ? "LITTLE COMPUTER LUNI · GRUSELHAUS"
                 : welt === "weihnacht"
                   ? "LITTLE COMPUTER LUNI · WEIHNACHTSHAUS"
-                  : "LITTLE COMPUTER LUNI · DAS ADVENTSHAUS"}
+                  : welt === "traum"
+                    ? "LITTLE COMPUTER LUNI · HAUS OHNE WEIHNACHTSDEKO"
+                    : "LITTLE COMPUTER LUNI · DAS ADVENTSHAUS"}
             </span>
           </div>
           <div className="flex items-center gap-2">

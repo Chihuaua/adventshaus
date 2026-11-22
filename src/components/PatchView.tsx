@@ -84,12 +84,6 @@ export default function PatchView() {
               {kopiert === "patch" ? "✓ Patch-Code kopiert!" : "Patch-Code kopieren (für „Patch holen“)"}
             </button>
             <button
-              onClick={() => patchTxtHerunterladen(PATCH_TXT)}
-              className="btn-press rounded-lg bg-[#132a33] px-3.5 py-2 text-[12px] font-semibold tracking-wide text-mint-50 ring-1 ring-white/15 transition hover:bg-ink-700"
-            >
-              TXT herunterladen ({PATCH_TXT})
-            </button>
-            <button
               onClick={() => patchZipHerunterladen(PATCH_ZIP)}
               className="btn-press rounded-lg bg-amber-glow px-3.5 py-2 text-[12px] font-semibold tracking-wide text-[#2a1a02] transition hover:brightness-110"
             >
