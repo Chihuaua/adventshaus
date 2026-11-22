@@ -10,6 +10,8 @@
    ======================================================================= */
 
 import { loadJson, saveJson } from "./storage";
+import { adventBrettZier, adventLampen, adventWeltraum } from "./advent-weltraum";
+import { adventBildSpiel } from "./advent-spielbilder";
 
 export type C = CanvasRenderingContext2D;
 type Pt = [number, number];
@@ -113,7 +115,7 @@ export function adventOeffnen(stand: AdventStand, tag: number, frei: boolean, we
 
 /* ------------------------------ Layout --------------------------------- */
 
-const RAHMEN = { x: 124, y: 100, w: 712, h: 428 };
+export const RAHMEN = { x: 124, y: 100, w: 712, h: 428 };
 const SPALTE = 6;
 const ZEILE = 4;
 const LUFT_X = 18;
@@ -1138,6 +1140,7 @@ export function adventTuer(
   stand: { offen: boolean; anim: number },
   zustand: { fokus: boolean; hover: boolean; gesperrt: boolean },
   t: number,
+  stil: AdventStil = "klassisch",
 ) {
   const { x, y, w, h } = r;
   const auf = Math.max(0, Math.min(1, stand.anim));
@@ -1147,7 +1150,9 @@ export function adventTuer(
 
   // Motiv im vertieften Kästchen, sobald sich ein Spalt öffnet
   if (auf > 0.005) {
-    adventBild(c, tag, x + 2, y + 2, w - 4, h - 4, t);
+    // Im Weltall-Stil zeigt das Türchen das Geschenk in der Bildsprache von Videospielen.
+    if (stil === "weltraum") adventBildSpiel(c, tag, x + 2, y + 2, w - 4, h - 4, t);
+    else adventBild(c, tag, x + 2, y + 2, w - 4, h - 4, t);
     // Feine Innenlaibung des Kästchens: oben Schatten, unten warmer Lichtsaum
     c.fillStyle = "rgba(18,6,3,.45)";
     c.fillRect(x + 2, y + 2, w - 4, 2.2);
@@ -1193,17 +1198,29 @@ export function adventTuer(
 
 /* --------------------------- Die große Tafel --------------------------- */
 
-/** Warme, reich verzierte Kalender-Tafel: Holzrahmen, Girlande, Schnee. */
-export function adventRahmen(c: C, t: number) {
-  const bg = c.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, "#3d1715");
-  bg.addColorStop(0.5, "#341210");
-  bg.addColorStop(1, "#2a0e0c");
-  c.fillStyle = bg;
-  c.fillRect(0, 0, W, H);
-  ornamentMuster(c);
+/** Wie die große Kalendertafel aussieht: klassisch (normales Haus) oder im Weltall (Weihnachtshaus). */
+export type AdventStil = "klassisch" | "weltraum";
+
+/**
+ * Warme, reich verzierte Kalender-Tafel: Holzrahmen, Girlande, Schnee.
+ * Im Stil „weltraum“ schwebt sie im Nachthimmel, die Goldpunkte am Innenrand
+ * werden zu 24 Lampen (eine je geöffnetem Türchen), und der Schmuck außerhalb
+ * der Tafel kommt erst mit den Türchen dazu (adventSchmuck).
+ */
+export function adventRahmen(c: C, t: number, stil: AdventStil = "klassisch", offen = 0) {
+  if (stil === "weltraum") {
+    adventWeltraum(c, t);
+  } else {
+    const bg = c.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, "#3d1715");
+    bg.addColorStop(0.5, "#341210");
+    bg.addColorStop(1, "#2a0e0c");
+    c.fillStyle = bg;
+    c.fillRect(0, 0, W, H);
+    ornamentMuster(c);
+  }
   const glow = c.createRadialGradient(W / 2, H / 2, 60, W / 2, H / 2, 540);
-  glow.addColorStop(0, "rgba(255,170,80,.10)");
+  glow.addColorStop(0, stil === "weltraum" ? "rgba(255,170,80,.17)" : "rgba(255,170,80,.10)");
   glow.addColorStop(1, "rgba(255,170,80,0)");
   c.fillStyle = glow;
   c.fillRect(0, 0, W, H);
@@ -1229,16 +1246,31 @@ export function adventRahmen(c: C, t: number) {
   filz.addColorStop(1, "rgba(20,6,4,.35)");
   c.fillStyle = filz;
   c.fillRect(fx, fy, fw, fh);
-  // Goldperlen am Innenrand
-  c.fillStyle = GOLD_TIEF;
-  const perl = 22;
-  for (let px = fx + perl; px < fx + fw - perl / 2; px += perl) {
-    kreis(c, px, fy + 4, 1.5, GOLD_TIEF);
-    kreis(c, px, fy + fh - 4, 1.5, GOLD_TIEF);
-  }
-  for (let py = fy + perl; py < fy + fh - perl / 2; py += perl) {
-    kreis(c, fx + 4, py, 1.5, GOLD_TIEF);
-    kreis(c, fx + fw - 4, py, 1.5, GOLD_TIEF);
+  // Punkte am Innenrand – im Weltall sind es 24 Lampen: Mit jedem Türchen leuchtet eine weitere.
+  if (stil === "weltraum") {
+    adventLampen(RAHMEN).forEach(([lx, ly], i) => {
+      const an = i < offen;
+      if (an) {
+        // Weicher Lichtschein aus fünf durchscheinenden Ringen: günstig genug für jedes Bild.
+        const ringe = [7, 5.6, 4.2, 3, 1.9];
+        const staerke = [0.1, 0.12, 0.16, 0.22, 0.4];
+        ringe.forEach((rr, j) => kreis(c, lx, ly, rr, `rgba(255,222,160,${staerke[j]})`));
+      }
+      kreis(c, lx, ly, an ? 2.3 : 1.6, an ? "#ffe2a0" : "#4a2a14");
+      if (an) kreis(c, lx - 0.6, ly - 0.7, 0.9, "#fff6d6");
+    });
+  } else {
+    // Klassisch: Goldperlen
+    c.fillStyle = GOLD_TIEF;
+    const perl = 22;
+    for (let px = fx + perl; px < fx + fw - perl / 2; px += perl) {
+      kreis(c, px, fy + 4, 1.5, GOLD_TIEF);
+      kreis(c, px, fy + fh - 4, 1.5, GOLD_TIEF);
+    }
+    for (let py = fy + perl; py < fy + fh - perl / 2; py += perl) {
+      kreis(c, fx + 4, py, 1.5, GOLD_TIEF);
+      kreis(c, fx + fw - 4, py, 1.5, GOLD_TIEF);
+    }
   }
   // Eck-Rosetten
   rosette(c, fx - 20, fy - 20, 7);
@@ -1247,34 +1279,39 @@ export function adventRahmen(c: C, t: number) {
   rosette(c, fx + fw + 20, fy + fh + 20, 7);
 
   // Titel-Plakette
-  balken(c, W / 2 - 185, 18, 370, 44, "rgba(28,11,7,.6)", 8);
+  balken(c, W / 2 - 185, 18, 370, 44, stil === "weltraum" ? "rgba(8,12,30,.74)" : "rgba(28,11,7,.6)", 8);
   c.strokeStyle = "rgba(232,194,90,.4)";
   c.lineWidth = 1.2;
   c.strokeRect(W / 2 - 185, 18, 370, 44);
   goldText(c, "ADVENTSKALENDER", W / 2, 40, 23);
 
-  // Tannengirlande über dem oberen Rahmen, Schleife in der Mitte
-  girlande(c, fx - 26, fx + fw + 26, fy - 18, t);
-  schleife(c, W / 2, fy - 20, 9);
+  if (stil === "weltraum") {
+    // Geschnitzte Ranken und eingelassene Sterne; der Schmuck außerhalb der Tafel kommt mit den Türchen.
+    adventBrettZier(c, RAHMEN, t);
+  } else {
+    // Tannengirlande über dem oberen Rahmen, Schleife in der Mitte
+    girlande(c, fx - 26, fx + fw + 26, fy - 18, t);
+    schleife(c, W / 2, fy - 20, 9);
 
-  // Tannenzweige in den unteren Ecken
-  for (const sx of [fx - 6, fx + fw + 6]) {
-    const dir = sx < W / 2 ? 1 : -1;
-    tannBueschel(c, sx, fy + fh + 12, dir * 2.4, 13, true);
-    tannBueschel(c, sx, fy + fh + 14, dir * 2.9, 11, false);
-    kreis(c, sx + dir * 4, fy + fh + 12, 2, "#c0392e");
-    kreis(c, sx + dir * 7, fy + fh + 15, 1.7, ROT_TIEF);
+    // Tannenzweige in den unteren Ecken
+    for (const sx of [fx - 6, fx + fw + 6]) {
+      const dir = sx < W / 2 ? 1 : -1;
+      tannBueschel(c, sx, fy + fh + 12, dir * 2.4, 13, true);
+      tannBueschel(c, sx, fy + fh + 14, dir * 2.9, 11, false);
+      kreis(c, sx + dir * 4, fy + fh + 12, 2, "#c0392e");
+      kreis(c, sx + dir * 7, fy + fh + 15, 1.7, ROT_TIEF);
+    }
   }
 
   sanfterSchnee(c, t);
 }
 
 /** Hinweiszeile unten: Bedienung ohne Maus (Plattformregel). */
-export function adventHinweis(c: C, nachDatum: boolean, dezember: boolean) {
+export function adventHinweis(c: C, nachDatum: boolean, dezember: boolean, stil: AdventStil = "klassisch") {
   const text = nachDatum && !dezember
     ? "AB DEM 1. DEZEMBER GEHT ES LOS"
     : "PFEILTASTEN · ENTER OEFFNET · ESC ZURUECK";
-  c.fillStyle = "rgba(26,10,7,.82)";
+  c.fillStyle = stil === "weltraum" ? "rgba(6,10,26,.86)" : "rgba(26,10,7,.82)";
   c.fillRect(0, H - 26, W, 26);
   c.strokeStyle = "rgba(232,194,90,.25)";
   c.lineWidth = 1;
@@ -1346,3 +1383,11 @@ export function adventWand(c: C, offen: number[], jahr: number = new Date().getF
   kreis(c, x + w / 2, y + 0.5, 1.1, ROT_TIEF);
   goldZahl(c, "24", x + w / 2, y + 7.2, 6, 1);
 }
+
+/* ------------------- Weihnachtshaus: die Bausteine ---------------------- */
+
+// Für Prüfungen und das Haus: der Weltall-Himmel, die Lampen und die Adventssonntage.
+export { adventBrettZier, adventLampen, adventWeltraum } from "./advent-weltraum";
+export { adventsSonntage } from "./advent-weltraum";
+export { ADVENT_SCHMUCK, adventSchmuck, adventSchmuckGlanz, adventSchmuckOrt } from "./advent-schmuck";
+export { adventBildSpiel } from "./advent-spielbilder";
