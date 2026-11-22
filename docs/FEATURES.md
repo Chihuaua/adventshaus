@@ -198,6 +198,15 @@ adventskalender-station | src/game/house.ts | "adventskalender"
 adventskalender-tastatur | src/game/house.ts | adventOeffne
 adventskalender-tests | tools/test-adventskalender.mjs | Türchen
 adventskalender-deko | src/game/deko.ts | drawDeko
+adventskalender-schliessen | src/game/house.ts | adventWarteT = 0
+adventskalender-weltraum | src/game/advent-weltraum.ts | adventWeltraum
+adventskalender-lampen | src/game/advent-weltraum.ts | adventLampen
+adventskalender-sonntage | src/game/advent-weltraum.ts | adventsSonntage
+adventskalender-rahmenzier | src/game/advent-weltraum.ts | adventBrettZier
+adventskalender-schmuck | src/game/advent-schmuck.ts | adventSchmuck
+adventskalender-schmuckliste | src/game/advent-schmuck.ts | ADVENT_SCHMUCK
+adventskalender-ecken | src/game/advent-schmuck.ts | adventSchmuckGlanz
+adventskalender-tuerchenbilder | src/game/advent-spielbilder.ts | adventBildSpiel
 
 ## Hunde Odin & Apollo
 

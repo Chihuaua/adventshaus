@@ -15,7 +15,7 @@ import { coughPulse, drawLuni, drawZzz, LUNI_COLORS, SITZ_HUB, SITZ_MUND, smokeC
 import {
   ADVENT_NACH_DATUM, ADVENT_TAGE, ADVENT_WAND, adventFrei, adventHinweis, adventMischung,
   adventOeffnen, adventRahmen, adventSternVerdient, adventTuer, adventTuerBei, adventTueren, adventWand,
-  ladeAdvent, type AdventStand,
+  ladeAdvent, RAHMEN, adventSchmuck, adventSchmuckGlanz, adventsSonntage, type AdventStand,
 } from "./advent";
 import { HundeWelt, type HundId } from "./hunde";
 import { HandyAblauf, HANDY_TASCHE_SICHTBAR } from "./handy";
@@ -3605,6 +3605,11 @@ export class House {
   private adventWarteT = 0;
   /** Kurzer Goldstern-Moment, wenn die geheime Reihenfolge gelingt. */
   private adventSternT = 0;
+  /** Weihnachtshaus: der feste Schmuck rund um den Kalender, einmal je Türchenstand gezeichnet. */
+  private adventSchmuckPuffer = Object.assign(document.createElement("canvas"), { width: W, height: H });
+  private adventSchmuckKey = "";
+  /** Goldener Schimmer für das Stück, das gerade neu dazugekommen ist (Sekunden übrig). */
+  private adventGlanzT = 0;
 
   // Lunis zwei Hunde: Odin (schmaler Fang, helles Braun) & Apollo (breiter Kopf, gestromt)
   private hunde = new HundeWelt();
@@ -9929,6 +9934,7 @@ export class House {
     if (!frei) return; // Finalmodus: Türchen ist noch zugefroren
     if (adventOeffnen(this.adventStand, tue.tag, true, this.welt)) {
       this.adventAnims.set(index, 0.001);
+      this.adventGlanzT = 1.6;
       if (adventSternVerdient(this.adventStand)) this.adventSternT = 4;
       sfx.ui();
     }
@@ -9949,6 +9955,7 @@ export class House {
   private adventAktualisieren(dt: number) {
     if (this.adventFullscreen) {
       this.adventT += dt;
+      if (this.adventGlanzT > 0) this.adventGlanzT = Math.max(0, this.adventGlanzT - dt);
       if (!this.adventSchliessen && this.adventZoomT < 1) this.adventZoomT = Math.min(1, this.adventZoomT + dt / 0.5);
       for (const [i, v] of this.adventAnims) {
         if (v < 1) this.adventAnims.set(i, Math.min(1, v + dt / 0.78));
@@ -9960,9 +9967,33 @@ export class House {
       if (this.adventZoomT === 0) {
         this.adventFullscreen = false;
         this.adventSchliessen = false;
+        // Geschlossen bleibt geschlossen: Die Wartezeit darf nicht im selben Bild erneut öffnen.
+        this.adventWarteT = 0;
         if (this.activity?.id === "adventskalender") this.finishActivity();
       }
     }
+  }
+
+  /**
+   * Schmuck rund um die Kalendertafel (Weihnachtshaus). Der feste Teil wird
+   * einmal je Türchenstand in einen Puffer gezeichnet; Licht, Glanz und die
+   * Ecken-Kugeln leben in jedem Bild.
+   */
+  private drawAdventSchmuck(c: C) {
+    const anzahl = this.adventStand.offen.length;
+    const sonntage = adventsSonntage(Date.now());
+    const key = `${anzahl}|${sonntage}`;
+    if (key !== this.adventSchmuckKey) {
+      this.adventSchmuckKey = key;
+      const pc = this.adventSchmuckPuffer.getContext("2d");
+      if (pc) {
+        pc.clearRect(0, 0, W, H);
+        adventSchmuck(pc, RAHMEN, anzahl, sonntage, 0, true);
+      }
+    }
+    c.drawImage(this.adventSchmuckPuffer, 0, 0);
+    adventSchmuck(c, RAHMEN, anzahl, sonntage, this.adventT, false);
+    if (this.adventGlanzT > 0 && anzahl > 0) adventSchmuckGlanz(c, RAHMEN, anzahl - 1, 1 - this.adventGlanzT / 1.6);
   }
 
   /** Vollbild-Ansicht: von der Wandtafel hereinzoomen, 24 Türchen, Nachthimmel. */
@@ -9970,7 +10001,9 @@ export class House {
     const z = this.adventZoomT;
     if (z <= 0) return;
     const weichZ = z * z * (3 - 2 * z);
-    c.fillStyle = `rgba(24,10,6,${0.8 * weichZ})`;
+    // Nur das Weihnachtshaus hat den Kalender im Weltall; das normale Haus bleibt unverändert.
+    const kalenderStil = this.welt === "weihnacht" ? "weltraum" : "klassisch";
+    c.fillStyle = kalenderStil === "weltraum" ? `rgba(5,9,20,${0.86 * weichZ})` : `rgba(24,10,6,${0.8 * weichZ})`;
     c.fillRect(0, 0, W, H);
     const wand = ADVENT_WAND;
     c.save();
@@ -9984,7 +10017,7 @@ export class House {
     c.scale(sk, sk);
     c.translate(-W / 2, -H / 2);
 
-    adventRahmen(c, this.adventT);
+    adventRahmen(c, this.adventT, kalenderStil, this.adventStand.offen.length);
     const tueren = this.adventTuerLayout();
     for (let i = 0; i < tueren.length; i++) {
       const tue = tueren[i];
@@ -9993,8 +10026,10 @@ export class House {
       const anim = this.adventAnims.has(i) ? this.adventAnims.get(i) ?? 0 : offen ? 1 : 0;
       const frei = adventFrei(tue.tag, this.clock.month, this.clock.day, ADVENT_NACH_DATUM);
       adventTuer(c, tue.r, tue.tag, { offen, anim },
-        { fokus: this.adventFokus === i, hover: this.adventHover === i, gesperrt: !frei }, this.adventT);
+        { fokus: this.adventFokus === i, hover: this.adventHover === i, gesperrt: !frei }, this.adventT, kalenderStil);
     }
+    // Weihnachtshaus: der Schmuck außerhalb der Tafel wächst mit den Türchen.
+    if (kalenderStil === "weltraum") this.drawAdventSchmuck(c);
 
     // Geheime Belohnung: alle 24 in der Reihenfolge 1–24 (Konzept 3.1)
     if (this.adventSternT > 0) {
@@ -10036,7 +10071,7 @@ export class House {
     c.textAlign = "left";
     c.textBaseline = "alphabetic";
 
-    adventHinweis(c, ADVENT_NACH_DATUM, this.clock.month === 12);
+    adventHinweis(c, ADVENT_NACH_DATUM, this.clock.month === 12, kalenderStil);
     c.restore();
   }
 

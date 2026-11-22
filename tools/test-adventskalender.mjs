@@ -1,6 +1,8 @@
 // Adventskalender-Logik: Freigabe, Jahresmischung, Türchenstand und geheime Reihenfolge.
 import assert from "node:assert/strict";
 import { build } from "esbuild";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 // localStorage-Nachbildung, damit die Speicherung geprüft werden kann.
 const speicher = new Map();
@@ -262,6 +264,142 @@ test("Deko: jedes Stück malt nur innerhalb seiner Box", () => {
       }
     }
   }
+});
+
+// --- Schließen des großen Kalenders (house.ts) ---------------------------
+const hausBundle = await build({
+  stdin: {
+    contents: readFileSync("src/game/house.ts", "utf8"),
+    resolveDir: path.resolve("src/game"),
+    loader: "ts",
+  },
+  bundle: true, write: false, platform: "node", format: "esm",
+});
+const Hs = await import(`data:text/javascript;base64,${Buffer.from(hausBundle.outputFiles[0].text).toString("base64")}`);
+
+test("Schließen bleibt zu: nach der Schließ-Animation öffnet der Kalender nicht im selben Bild wieder", () => {
+  const h = Object.assign(Object.create(Hs.House.prototype), {
+    adventFullscreen: true, adventSchliessen: true, adventZoomT: 0.01, adventWarteT: 2.5, adventT: 1,
+    adventAnims: new Map(), adventSternT: 0,
+    activity: { id: "adventskalender" },
+    finishActivity() { this.activity = null; },
+  });
+  h.adventAktualisieren(0.05);
+  assert.equal(h.adventZoomT, 0);
+  assert.equal(h.adventFullscreen, false, "Kalender ist zu");
+  assert.equal(h.adventSchliessen, false);
+  assert.equal(h.adventWarteT, 0, "die alte Wartezeit darf nicht erneut öffnen");
+  assert.equal(h.activity, null, "Luni ist vom Kalender weg");
+  // Dieselbe Bildlogik wie im Haus: die Aktivität vom Bildanfang steht noch in der Hand.
+  const act = { id: "adventskalender" };
+  let wiederOffen = false;
+  h.adventAuf = () => { wiederOffen = true; };
+  const wartend = h.adventWarteT + 0.016;
+  if (act.id === "adventskalender" && wartend >= 0.45 && !h.adventFullscreen && !h.adventSchliessen) h.adventAuf();
+  assert.equal(wiederOffen, false);
+});
+
+test("Weihnachtshaus: Weltall-Himmel, Rahmenzier und 24 Lampen malen ohne Fehler", () => {
+  const c = stumpfCanvas();
+  A.adventRahmen(c, 3, "weltraum", 7);
+  assert.ok(c.__aufrufe > 400, "der Weltall-Stil malt wirklich");
+  const lampen = A.adventLampen(A.RAHMEN);
+  assert.equal(lampen.length, 24, "eine Lampe je Türchen");
+  assert.equal(new Set(lampen.map((p) => p.map(Math.round).join("|"))).size, 24, "kein Lampenplatz doppelt");
+  for (const [x, y] of lampen) {
+    assert.ok(x >= A.RAHMEN.x && x <= A.RAHMEN.x + A.RAHMEN.w && y >= A.RAHMEN.y && y <= A.RAHMEN.y + A.RAHMEN.h, "am Innenrand der Tafel");
+  }
+  // Ringförmig im Uhrzeigersinn: oben von links, rechts nach unten, unten nach links, links nach oben.
+  assert.ok(lampen[0][0] < lampen[7][0] && lampen[0][1] === lampen[7][1], "obere Reihe von links nach rechts");
+  assert.ok(lampen[8][0] === lampen[11][0] && lampen[8][1] < lampen[11][1], "rechte Seite von oben nach unten");
+  assert.ok(lampen[12][0] > lampen[19][0], "untere Reihe von rechts nach links");
+  assert.ok(lampen[20][0] === lampen[23][0] && lampen[20][1] > lampen[23][1], "linke Seite von unten nach oben");
+});
+
+test("Adventssonntage zählt das echte Kalender in Berlin", () => {
+  const tag = (m, d) => Date.UTC(2026, m - 1, d, 12);
+  assert.equal(A.adventsSonntage(tag(11, 28)), 0);
+  assert.equal(A.adventsSonntage(tag(11, 29)), 1);
+  assert.equal(A.adventsSonntage(tag(12, 5)), 1);
+  assert.equal(A.adventsSonntage(tag(12, 6)), 2);
+  assert.equal(A.adventsSonntage(tag(12, 13)), 3);
+  assert.equal(A.adventsSonntage(tag(12, 19)), 3);
+  assert.equal(A.adventsSonntage(tag(12, 20)), 4);
+  assert.equal(A.adventsSonntage(tag(12, 24)), 4);
+  assert.equal(A.adventsSonntage(tag(6, 1)), 0, "im Sommer ist kein Advent");
+  // 2023: Heiligabend ist Sonntag und zugleich der 4. Advent.
+  assert.equal(A.adventsSonntage(Date.UTC(2023, 11, 23, 12)), 3);
+  assert.equal(A.adventsSonntage(Date.UTC(2023, 11, 24, 12)), 4);
+  // 28.11.2026 23:30 UTC ist in Berlin schon der 29.11.
+  assert.equal(A.adventsSonntage(Date.UTC(2026, 10, 28, 23, 30)), 1);
+});
+
+test("Schmuck: 24 Stücke, mit jedem Türchen genau eines mehr, alles im sicheren Bildbereich", () => {
+  assert.equal(A.ADVENT_SCHMUCK.length, 24);
+  assert.equal(new Set(A.ADVENT_SCHMUCK).size, 24, "kein Stück doppelt");
+  const orte = A.ADVENT_SCHMUCK.map((_, i) => A.adventSchmuckOrt(A.RAHMEN, i));
+  assert.ok(orte.every(([x, y]) => x >= 96 && x <= 864 && y >= 30 && y <= 570), "innerhalb des 4:3-Bereichs");
+  assert.equal(new Set(orte.slice(6, 18).map((p) => p.map(Math.round).join("|"))).size, 12, "zwölf verschiedene Schmuckplätze");
+  // Hohe Stücke (Laterne, Nussknacker, Zuckerstange) stehen an den Seiten, nicht unter dem Titelschild.
+  for (const i of [10, 13, 17]) {
+    const [x] = A.adventSchmuckOrt(A.RAHMEN, i);
+    assert.ok(Math.abs(x - A.RAHMEN.x) < 30 || Math.abs(x - A.RAHMEN.x - A.RAHMEN.w) < 30, `${A.ADVENT_SCHMUCK[i]} steht an einer Seite`);
+  }
+});
+
+test("Schmuck malt ohne Fehler: jeder Stand von 0 bis 24, fest und lebendig, jedes Stück kommt wirklich dazu", () => {
+  let vorher = -1;
+  for (let n = 0; n <= 24; n++) {
+    const fest = stumpfCanvas();
+    const lebendig = stumpfCanvas();
+    // Advent fest auf 0 halten, sonst ändern die Ecken-Kugeln die Zählung.
+    A.adventSchmuck(fest, A.RAHMEN, n, 0, 3, true);
+    A.adventSchmuck(lebendig, A.RAHMEN, n, 0, 3, false);
+    const gesamt = fest.__aufrufe + lebendig.__aufrufe;
+    assert.ok(gesamt > vorher, `Stück ${n} fehlt`);
+    vorher = gesamt;
+    A.adventSchmuckGlanz(stumpfCanvas(), A.RAHMEN, Math.max(0, n - 1), 0.5);
+  }
+});
+
+test("Ecken-Kugeln: am 4. Advent leuchten alle vier, auch ohne ein einziges Türchen", () => {
+  const ohne = stumpfCanvas();
+  A.adventSchmuck(ohne, A.RAHMEN, 0, 0, 3, false);
+  assert.equal(ohne.__aufrufe, 0, "vor dem 1. Advent und ohne Zweig ist keine Kugel da");
+  const advent = stumpfCanvas();
+  A.adventSchmuck(advent, A.RAHMEN, 0, 4, 3, false);
+  assert.ok(advent.__aufrufe > 60, "vier leuchtende Kugeln werden gezeichnet");
+  const zahlen = [0, 1, 2, 3, 4].map((a) => {
+    const c = stumpfCanvas();
+    A.adventSchmuck(c, A.RAHMEN, 0, a, 3, false);
+    return c.__aufrufe;
+  });
+  const schritte = zahlen.slice(1).map((z, i) => z - zahlen[i]);
+  assert.ok(schritte.every((d) => d === schritte[0] && d > 0), "je Adventssonntag kommt genau eine Kugel dazu");
+});
+
+test("Türchen-Bilder im Weltall-Stil: alle 24 malen ohne Fehler, der klassische Stil bleibt bei seinen Motiven", () => {
+  const klappe = { x: 142, y: 118, w: 87, h: 77 };
+  const ruhe = { fokus: false, hover: false, gesperrt: false };
+  for (let tag = 1; tag <= 24; tag++) {
+    const b = stumpfCanvas();
+    A.adventBildSpiel(b, tag, 10, 10, 83, 73, 2);
+    assert.ok(b.__aufrufe > 90, `Türchen ${tag} malt wirklich`);
+    for (const stil of ["weltraum", "klassisch"]) {
+      const c = stumpfCanvas();
+      A.adventTuer(c, klappe, tag, { offen: true, anim: 1 }, ruhe, 2, stil);
+      assert.ok(c.__aufrufe > 100, `Klappe ${tag} im Stil ${stil}`);
+    }
+  }
+  const klassisch = stumpfCanvas();
+  const weltraum = stumpfCanvas();
+  A.adventTuer(klassisch, klappe, 5, { offen: true, anim: 1 }, ruhe, 2);
+  A.adventTuer(weltraum, klappe, 5, { offen: true, anim: 1 }, ruhe, 2, "weltraum");
+  assert.notEqual(klassisch.__aufrufe, weltraum.__aufrufe, "ohne Stilangabe bleibt der klassische Kalender");
+  // Geschlossene Klappe: kein Bild, egal welcher Stil.
+  const zu = stumpfCanvas();
+  A.adventTuer(zu, klappe, 5, { offen: false, anim: 0 }, ruhe, 2, "weltraum");
+  assert.ok(zu.__aufrufe < klassisch.__aufrufe);
 });
 
 console.log(`\n${bestanden} Adventskalender-Tests bestanden.`);

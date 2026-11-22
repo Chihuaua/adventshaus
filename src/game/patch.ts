@@ -2,7 +2,7 @@
    Patch-Dateien der aktuellen Sitzung (Inhalt der UFO-/Schlitten-Station)
 
    Dieses Modul wird von tools/ufo-bauen.mjs erzeugt. Das Menü oben rechts
-   bietet LCL-Teleflauschi-Demo-Wachstum-55.zip, die TXT-Datei und die Code-Vorschau an.
+   bietet LCL-Kalender-Tuerchenbilder-59.zip, die TXT-Datei und die Code-Vorschau an.
    ======================================================================= */
 
 export interface PatchDatei {
@@ -11,8 +11,8 @@ export interface PatchDatei {
   inhalt: string;
 }
 
-export const PATCH_KURZ = "Teleflauschi-Demo-Wachstum";
-export const PATCH_NUMMER = 55;
+export const PATCH_KURZ = "Kalender-Tuerchenbilder";
+export const PATCH_NUMMER = 59;
 export const PATCH_ZIP =
   `LCL-${PATCH_KURZ}-${String(PATCH_NUMMER).padStart(2, "0")}.zip`;
 export const PATCH_TXT =
