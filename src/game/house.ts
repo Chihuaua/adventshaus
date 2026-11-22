@@ -687,7 +687,7 @@ function stairPos(s: Stair, t: number): Pt {
 const LAMPS: { x: number; y: number; r: number; kueche?: boolean }[] = [
   { x: 163, y: 365, r: 100 }, // Wohnzimmerlampe: halbiertes Kabel, über der Haustür
   { x: 302, y: 372, r: 118 },
-  { x: 650, y: 353, r: 125 }, // Küchenlampe: halbiertes Kabel
+  { x: 650, y: 346, r: 108 }, // Küchenlampe: ohne Kabel an der Decke, gedimmt
   { x: 365, y: 229, r: 110 }, // Schlafzimmerlampe: halbiertes Kabel, über dem Fenster
   { x: 409, y: 292, r: 80 },
   { x: 590, y: 222, r: 96 },
@@ -1367,8 +1367,10 @@ function stove(c: C, x: number, F: number) {
   rect(c, x + 4, F - 26, 28, 18, "#2a2f35");
   rect(c, x + 6, F - 24, 24, 12, "#47505a");
   for (let i = 0; i < 3; i++) disc(c, x + 8 + i * 10, F - 33, 1.5, "#8f989d");
-  poly(c, [[x + 1, F - 80], [x + 35, F - 80], [x + 30, F - 94], [x + 6, F - 94]], "#cfd5d5");
-  rect(c, x + 15, F - 112, 6, 18, "#aab2b4");
+  // Dunstabzug: Unterkante auf Höhe der waagerechten Mittelstrebe des Küchenfensters
+  // (y = 382), damit das Abzugrohr die Treppe ins obere Geschoss nicht berührt.
+  poly(c, [[x + 1, F - 66], [x + 35, F - 66], [x + 30, F - 80], [x + 6, F - 80]], "#cfd5d5");
+  rect(c, x + 15, F - 98, 6, 18, "#aab2b4");
 }
 
 /** Tabakdose auf dem Küchentisch */
@@ -3228,8 +3230,8 @@ function drawHouse(
     if (festlich) festzweig(c, 619, FE - 40.9, 9.3);
     teaPot(c, tee.kanne, tee.tasse, tee.fill);
     stove(c, 690, FE);
-    // Küchenlampe: Abstand zur Decke halbiert.
-    ceilingLamp(c, 650, FO + SLAB, 7);
+    // Küchenlampe: ohne Kabel direkt an der Decke.
+    ceilingLamp(c, 650, FO + SLAB, 0);
     kitchenTable(c, 724, FE, 74, festlich);
     tobaccoTin(c, 766, FE);
     chair(c, 732, FE, true);

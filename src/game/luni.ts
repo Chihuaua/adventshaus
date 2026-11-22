@@ -214,6 +214,8 @@ export interface LuniOpts {
   blendFrom?: LuniState;
   /** 0..1: wie weit der Übergang zur neuen Pose schon geglättet ist. */
   blendK?: number;
+  /** Studio-Editor: Verschiebung (Delta) je Gelenk nach dem Rig-Bau – Figurenraum. */
+  edit?: Partial<Record<"head" | "handFar" | "handNear" | "elbowFar" | "elbowNear" | "footFar" | "footNear" | "kneeFar" | "kneeNear", [number, number]>>;
 }
 
 /** Vampir-Outfit: Farben und Zierdetails. Proportionen bleiben unverändert. */
@@ -260,6 +262,7 @@ export const SITZ_MUND: readonly [number, number] = [
 ];
 /** Länge der Rückenhaare ab Kopfmitte – Spitze endet etwas unter den Schultern. */
 import { tanzParamsFor } from "./tanz";
+import { liveDelta } from "./editor-live";
 
 const HAIR_LEN = 18;
 
@@ -340,6 +343,8 @@ interface Rig {
   shoulderY: number;
   headY: number;
   headTilt: number;
+  /** Studio-Editor: seitlicher Kopfversatz (Figurenraum). */
+  headX: number;
   armFar: Limb;
   armNear: Limb;
   legFar: Limb;
@@ -519,6 +524,7 @@ function mergeRig(a: Rig, b: Rig, k: number): Rig {
     shoulderY,
     headY: ln(a.headY, b.headY),
     headTilt: ln(a.headTilt, b.headTilt),
+    headX: ln(a.headX, b.headX),
     armFar: arm(-1, a.armFar, b.armFar),
     armNear: arm(1, a.armNear, b.armNear),
     legFar: limb(a.legFar, b.legFar),
@@ -550,6 +556,7 @@ function baseRig(): Rig {
     shoulderY: SHOULDER_Y,
     headY: HEAD_Y,
     headTilt: 0,
+    headX: 0,
     // Arme hängen nah am Körper und kaum gespreizt (früher Ellbogen ±6, Hand ±7,5).
     armFar: { elbow: [-5.8, -29], hand: [-7, -22] },
     armNear: { elbow: [5.8, -29], hand: [7, -22] },
@@ -2730,23 +2737,19 @@ function drawUmhangRuecken(ctx: C, r: Rig, u: { aussen: string; futter: string }
 /* ------------------------------ Hauptroutine ---------------------------- */
 
 /** Zeichnet Luni und liefert die Weltposition der vorderen Hand zurück. */
-function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
+
+/** Baut das Rig (Gelenke) für die Zeichenoptionen, ohne zu zeichnen. Der Editor
+    nutzt dieselbe Berechnung wie renderFig. */
+export function luniRigBauen(x: number, y: number, opts: LuniOpts = {}): Rig {
+  const scale = opts.scale ?? 1;
   const {
     t = 0,
     face = 1,
-    state = "idle",
-    expr = "happy",
-    walk = 0,
     beatT,
-    blink = 0,
-    scale = 1,
-    shadow = true,
+    state = "idle",
+    walk = 0,
     phase = 0,
     armReach = 1,
-    cough = 0,
-    sick = 0,
-    footTap = 0,
-    sway = 0,
     handTarget = null,
     handElbow = -1,
     handTarget2 = null,
@@ -2754,92 +2757,26 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     sitzgriff = null,
     sitzgriffLinks = null,
     handKontakt = false,
-    handVorRumpf = false,
-    armeVorne = false,
-    rauchzeit,
-    handOut = null,
-    betweenBodyAndArms = null,
-    armsInFront = false,
-    outfit = "dressed",
-    kleidung,
-    back = false,
-    wet = 0,
-    glasses = true,
-    pajama = null,
-    hairAside = 0,
-    lieDown,
-    bedLean = 0,
-    bedSitzen,
-    bedCover = false,
-    singOpen = 0,
     pianoSeat,
-    headShake = 0,
-    gaze = 0,
-    eyeRoll = 0,
-    vampir = null,
-    umhang = 1,
+    lieDown,
+    bedSitzen,
+    bedLean = 0,
+    cough = 0,
+    sway = 0,
+    footTap = 0,
+    rauchzeit,
     backReach = false,
+    blendFrom,
+    blendK,
   } = opts;
-
-  // Kränkliche Haut: je höher `sick`, desto grüner das Gesicht
-  const K0 = sick > 0.01
-    ? {
-        ...LUNI_COLORS,
-        skin: mixCol(LUNI_COLORS.skin, "#8fae6e", sick * 0.75),
-        skinShade: mixCol(LUNI_COLORS.skinShade, "#7d9a5e", sick * 0.75),
-      }
-    : LUNI_COLORS;
-  const P = pajama;
-  const bekleidet = P
-    ? {
-        ...K0,
-        cardigan: P.top,
-        cardiganDark: mixCol(P.top, "#000000", 0.18),
-        cardiganLight: mixCol(P.top, "#ffffff", 0.22),
-        tee: P.top,
-        teeShade: mixCol(P.top, "#000000", 0.12),
-        leggings: P.bottom,
-        leggingsLight: mixCol(P.bottom, "#ffffff", 0.14),
-        sockL: [P.bottom, P.bottom],
-        sockR: [P.bottom, P.bottom],
-      }
-    : K0;
-  const haut = {
-    ...K0,
-    leggings: K0.skinShade,
-    leggingsLight: K0.skin,
-    cardigan: K0.skin,
-    cardiganDark: K0.skinShade,
-    cardiganLight: K0.skin,
-    sockL: [K0.skin, K0.skinShade],
-    sockR: [K0.skin, K0.skinShade],
-  };
-  const KP = kleidung
-    ? {
-        ...K0,
-        cardigan: kleidung.oberteil ? bekleidet.cardigan : haut.cardigan,
-        cardiganDark: kleidung.oberteil ? bekleidet.cardiganDark : haut.cardiganDark,
-        cardiganLight: kleidung.oberteil ? bekleidet.cardiganLight : haut.cardiganLight,
-        tee: bekleidet.tee,
-        teeShade: bekleidet.teeShade,
-        leggings: kleidung.hose ? bekleidet.leggings : haut.leggings,
-        leggingsLight: kleidung.hose ? bekleidet.leggingsLight : haut.leggingsLight,
-        sockL: kleidung.hose ? bekleidet.sockL : haut.sockL,
-        sockR: kleidung.hose ? bekleidet.sockR : haut.sockR,
-      }
-    : outfit === "dressed" ? bekleidet : haut;
-  const oberteil = kleidung ? (kleidung.oberteil ? "dressed" : "none") : outfit;
-  const K = vampir && oberteil === "dressed"
-    ? { ...KP, cardiganLight: vampir.spitze ?? vampir.trim ?? KP.cardiganLight }
-    : KP;
   // Smoothe Übergänge zwischen Tanzposen: alte und neue Pose werden weich
   // ineinander überblendet (keine harten Posewechsel).
   const tzeit = state === "smoke" ? rauchzeit ?? t : t;
   let r: Rig;
-  if (opts.blendFrom && opts.blendK !== undefined && opts.blendK > 0 && opts.blendK < 1) {
-    const alt = buildRig(opts.blendFrom, tzeit, walk, phase, armReach, beatT);
+  if (blendFrom && blendK !== undefined && blendK > 0 && blendK < 1) {
+    const alt = buildRig(blendFrom, tzeit, walk, phase, armReach, beatT);
     const neu = buildRig(state, tzeit, walk, phase, armReach, beatT);
-    r = mergeRig(alt, neu, ease(opts.blendK));
+    r = mergeRig(alt, neu, ease(blendK));
   } else {
     r = buildRig(state, tzeit, walk, phase, armReach, beatT);
   }
@@ -2963,7 +2900,129 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   const sitzPose = state === "sit" || state === "smoke" || state === "ashtray";
   if (sitzgriff && sitzPose) r.armFar = armIK([-3.4, r.shoulderY + 2], sitzgriff, 1);
   if (sitzgriffLinks && sitzPose) r.armNear = armIK([3.4, r.shoulderY + 2], sitzgriffLinks, 1);
+  // Studio-Editor: Gelenke nachträglich verschieben (kein Einfluss auf den Rig-Aufbau).
+  // Ohne explizites edit gelten die im Studio übernommenen Positionen aus dem Spielspeicher.
+  const editorEdit = opts.edit ?? liveDelta("luni", state);
+  if (editorEdit) {
+    const e = editorEdit;
+    const sh = (p: [number, number], d?: [number, number]): [number, number] => (d ? [p[0] + d[0], p[1] + d[1]] : p);
+    r.armFar = { elbow: sh(r.armFar.elbow, e.elbowFar), hand: sh(r.armFar.hand, e.handFar) };
+    r.armNear = { elbow: sh(r.armNear.elbow, e.elbowNear), hand: sh(r.armNear.hand, e.handNear) };
+    r.legFar = { elbow: sh(r.legFar.elbow, e.kneeFar), hand: sh(r.legFar.hand, e.footFar) };
+    r.legNear = { elbow: sh(r.legNear.elbow, e.kneeNear), hand: sh(r.legNear.hand, e.footNear) };
+    if (e.head) {
+      r.headY += e.head[1];
+      r.headX += e.head[0];
+    }
+  }
 
+  return r;
+}
+
+/** Gelenkpunkte (Figurenraum, Boden = 0) für den Studio-Editor. Nutzt dieselbe
+    Rig-Berechnung wie das Zeichnen; Hand- und Fußziele werden ohne Kontakt gerechnet. */
+export function luniPunkte(state: LuniState, t: number, walk = 0, phase = 0): Record<string, [number, number]> {
+  const r = luniRigBauen(0, 0, { state, t, walk, phase, edit: {} });
+  return {
+    head: [r.headX, r.headY],
+    handFar: r.armFar.hand,
+    handNear: r.armNear.hand,
+    elbowFar: r.armFar.elbow,
+    elbowNear: r.armNear.elbow,
+    footFar: r.legFar.hand,
+    footNear: r.legNear.hand,
+    kneeFar: r.legFar.elbow,
+    kneeNear: r.legNear.elbow,
+  };
+}
+
+function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
+  const {
+    t = 0,
+    face = 1,
+    state = "idle",
+    expr = "happy",
+    blink = 0,
+    scale = 1,
+    shadow = true,
+    phase = 0,
+    sick = 0,
+    handKontakt = false,
+    handVorRumpf = false,
+    armeVorne = false,
+    handOut = null,
+    betweenBodyAndArms = null,
+    armsInFront = false,
+    outfit = "dressed",
+    kleidung,
+    back = false,
+    wet = 0,
+    glasses = true,
+    pajama = null,
+    hairAside = 0,
+    bedCover = false,
+    singOpen = 0,
+    pianoSeat,
+    headShake = 0,
+    gaze = 0,
+    eyeRoll = 0,
+    vampir = null,
+    umhang = 1,
+  } = opts;
+
+  // Kränkliche Haut: je höher `sick`, desto grüner das Gesicht
+  const K0 = sick > 0.01
+    ? {
+        ...LUNI_COLORS,
+        skin: mixCol(LUNI_COLORS.skin, "#8fae6e", sick * 0.75),
+        skinShade: mixCol(LUNI_COLORS.skinShade, "#7d9a5e", sick * 0.75),
+      }
+    : LUNI_COLORS;
+  const P = pajama;
+  const bekleidet = P
+    ? {
+        ...K0,
+        cardigan: P.top,
+        cardiganDark: mixCol(P.top, "#000000", 0.18),
+        cardiganLight: mixCol(P.top, "#ffffff", 0.22),
+        tee: P.top,
+        teeShade: mixCol(P.top, "#000000", 0.12),
+        leggings: P.bottom,
+        leggingsLight: mixCol(P.bottom, "#ffffff", 0.14),
+        sockL: [P.bottom, P.bottom],
+        sockR: [P.bottom, P.bottom],
+      }
+    : K0;
+  const haut = {
+    ...K0,
+    leggings: K0.skinShade,
+    leggingsLight: K0.skin,
+    cardigan: K0.skin,
+    cardiganDark: K0.skinShade,
+    cardiganLight: K0.skin,
+    sockL: [K0.skin, K0.skinShade],
+    sockR: [K0.skin, K0.skinShade],
+  };
+  const KP = kleidung
+    ? {
+        ...K0,
+        cardigan: kleidung.oberteil ? bekleidet.cardigan : haut.cardigan,
+        cardiganDark: kleidung.oberteil ? bekleidet.cardiganDark : haut.cardiganDark,
+        cardiganLight: kleidung.oberteil ? bekleidet.cardiganLight : haut.cardiganLight,
+        tee: bekleidet.tee,
+        teeShade: bekleidet.teeShade,
+        leggings: kleidung.hose ? bekleidet.leggings : haut.leggings,
+        leggingsLight: kleidung.hose ? bekleidet.leggingsLight : haut.leggingsLight,
+        sockL: kleidung.hose ? bekleidet.sockL : haut.sockL,
+        sockR: kleidung.hose ? bekleidet.sockR : haut.sockR,
+      }
+    : outfit === "dressed" ? bekleidet : haut;
+  const oberteil = kleidung ? (kleidung.oberteil ? "dressed" : "none") : outfit;
+  const K = vampir && oberteil === "dressed"
+    ? { ...KP, cardiganLight: vampir.spitze ?? vampir.trim ?? KP.cardiganLight }
+    : KP;
+  const r = luniRigBauen(x, y, opts);
+  const backIK = opts.pianoSeat !== undefined || opts.backReach === true;
   if (shadow) {
     const airLift = Math.max(0, -r.rootY);
     ctx.save();
@@ -3245,7 +3304,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   }
   if (headShake) ctx.translate(headShake * 1.8, 0);
   // Der Kopf folgt dem Hals: Versatz gegenüber der Grundlage (nur Verbeugung/Aufstehen)
-  ctx.translate(0, r.headY - HEAD_Y);
+  ctx.translate(r.headX, r.headY - HEAD_Y);
   ctx.translate(0, r.headY);
   ctx.rotate(r.headTilt + headShake * .12);
   ctx.translate(0, -r.headY);
@@ -3372,7 +3431,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     if (r.neckBend) {
       ctx.translate(0, r.shoulderY); ctx.rotate(r.neckBend); ctx.translate(0, -r.shoulderY);
     }
-    ctx.translate(headShake * 1.8, r.headY - HEAD_Y);
+    ctx.translate(headShake * 1.8 + r.headX, r.headY - HEAD_Y);
     ctx.translate(0, r.headY);
     ctx.rotate(r.headTilt + headShake * 0.12);
     ctx.translate(0, -r.headY);

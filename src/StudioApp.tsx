@@ -229,6 +229,18 @@ export default function StudioApp() {
                 Tanz-Studio
               </a>
               <a
+                href="#studio-frosch"
+                className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-mint-200 ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
+              >
+                Methan Frog
+              </a>
+              <a
+                href="#editor"
+                className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-amber-glow ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
+              >
+                Editor
+              </a>
+              <a
                 href="#patch"
                 className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-amber-glow ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
               >

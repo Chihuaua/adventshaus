@@ -5,8 +5,11 @@ import { OdinStudio, ApolloStudio } from "@/components/HundeStudio";
 import MonsStudio from "@/components/MonsStudio";
 import TanzStudio from "@/components/TanzStudio";
 import PatchView from "@/components/PatchView";
+import MethanStudio from "@/components/MethanStudio";
+import { FigurenEditor } from "@/components/FigurenEditor";
 
-/** Hash-Weiche: "#studio" Figuren-Studio, "#studio-odin"/"#studio-apollo" Hunde-Studios,
+/** Hash-Weiche: "#studio" Figuren-Studio, "#studio-frosch" Methan Frog, "#editor" Figuren-Editor,
+    "#studio-odin"/"#studio-apollo" Hunde-Studios,
     "#traumhaus" das normale Haus ohne Weihnachtsdeko, "#gruselhaus" Gruselhaus, sonst das normale Haus. */
 function useHash() {
   const [hash, setHash] = useState(() => (typeof window === "undefined" ? "" : window.location.hash));
@@ -26,6 +29,8 @@ export default function App() {
   if (hash === "#studio-mons") return <MonsStudio />;
   if (hash === "#studio-tanz") return <TanzStudio />;
   if (hash === "#patch") return <PatchView />;
+  if (hash === "#studio-frosch") return <MethanStudio />;
+  if (hash === "#editor") return <FigurenEditor />;
   if (hash === "#traumhaus") return <HouseView key="traum" welt="traum" />;
   // key: jede Hauswelt bekommt ihre eigene Instanz (und damit ihren eigenen Speicher)
   if (hash === "#gruselhaus") return <HouseView key="gruesel" welt="gruesel" />;
