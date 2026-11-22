@@ -2,7 +2,7 @@
    Patch-Dateien der aktuellen Sitzung (Inhalt der UFO-/Schlitten-Station)
 
    Dieses Modul wird von tools/ufo-bauen.mjs erzeugt. Das Menü oben rechts
-   bietet LCL-Kerzenbogen-Froschblase-71.zip, die TXT-Datei und die Code-Vorschau an.
+   bietet LCL-Deckenlampen-Sicherung-73.zip, die TXT-Datei und die Code-Vorschau an.
    ======================================================================= */
 
 export interface PatchDatei {
@@ -11,8 +11,8 @@ export interface PatchDatei {
   inhalt: string;
 }
 
-export const PATCH_KURZ = "Kerzenbogen-Froschblase";
-export const PATCH_NUMMER = 71;
+export const PATCH_KURZ = "Deckenlampen-Sicherung";
+export const PATCH_NUMMER = 73;
 export const PATCH_ZIP =
   `LCL-${PATCH_KURZ}-${String(PATCH_NUMMER).padStart(2, "0")}.zip`;
 export const PATCH_TXT =

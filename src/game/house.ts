@@ -685,10 +685,10 @@ function stairPos(s: Stair, t: number): Pt {
 /* ------------------------------ Lichtquellen --------------------------- */
 
 const LAMPS: { x: number; y: number; r: number; kueche?: boolean }[] = [
-  { x: 170, y: 372, r: 100 },
+  { x: 163, y: 365, r: 100 }, // Wohnzimmerlampe: halbiertes Kabel, über der Haustür
   { x: 302, y: 372, r: 118 },
-  { x: 650, y: 360, r: 125 },
-  { x: 340, y: 236, r: 110 },
+  { x: 650, y: 353, r: 125 }, // Küchenlampe: halbiertes Kabel
+  { x: 365, y: 229, r: 110 }, // Schlafzimmerlampe: halbiertes Kabel, über dem Fenster
   { x: 409, y: 292, r: 80 },
   { x: 590, y: 222, r: 96 },
   { x: 430, y: 150, r: 135 },
@@ -3193,7 +3193,8 @@ function drawHouse(
   haustuer(c, sky, 135, FE, festlich);
   if (festlich) weihnachtsWandkranz(c, 161, FE - 28, 7.3, true);
   garderobe(c, 198, FE, festlich);
-  ceilingLamp(c, 170, FO + SLAB, 14);
+  // Wohnzimmerlampe: Abstand zur Decke halbiert, zentriert über der Haustür.
+  ceilingLamp(c, 163, FO + SLAB, 7);
   if (!festlich) bookshelf(c, 258, FE, 32, 92, 5, 2);
   c.beginPath();
   c.ellipse(388, FE + 3, 112, 6, 0, 0, Math.PI * 2);
@@ -3227,7 +3228,8 @@ function drawHouse(
     if (festlich) festzweig(c, 619, FE - 40.9, 9.3);
     teaPot(c, tee.kanne, tee.tasse, tee.fill);
     stove(c, 690, FE);
-    ceilingLamp(c, 650, FO + SLAB, 14);
+    // Küchenlampe: Abstand zur Decke halbiert.
+    ceilingLamp(c, 650, FO + SLAB, 7);
     kitchenTable(c, 724, FE, 74, festlich);
     tobaccoTin(c, 766, FE);
     chair(c, 732, FE, true);
@@ -3254,7 +3256,8 @@ function drawHouse(
     bed(c, 282, FO, bettBelegt, festlich);
     nightstand(c, 396, FO, festlich);
     wardrobe(c, 434, FO, festlich);
-    ceilingLamp(c, 340, FD + SLAB, 14, "#f2d9a0");
+      // Schlafzimmerlampe: zentriert über dem Fenster, Kabel und Abstand zur Decke halbiert.
+    ceilingLamp(c, 365, FD + SLAB, 7, "#f2d9a0");
   }
   if (gr?.badezimmer) drawBioBadStatic(c);
   else {
