@@ -236,4 +236,28 @@ test("Adventskranz: pro erreichtem Sonntag genau eine zusätzliche Flamme", () =
   }
 });
 
+test("Treppenebenen: Geschossböden werden NACH den Treppen gezeichnet und verdecken deren Enden", () => {
+  const c = canvas();
+  G.drawHouse(c, {}, { open: 0 }, true, null, false, undefined, true);
+  let letzteTreppe = -1;
+  c.ops.forEach((o, idx) => {
+    if (o.art === "strich" && o.breite === 3.4 && o.farbe === "#2a2420") letzteTreppe = idx;
+  });
+  // Die Geschossdecken (FE=448, FO=324, FD=200) liegen alle nach der letzten Treppe.
+  const deckenY = [448 + 6, 324 + 6, 200 + 6];
+  for (const dy of deckenY) {
+    const bodenIdx = c.ops.findIndex((o, idx) => idx > letzteTreppe && o.art === "rect" && o.y === dy && o.h === 6);
+    assert.ok(letzteTreppe > 0 && bodenIdx > letzteTreppe, `Boden bei y=${dy - 6} liegt vor den Treppenenden`);
+  }
+});
+
+test("Weihnachtsbett: kein perspektivischer Kopfteil-Zusatz am Bettende", () => {
+  const src = readFileSync("src/game/weihnachtshaus.ts", "utf8");
+  const start = src.indexOf("export function weihnachtsBettgestell");
+  const ende = src.indexOf("export function winterSteppdecke", start);
+  const block = src.slice(start, ende);
+  assert.ok(!block.includes("bezierCurveTo"), "kein geschwungener 3D-Kopfteil-Zusatz hinter den Kissen");
+  assert.ok(block.includes("rund(c, 0, -52, 8, 52, 3"), "rein seitlicher Bettpfosten wie beim Standardbett");
+});
+
 console.log(`\n${n} Hausdetails-Tests bestanden.`);

@@ -626,6 +626,11 @@ function glasKolben(c: C, bx: number, y: number) {
 
 export function drawSteintreppe(c: C, fx: number, fy: number, tx: number, ty: number) {
   const N = 11;
+  c.save();
+  c.beginPath();
+  c.rect(0, 0, W2, fy + 12);
+  c.rect(0, ty + 12, tx + 2, fy - ty);
+  c.clip("evenodd");
   c.fillStyle = "#332d29";
   c.beginPath(); c.moveTo(fx, fy + 4); c.lineTo(tx, ty + 4); c.lineTo(tx, ty + 15); c.lineTo(fx, fy + 15); c.closePath(); c.fill();
   for (let i = 1; i < N; i++) {

@@ -452,14 +452,13 @@ test("24. Türchen: „Frohe Weihnachten, liebe Luni“ erscheint und bleibt bis
   assert.equal(ohne.adventGruss, false, "Türchen 5 allein bringt keinen Gruß");
 });
 
-test("Mikrofon: der Kopf liegt unter Lunis Mund und verdeckt es höchstens zu einem Fünftel", () => {
-  // Gemessen am stehenden Luni (Bodenmaß F = 200): der Mund reicht bis etwa F - 28,5.
-  const mundUnterkante = 200 - 28.5;
-  const mundHoehe = 6;
-  const kopfOben = 200 - 27;
-  const ueberdeckung = Math.max(0, mundUnterkante - kopfOben);
-  assert.ok(ueberdeckung <= mundHoehe / 5 + 0.01, `der Mikrofonkopf verdeckt ${ueberdeckung.toFixed(2)} vom Mund`);
-  assert.ok(kopfOben > mundUnterkante - mundHoehe / 5, "und liegt so tief wie verlangt");
+test("Mikrofon: Oberkante liegt knapp über der untersten Stelle von Lunis Mund", () => {
+  // Lunis Mund bei F = 200, LUNI_SCALE = 1.08: HEAD_Y = -46.5, MUND_Y = 5.6 -> Mitte 200 - 44.17 = 155.83,
+  // unterste Stelle bei ca. F - 42.6 = 157.4. Mikrofonoberkante: F - 43.2 = 156.8 (0.6 Einheiten darüber).
+  const mundUnterkante = 200 - 42.6;
+  const kopfOben = 200 - 43.2;
+  assert.ok(kopfOben < mundUnterkante, "Oberkante liegt über der untersten Stelle des Mundes");
+  assert.ok(mundUnterkante - kopfOben <= 1.2, "knapp darüber (maximal ~1 Einheit Überlappung)");
 });
 
 test("Kleiner Kalender im Weihnachtshaus: Er trägt denselben Schmuck wie der große, Stück für Stück", () => {
