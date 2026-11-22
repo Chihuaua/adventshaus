@@ -303,36 +303,22 @@ export function weihnachtsstrumpf(c: C, x: number, y: number, s = 1) {
 
 export function weihnachtsBettgestell(c: C, x: number, F: number) {
   c.save(); c.translate(x, F);
-  // Das Kopfteil bleibt hinter dem Kissen und ausserhalb von Lunis Liegepose.
-  c.beginPath(); c.moveTo(0, -11); c.lineTo(0, -48);
-  c.bezierCurveTo(0, -56, 9, -53, 13.5, -58);
-  c.bezierCurveTo(21, -64, 24.6, -51, 36, -53);
-  c.quadraticCurveTo(42, -55, 42, -49); c.lineTo(42, -20); c.lineTo(6, -11);
-  c.closePath(); c.fillStyle = P.holztief; c.fill();
-  c.strokeStyle = P.holzlicht; c.lineWidth = 1.1;
-  c.beginPath(); c.moveTo(4, -33); c.lineTo(4, -49);
-  c.bezierCurveTo(9, -48, 15, -56, 20, -55);
-  c.quadraticCurveTo(28, -47, 38, -49); c.lineTo(38, -33); c.stroke();
-  for (const dir of [-1, 1]) {
-    ell(c, 20 + dir * 7, -47, 4.2, 1.05, P.holzlicht);
-    strich(c, 20, -45, 20 + dir * 9, -49, P.gold, 0.55);
-  }
-  kreis(c, 20, -48, 1.4, P.gold);
-  rund(c, 0, -54, 6.4, 54, 2.5, P.holz);
+  // Rein seitliche Darstellung wie beim normalen Bett (kein perspektivischer Zusatz am Bettende).
+  rund(c, 0, -52, 8, 52, 3, P.holztief);
+  kreis(c, 4, -54, 2.4, P.holz);
   rund(c, 104, -34, 8, 34, 3, P.holztief);
   flaeche(c, 6, -18, 100, 12, P.holz);
   flaeche(c, 6, -16, 100, 1.1, P.holzlicht);
   rund(c, 8, -30, 98, 14, 5, P.leinen);
 
-  rund(c, 13, -41.2, 24, 12, 4.2, P.leinen);
-  rund(c, 28, -41.8, 18.5, 11.2, 4.4, P.creme);
+  rund(c, 9, -42.5, 21, 10, 4.4, P.leinen);
   rund(c, 12, -38, 30, 12, 5.5, P.creme);
-  for (const [px, py] of [[16.5, -34.8], [20.2, -32], [25, -34.2], [35.4, -38.4], [40.2, -37.1]]) {
+  for (const [px, py] of [[16.5, -34.8], [21.5, -32], [27, -34.2], [33.5, -32.4]]) {
     stern(c, px, py, 0.95, P.rosa, 4, 0.47);
   }
-  rund(c, 40.4, -37.4, 11, 8.8, 2.1, P.bordeaux);
-  poly(c, [[45.9, -35.9], [43.3, -31.7], [48.5, -31.7]], P.creme);
-  flaeche(c, 45.5, -32, 0.8, 1.6, P.goldlicht);
+  rund(c, 37.5, -37.4, 11, 8.8, 2.1, P.bordeaux);
+  poly(c, [[43, -35.9], [40.4, -31.7], [45.6, -31.7]], P.creme);
+  flaeche(c, 42.6, -32, 0.8, 1.6, P.goldlicht);
   c.restore();
 }
 

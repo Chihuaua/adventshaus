@@ -114,6 +114,11 @@ import { fensterReif, rundReif } from "./reif";
 import { fensterKranz, rundFensterKranz } from "./fensterkranz";
 import { adventWandWeihnacht } from "./advent-wand";
 import {
+  drawLavaLampe, erstelleLavaLampe, ladeLavaLampe, lavaSnapshot,
+  schalteLavaLampe, updateLavaLampe, type LavaLampeStand,
+} from "./lavalampe";
+import { drawFroschDenkblase } from "./froschblase";
+import {
   WEIHNACHTS_FARBEN, WEIHNACHTS_ORTE, WEIHNACHTSBAUM_X, ZIMMER_TAPETEN,
   esstischAdventskranz, festzweig, goldstangeMitSamt, kellerWinterdeko,
   ruhigeWeihnachtswand, samtvorhangPfade, weihnachtsAbendlicht, weihnachtsBettgestell,
@@ -595,8 +600,14 @@ export const STATIONS: Station[] = [
     hits: [[545, 142, 46, 58], [543, 164, 48, 24], [552, 176, 30, 26]],
   },
   {
-    id: "kerzen", label: "Kerzen", floor: 3, x: 567, face: 1, state: "reachUp", expr: "focus",
-    hits: [[550, 112, 38, 26]],
+    // Lichtbogen steht mittig auf der Fensterbank des Gaming-Fensters (330..386, Mitte 358).
+    id: "kerzen", label: "Kerzen", floor: 3, x: 365, face: -1, state: "reachUp", expr: "focus",
+    hits: [[339, 118, 38, 28]],
+  },
+  {
+    // 90er-Jahre-Lavalampe oben mittig auf dem Spieleregal (486..524, Oberkante 126).
+    id: "lavalampe", label: "Lavalampe", floor: 3, x: 496, face: 1, state: "reachUp", expr: "happy",
+    hits: [[492, 99, 26, 26]],
   },
   { id: "spielregal", label: "Spieleregal", floor: 3, x: 504, face: 1, state: "act", expr: "think", hits: [[486, 126, 38, 74]] },
   {
@@ -804,6 +815,14 @@ function drawStair(c: C, s: Stair) {
     c.beginPath();
     c.rect(CEL_X0, ty + SLAB, HR - CEL_X0, fy - ty - SLAB);
     c.clip();
+  } else {
+    // Obere Treppen: die Wangenenden bleiben innerhalb der Geschossdecken,
+    // damit die darüber gezeichneten Böden beide Treppenenden sauber verdecken.
+    c.beginPath();
+    c.rect(0, 0, W, fy + SLAB);
+    if (tx < fx) c.rect(0, ty + SLAB, tx + 2, fy - ty);
+    else c.rect(tx - 2, ty + SLAB, W - (tx - 2), fy - ty);
+    c.clip("evenodd");
   }
   poly(c, [[fx, fy + 4], [tx, ty + 4], [tx, ty + 15], [fx, fy + 15]], "#5a3c26");
   for (let i = 0; i < N; i++) {
@@ -1653,100 +1672,124 @@ function pianoStool(c: C, x: number, F: number) {
   line(c, x + 11.5, beine, x + 12, F, "#4a2a1c", 1.1);
 }
 
-/** Lage der drei Kerzen auf dem Klavierdeckel (relativ zur Klaviermitte). */
-const KLAVIER_KERZEN = [-11, 0, 11] as const;
+/** Lage der fünf Kerzen im gleichen Abstand (11 Einheiten) auf dem Lichtbogen. */
+export const BOGEN_KERZEN = [-22, -11, 0, 11, 22] as const;
+const BOGEN_SPANNE = 24;
+const BOGEN_SCHEITEL = 9.2;
+const BOGEN_DICKE = 3.0;
+
+/** Äußerer oberer Rand des Lichtbogens an Stelle `dx` relativ zur Fenstermitte. */
+export function bogenAussenRandY(y0: number, dx: number): number {
+  const u = clamp(dx / BOGEN_SPANNE, -1, 1);
+  const mitteY = y0 - 0.5 - BOGEN_SCHEITEL * (1 - u * u);
+  return mitteY - BOGEN_DICKE * 0.5;
+}
 
 /**
- * Kleiner Weihnachtsbogen aus Tannengrün auf dem Klavierdeckel, mit drei
- * Kerzen. `t` treibt das ruhige Flackern (kein Blinken), `stark` 0..1 dämpft
- * es beim Ausklingen. Reine Canvas-Primitive, keine Bild- oder Fontdatei.
+ * Weihnachtlicher Lichtbogen mit fünf senkrecht AUF dem äußeren Bogenrand
+ * stehenden Kerzen. Angenehm warmweißes Licht – tagsüber dezent sichtbar,
+ * abends/nachts mit seiner besten warmen Wirkung.
  */
 export function pianoBogen(c: C, x: number, F: number, t: number, stark = 1, an = true) {
-  const mx = x + 22; // Mitte des 44 breiten Korpus
-  const y0 = F - 58; // Oberkante des Deckels
+  const mx = x + 22; // Mitte (bei x=336 exakt Fenstermitte 358)
+  const y0 = F - 58; // Oberkante der Fensterbank (142)
   c.save();
-  // sanfter Bogen aus zwei gebogenen Zweigen
-  for (const sgn of [-1, 1] as const) {
-    c.strokeStyle = "#2f6b3c";
-    c.lineWidth = 3.2;
-    c.lineCap = "round";
+
+  // Durchgehender geschwungener Bogen (Holzunterzug + Tannengrün darüber)
+  c.lineCap = "round";
+  c.strokeStyle = "#5c3d24";
+  c.lineWidth = BOGEN_DICKE + 0.8;
+  c.beginPath();
+  c.moveTo(mx - BOGEN_SPANNE, y0 - 0.3);
+  c.quadraticCurveTo(mx, y0 - 0.3 - BOGEN_SCHEITEL * 2, mx + BOGEN_SPANNE, y0 - 0.3);
+  c.stroke();
+
+  c.strokeStyle = "#2f6b3c";
+  c.lineWidth = BOGEN_DICKE;
+  c.beginPath();
+  c.moveTo(mx - BOGEN_SPANNE, y0 - 0.5);
+  c.quadraticCurveTo(mx, y0 - 0.5 - BOGEN_SCHEITEL * 2, mx + BOGEN_SPANNE, y0 - 0.5);
+  c.stroke();
+
+  // Feine Nadeln nach unten/innen entlang des Bogens, damit der äußere obere Rand frei bleibt
+  c.strokeStyle = "#1f5230";
+  c.lineWidth = 0.85;
+  for (let i = 0; i <= 14; i++) {
+    const u = -0.92 + (i / 14) * 1.84;
+    const bx = mx + u * BOGEN_SPANNE;
+    const by = y0 - 0.5 - BOGEN_SCHEITEL * (1 - u * u);
     c.beginPath();
-    c.moveTo(mx + sgn * 17, y0 - 0.5);
-    c.quadraticCurveTo(mx + sgn * 14, y0 - 9, mx + sgn * 4, y0 - 11.5);
+    c.moveTo(bx, by + 0.4);
+    c.lineTo(bx + (u >= 0 ? 0.6 : -0.6), by + 2.3);
     c.stroke();
-    // Nadeln als kleine dunkle Striche entlang des Zweigs
-    c.strokeStyle = "#1f5230";
-    c.lineWidth = 0.9;
-    for (let i = 0; i < 7; i++) {
-      const q = i / 6;
-      const bx = (1 - q) * (1 - q) * (mx + sgn * 17) + 2 * (1 - q) * q * (mx + sgn * 14) + q * q * (mx + sgn * 4);
-      const by = (1 - q) * (1 - q) * (y0 - 0.5) + 2 * (1 - q) * q * (y0 - 9) + q * q * (y0 - 11.5);
-      c.beginPath();
-      c.moveTo(bx, by);
-      c.lineTo(bx + sgn * 0.6, by + 2.4);
-      c.stroke();
-    }
   }
-  // kleine rote Beeren und ein Goldband in der Mitte
+
+  // Kleine rote Beeren im Bogengrün und feines Goldband
   c.fillStyle = "#c9302f";
-  for (const [bx, by] of [[-12, -6.5], [-7, -9.6], [7, -9.6], [12, -6.5], [0, -12.4]] as const) {
+  for (const u of [-0.68, -0.24, 0, 0.24, 0.68]) {
+    const bx = mx + u * BOGEN_SPANNE;
+    const by = y0 - 0.3 - BOGEN_SCHEITEL * (1 - u * u);
     c.beginPath();
-    c.arc(mx + bx, y0 + by, 1.1, 0, Math.PI * 2);
+    c.arc(bx, by, 1.0, 0, Math.PI * 2);
     c.fill();
   }
   c.strokeStyle = "#e8c46a";
-  c.lineWidth = 1;
+  c.lineWidth = 0.85;
   c.beginPath();
-  c.moveTo(mx - 15, y0 - 3.2);
-  c.quadraticCurveTo(mx, y0 - 7.5, mx + 15, y0 - 3.2);
+  c.moveTo(mx - 20, y0 - 2.2);
+  c.quadraticCurveTo(mx, y0 - 8.2, mx + 20, y0 - 2.2);
   c.stroke();
 
-  // drei Kerzen auf kleinen Haltern
-  KLAVIER_KERZEN.forEach((dx, i) => {
+  // Fünf senkrechte Kerzen AUF dem äußeren oberen Rand des Bogens
+  const kerzenH = 5.4;
+  BOGEN_KERZEN.forEach((dx, i) => {
     const kx = mx + dx;
-    const ky = y0 - (i === 1 ? 13 : 10.5);
+    const randY = bogenAussenRandY(y0, dx);
+    // Goldener Kerzenteller liegt direkt auf dem äußeren Bogenrand auf
     c.fillStyle = "#d9a441";
-    c.fillRect(kx - 2.2, ky + 5.6, 4.4, 1.2);
+    c.fillRect(kx - 2.0, randY - 1.0, 4.0, 1.15);
+    // Senkrechter Kerzenschaft steht komplett oberhalb des Halters (nicht im Bogen)
+    const ky = randY - 1.0 - kerzenH;
     c.fillStyle = "#f4ecd8";
-    c.fillRect(kx - 1.5, ky, 3, 6);
-    c.fillStyle = "rgba(120,90,50,.25)";
-    c.fillRect(kx + 0.7, ky, 0.8, 6);
+    c.fillRect(kx - 1.35, ky, 2.7, kerzenH);
+    c.fillStyle = "rgba(120,90,50,.22)";
+    c.fillRect(kx + 0.55, ky, 0.8, kerzenH);
     // Docht
     c.strokeStyle = "#2a211c";
-    c.lineWidth = 0.6;
+    c.lineWidth = 0.55;
     c.beginPath();
     c.moveTo(kx, ky);
-    c.lineTo(kx, ky - 1.2);
+    c.lineTo(kx, ky - 1.0);
     c.stroke();
     if (!an) return; // ausgeschaltet: nur der Docht, keine Flamme
-    // Flamme: ruhig atmend, sie wird beim Ausklingen kleiner und kühler
-    const fl = 0.78 + 0.22 * Math.sin(t * 5.1 + i * 2.1) * Math.sin(t * 3.3 + i);
-    const h = (3.4 + 0.9 * fl) * (0.35 + 0.65 * stark);
-    const w = 1.5 * (0.5 + 0.5 * stark);
-    const g = c.createLinearGradient(kx, ky - 1.2 - h, kx, ky - 1.2);
-    g.addColorStop(0, `rgba(255,236,160,${0.95 * stark + 0.05})`);
-    g.addColorStop(0.55, `rgba(255,178,64,${0.95 * stark + 0.05})`);
-    g.addColorStop(1, `rgba(255,120,40,${0.6 * stark})`);
+
+    // Warmweiße, sanfte Kerzenflamme (tagsüber klar erkennbar, ohne grell zu überstrahlen)
+    const fl = 0.82 + 0.18 * Math.sin(t * 4.8 + i * 1.9) * Math.sin(t * 3.1 + i);
+    const h = (2.8 + 0.75 * fl) * (0.35 + 0.65 * stark);
+    const w = 1.25 * (0.5 + 0.5 * stark);
+    const g = c.createLinearGradient(kx, ky - 1.0 - h, kx, ky - 0.9);
+    g.addColorStop(0, `rgba(255,252,238,${0.94 * stark + 0.05})`);
+    g.addColorStop(0.55, `rgba(255,234,185,${0.9 * stark + 0.05})`);
+    g.addColorStop(1, `rgba(248,196,120,${0.52 * stark})`);
     c.fillStyle = g;
     c.beginPath();
-    c.moveTo(kx, ky - 1.2 - h);
-    c.quadraticCurveTo(kx + w, ky - 1.2 - h * 0.45, kx, ky - 1.1);
-    c.quadraticCurveTo(kx - w, ky - 1.2 - h * 0.45, kx, ky - 1.2 - h);
+    c.moveTo(kx, ky - 1.0 - h);
+    c.quadraticCurveTo(kx + w, ky - 1.0 - h * 0.45, kx, ky - 0.9);
+    c.quadraticCurveTo(kx - w, ky - 1.0 - h * 0.45, kx, ky - 1.0 - h);
     c.closePath();
     c.fill();
   });
   c.restore();
 }
 
-/** Farbe des Kerzenlichts auf Luni (Silhouette, additiv). */
-const KERZEN_LICHT = "#ffb864";
+/** Farbe des warmweißen Kerzenlichts auf Luni (Silhouette, additiv). */
+const KERZEN_LICHT = "#ffdfad";
 /** Das Kerzenlicht reicht nur bis zur Ellenbogenhöhe (28 über dem Boden), nicht tiefer. */
 const KERZEN_REICHWEITE = 28;
 
 /**
- * Schein der drei Kerzen auf Flammen, Klavierfront und Wand. Dieser Teil wird
- * VOR Luni gezeichnet, damit das warme Licht nicht als Schleier über ihrem
- * Kopf liegt. Es reicht nur bis zur Ellenbogenhöhe.
+ * Dezenter, angenehm warmweißer Schein der fünf Kerzen.
+ * Tagsüber bewusst zurückhaltend (`stark` klein), nachts warm und stimmungsvoll.
  */
 function kerzenSchein(c: C, x: number, F: number, stark: number) {
   if (stark <= 0.01) return;
@@ -1758,24 +1801,27 @@ function kerzenSchein(c: C, x: number, F: number, stark: number) {
   c.rect(0, 0, W, grenze);
   c.clip();
   c.globalCompositeOperation = "lighter";
-  // warmer Schein um die Flammen
-  for (const dx of KLAVIER_KERZEN) {
+  // Kleiner, weicher warmweißer Halo um jede der fünf Flammen
+  for (const dx of BOGEN_KERZEN) {
     const cx = mx + dx;
-    const cy = y0 - 16;
-    const g = c.createRadialGradient(cx, cy, 1, cx, cy, 30);
-    g.addColorStop(0, `rgba(255,200,120,${0.22 * stark})`);
-    g.addColorStop(1, "rgba(255,170,80,0)");
+    const cy = bogenAussenRandY(y0, dx) - 8.2;
+    const g = c.createRadialGradient(cx, cy, 0.8, cx, cy, 14);
+    g.addColorStop(0, `rgba(255,244,214,${(0.14 * stark).toFixed(3)})`);
+    g.addColorStop(0.5, `rgba(255,228,178,${(0.055 * stark).toFixed(3)})`);
+    g.addColorStop(1, "rgba(255,215,155,0)");
     c.fillStyle = g;
     c.beginPath();
-    c.arc(cx, cy, 30, 0, Math.PI * 2);
+    c.arc(cx, cy, 14, 0, Math.PI * 2);
     c.fill();
   }
-  // Klavierfront: warmer Verlauf von oben, nur bis zur Ellenbogenhöhe
-  const front = c.createLinearGradient(0, y0, 0, grenze);
-  front.addColorStop(0, `rgba(255,190,110,${0.26 * stark})`);
-  front.addColorStop(1, "rgba(255,170,80,0)");
-  c.fillStyle = front;
-  c.fillRect(545, y0, 44, grenze - y0);
+  // Ganz zarter gemeinsamer Schimmer um den Bogen
+  const bank = c.createRadialGradient(mx, y0 - 8, 2, mx, y0 - 4, 30);
+  bank.addColorStop(0, `rgba(255,238,200,${(0.09 * stark).toFixed(3)})`);
+  bank.addColorStop(1, "rgba(255,220,165,0)");
+  c.fillStyle = bank;
+  c.beginPath();
+  c.arc(mx, y0 - 4, 30, 0, Math.PI * 2);
+  c.fill();
   c.restore();
 }
 
@@ -2444,12 +2490,12 @@ function saxStand(c: C, x: number, F: number) {
 
 /** Mikrofonstaender: Stange, Fuss und Mikrofonkopf am Gesangsplatz. */
 function micStand(c: C, x: number, F: number) {
-  // Kurz: Der Mikrofonkopf liegt knapp unter Lunis Mund (etwa F - 27 bis F - 18),
-  // damit er ihr Gesicht und den Mund frei lässt.
-  line(c, x, F, x, F - 18, "#2a2420", 2);
+  // Lunis Mundunterkante liegt stehend/singend bei F - 42,6 (157,4 bei F = 200).
+  // Mikrofonoberkante F - 43,2 (156,8): exakt knapp über der untersten Stelle ihres Mundes.
+  line(c, x, F, x, F - 35, "#2a2420", 2);
   line(c, x - 7, F - 1, x + 7, F - 1, "#2a2420", 2.2);
-  rrect(c, x - 2.6, F - 27, 5.2, 9, 2.4, "#3a3430");
-  rect(c, x - 2.6, F - 25, 5.2, 1, "rgba(255,255,255,.22)");
+  rrect(c, x - 2.6, F - 43.2, 5.2, 9, 2.4, "#3a3430");
+  rect(c, x - 2.6, F - 41.2, 5.2, 1, "rgba(255,255,255,.22)");
 }
 
 /** Zigarette in der Hand, mit glimmender Spitze */
@@ -3074,19 +3120,35 @@ function drawHouse(
     wallBand(c, 590, HR, FE + SLAB, FK, "#6f746f", "#5a5f5a", 26);
   }
 
+  // Hexenküche und rechtes Treppenhaus: Bruchstein, Pflaster, Einrichtung.
+  if (gr?.kueche) drawHexenkuecheRaum(c);
+
+  // Das hohe Fenster im rechten Treppenhaus kommt vor die Treppe: Ihr Geländer
+  // läuft davor, nicht dahinter.
+  if (gr?.kueche) {
+    drawKuchenFenster(c, sky);
+    const st = STAIRS.find((x) => x.id === "eg_og");
+    if (st) drawSteintreppe(c, st.footX, FLOOR_Y[st.lower], st.topX, FLOOR_Y[st.upper]);
+  } else {
+    windowRect(c, sky, 740, 236, 44, 78, { mull: 2, kranz: weihnacht && !gr });
+  }
+
+  /* ---- Treppen (hinter den Geschossdecken, damit beide Enden vom Boden verdeckt werden) ---- */
+  for (const s of STAIRS) if (!(gr?.kueche && s.id === "eg_og")) drawStair(c, s);
+
   /* ---- Böden ---- */
   const WOOD = "#a06f45";
   slab(c, CEL_X0, HR, FK, [[CEL_X0, 590, festlich ? farben.boeden.keller : "#8a8d88", "none"],
     [590, HR, festlich ? farben.boeden.rauchraum : "#777a74", "none"]], "#2a2522");
-  slab(c, 98, HR, FE, [[98, 560, festlich ? farben.boeden.holz : WOOD, "wood"],
-    [560, HR, festlich ? farben.boeden.fliesen : "#e8e2d2", "tile"]]);
+  slab(c, 98, HR, FE, gr?.kueche
+    ? [[98, 560, WOOD, "wood"]]
+    : [[98, 560, festlich ? farben.boeden.holz : WOOD, "wood"],
+       [560, HR, festlich ? farben.boeden.fliesen : "#e8e2d2", "tile"]]);
   slab(c, 98, OG_X1 + 2, FO, [[98, 490, festlich ? farben.boeden.holz : "#a87a52", "wood"],
     [490, OG_X1 + 2, gr?.badezimmer ? "#536260" : festlich ? farben.bad.boden : "#4d9a66", "tile"]]);
   slab(c, DG_X0, HR, FD, [[DG_X0, 530, gr?.raumstation ? "#5a5a6a" : festlich ? farben.boeden.gaming : "#3e3b52", "none"],
     [530, HR, WOOD, "wood"]]);
   if (gr?.raumstation) drawMetalFloor(c, DG_X0, 530, FD);
-  // Hexenküche und rechtes Treppenhaus: Bruchstein, Pflaster, Einrichtung.
-  if (gr?.kueche) drawHexenkuecheRaum(c);
 
   /* ---- Außenwände (hinter dem Dachüberstand) ---- */
   rect(c, 98, 118, 12, FE + SLAB - 118, "#4a3a33");
@@ -3107,14 +3169,6 @@ function drawHouse(
   partition(c, 530, atticCeil(530), FD);
   partition(c, 590, FE + SLAB, FK);
 
-  // Das hohe Fenster im rechten Treppenhaus kommt vor die Treppe: Ihr Geländer
-  // läuft davor, nicht dahinter.
-  if (!gr?.kueche) windowRect(c, sky, 740, 236, 44, 78, { mull: 2, kranz: weihnacht && !gr });
-
-  /* ---- Treppen ---- */
-  // Im Gruselhaus kommt die Treppe zum 1. Stock als Steintreppe erst nach
-  // dem Fenster – so liegt ihr Geländer davor statt dahinter.
-  for (const s of STAIRS) if (!(gr?.kueche && s.id === "eg_og")) drawStair(c, s);
   railing(c, DG_X0 - 14, FD, 12);
   if (gr?.kueche) drawEisenBruestung(c, OG_X1 - 12, FO, 12);
   else railing(c, OG_X1 - 12, FO, 12);
@@ -3127,11 +3181,6 @@ function drawHouse(
   /* ---- Fenster ---- */
   windowRect(c, sky, 330, 358, 64, 38, { curtain: "#c9453a", kranz: weihnacht && !gr });
   if (!gr?.kueche) windowRect(c, sky, 624, 364, 50, 36, { kranz: weihnacht && !gr });
-  if (gr?.kueche) {
-    drawKuchenFenster(c, sky);
-    const st = STAIRS.find((x) => x.id === "eg_og");
-    if (st) drawSteintreppe(c, st.footX, FLOOR_Y[st.lower], st.topX, FLOOR_Y[st.upper]);
-  }
   if (!gr?.schlafzimmer) {
     windowRect(c, sky, 334, 244, 62, 46, { curtain: "#7a3f55", kranz: weihnacht && !gr });
   }
@@ -3836,11 +3885,16 @@ export class House {
   /** Nach dem Lied: 0 = spielt noch, dann Ausklingen, Aufstehen, Blick zum Spieler, Verbeugung, Ende. */
   private klavierOutro: "klang" | "aufstehen" | "drehen" | "verbeugung" | null = null;
   private klavierOutroT = 0;
-  /** Kerzen auf dem Klavier: brennen dauerhaft; Luni schaltet sie an der Station um. */
+  /** Lichtbogen im Gaming-Fenster: brennt dauerhaft; Luni schaltet ihn an der Station um. */
   private kerzenAn = true;
   private kerzenLauft = false;
   private kerzenGeschaltet = false;
   private kerzenT = 0;
+  /** 90er-Lavalampe oben auf dem Spieleregal im Gaming-Zimmer. */
+  private lavaLampe: LavaLampeStand = erstelleLavaLampe(true, 0.08, 1995);
+  private lavaLauft = false;
+  private lavaGeschaltet = false;
+  private lavaT = 0;
   private plattenReady = false;
   private plattenPreparing = false;
   private plattenStarted = false;
@@ -3996,7 +4050,7 @@ export class House {
       if (GRUSELRAEUME.badezimmer) st = badezimmerStationen(st);
       // Ofen heißt im Gruselhaus Ofen; der Kessel ist eine eigene Station.
       st = st
-        .filter((x) => x.id !== "kessel" && x.id !== "kerzen" && x.id !== "mikrofon")
+        .filter((x) => x.id !== "kessel" && x.id !== "kerzen" && x.id !== "mikrofon" && x.id !== "lavalampe")
         .map((x) => (x.id === "herd" ? { ...x, label: "Ofen" } : x));
       st = [...st, baseKessel()];
       if (GRUSELRAEUME.kueche) st = kuechenStationen(st);
@@ -4171,6 +4225,7 @@ export class House {
       bucketButts: this.bucketButts,
       lighterOnTable: this.lightAufTisch,
       kerzenAn: this.kerzenAn,
+      lavalampe: lavaSnapshot(this.lavaLampe),
       tv: this.tvDaten,
       flauschi: this.flauschiState,
       flauschiEingelegt: this.flauschiInserted,
@@ -4227,6 +4282,8 @@ export class House {
     this.bucketButts = typeof s.bucketButts === "number" ? Math.max(0, Math.round(s.bucketButts)) : 0;
     this.lightAufTisch = s.lighterOnTable === true;
     this.kerzenAn = s.kerzenAn !== false;
+    const vergangeneSek = typeof s.gespeichert === "number" ? Math.max(0, (Date.now() - s.gespeichert) / 1000) : 0;
+    this.lavaLampe = ladeLavaLampe(s.lavalampe, vergangeneSek);
     this.tvStand = leseTVStand(s.tv);
     if (this.istNormalHaus && s.hunde) this.hunde.wiederherstellen(s.hunde);
     const vi = s.vampir;
@@ -5213,6 +5270,7 @@ export class House {
     this.elapsed += dt;
     this.updateTVAudio();
     this.updateHarvest(dt);
+    if (this.istNormalHaus) updateLavaLampe(this.lavaLampe, dt);
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) {
       this.kessel.update(dt);
       this.updateZauber(dt);
@@ -5984,7 +6042,7 @@ export class House {
     }
 
     if (act?.id === "kerzen") {
-      // Luni streckt sich zu den Kerzen, schaltet sie um und tritt zurück.
+      // Luni streckt sich zum Lichtbogen auf der Fensterbank, schaltet ihn um und tritt zurück.
       if (!this.kerzenLauft) {
         this.kerzenLauft = true;
         this.kerzenT = 0;
@@ -5995,10 +6053,32 @@ export class House {
         this.kerzenGeschaltet = true;
         this.kerzenAn = !this.kerzenAn;
         sfx.ui();
+        this.speichern();
       }
       if (this.kerzenT >= 1.8) {
         this.kerzenLauft = false;
         this.kerzenT = 0;
+        this.finishActivity();
+      }
+      return;
+    }
+    if (act?.id === "lavalampe") {
+      // Luni streckt sich zur Lavalampe auf dem Spieleregal und schaltet sie ein oder aus.
+      if (!this.lavaLauft) {
+        this.lavaLauft = true;
+        this.lavaT = 0;
+        this.lavaGeschaltet = false;
+      }
+      this.lavaT += dt;
+      if (!this.lavaGeschaltet && this.lavaT >= 0.7) {
+        this.lavaGeschaltet = true;
+        schalteLavaLampe(this.lavaLampe);
+        sfx.ui();
+        this.speichern();
+      }
+      if (this.lavaT >= 1.4) {
+        this.lavaLauft = false;
+        this.lavaT = 0;
         this.finishActivity();
       }
       return;
@@ -6199,6 +6279,7 @@ export class House {
   private finishActivity() {
     this.activity = null;
     this.kerzenLauft = false;
+    this.lavaLauft = false;
     this.target = null;
     this.smokeRequested = false;
     this.handy = null;
@@ -6719,14 +6800,7 @@ export class House {
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(this.bg, 0, 0, W, H);
 
-    // Weihnachtsbogen mit Kerzen auf dem Klavier (normales Haus & Weihnachtshaus).
-    // Der Schein der Kerzen liegt VOR Luni, das Licht auf Luni kommt danach.
-    this.drawKlavierBogen(ctx);
-    if (this.istNormalHaus && this.welt !== "gruesel" && this.kerzenAn) {
-      if (this.weihnachtsdeko) kerzenSchein(ctx, 545, FD, this.klavierOutro === "klang" ? 0.55 + 0.45 * (1 - this.klavierOutroT / KLAVIER_AUSKLINGEN) : 1);
-    }
-
-    // Wetter früh, damit Fenstermaske, Truhe und Luni danach sauber darüber liegen.
+    // Wetter früh, damit Innenraum-Deko (Lichtbogen auf der Fensterbank), Truhe und Luni sauber davor liegen.
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) {
       // Der Wetterpfad zeichnet am Schornstein durch die Even-Odd-Regel zwei
       // Pixelreihen Regen auf die obere Wandkante. Diese schmale Kante wird in
@@ -6768,6 +6842,16 @@ export class House {
     // Im normalen Haus bleibt das Fensterwetter hinter Luni.
     if (!(this.welt === "gruesel" && GRUSELRAEUME.kueche)) {
       drawWetter(ctx, this.wetter, this.elapsed, weihnacht ? samtvorhangPfade : undefined);
+    }
+    // Lichtbogen mittig auf der Fensterbank des Gaming-Zimmers (x=336 -> Mitte 358, y0=142) + Lavalampe auf dem Spieleregal.
+    // Tagsüber dezenter Schein (0.22), mit zunehmender Dunkelheit bis 1.0 warme Abend-/Nachtwirkung.
+    const bogenLicht = 0.22 + 0.78 * clamp(this.night, 0, 1);
+    this.drawFensterBogen(ctx);
+    if (this.istNormalHaus && this.welt !== "gruesel" && this.kerzenAn && this.weihnachtsdeko) {
+      kerzenSchein(ctx, 336, FD, bogenLicht);
+    }
+    if (this.istNormalHaus && this.welt !== "gruesel") {
+      drawLavaLampe(ctx, 505, 126, this.lavaLampe);
     }
     const adventSonntage = weihnacht ? adventsSonntage(Date.now()) : 0;
     if (weihnacht) weihnachtsKerzenflammen(ctx, FE, FO, FK, this.elapsed, adventSonntage);
@@ -6853,10 +6937,10 @@ export class House {
     // Abzug durch die Gartentür: Schwaden ziehen sichtbar nach draußen
     this.drawVentSmoke(ctx);
 
-    // Kerzenlicht auf Luni: hält ihre Silhouette warm, damit sie sich vom Klavier abhebt.
-  if (this.istNormalHaus && this.welt !== "gruesel" && this.kerzenAn && this.lf === 3 && !this.tvZoom) {
-    const nah = Math.abs(this.lx - 567) < 95;
-    drawKerzenlicht(ctx, 1, this.silBuf, () => {
+    // Kerzenlicht auf Luni: tagsüber dezent, nachts angenehm warmweiß.
+  if (this.istNormalHaus && this.welt !== "gruesel" && this.kerzenAn && this.weihnachtsdeko && this.lf === 3 && !this.tvZoom) {
+    const nah = Math.abs(this.lx - 358) < 95;
+    drawKerzenlicht(ctx, 0.28 + 0.72 * clamp(this.night, 0, 1), this.silBuf, () => {
       const sc = this.silBuf.getContext("2d");
       if (sc) this.drawLuniNow(sc);
     }, nah);
@@ -6871,7 +6955,28 @@ export class House {
       ctx.globalCompositeOperation = "lighter";
       ctx.drawImage(this.add, 0, 0);
       ctx.restore();
+      // Lichtbogen im Gaming-Fenster entfaltet nachts seine beste warmweiße Wirkung.
+      if (this.istNormalHaus && this.welt !== "gruesel" && this.kerzenAn && this.weihnachtsdeko && !this.tvZoom) {
+        ctx.save();
+        ctx.globalAlpha = clamp(this.night * 0.88, 0, 0.82);
+        pianoBogen(ctx, 336, FD, this.elapsed, 1, true);
+        kerzenSchein(ctx, 336, FD, clamp(this.night * 1.15, 0, 1));
+        ctx.restore();
+      }
+      // Eingeschaltete Lavalampe leuchtet auch bei Nacht selbst aus dem Dunkeln heraus.
+      if (this.istNormalHaus && this.welt !== "gruesel" && this.lavaLampe.an && !this.tvZoom) {
+        ctx.save();
+        ctx.globalAlpha = clamp(this.night * 0.68, 0, 0.62);
+        drawLavaLampe(ctx, 505, 126, this.lavaLampe);
+        ctx.restore();
+      }
     }
+
+  // Comic-Denkblase über Lunis Kopf, während sie am Mikrofon ihr Froschlied singt (Tag & Nacht klar lesbar).
+  if (this.singPhase === "sing" && this.lf === 3 && !this.cur && !this.tvZoom && this.luniKopf?.sichtbar) {
+    const songT = this.singStarted ? (this.singMusic?.currentTime ?? 0) : this.singT;
+    drawFroschDenkblase(ctx, this.luniKopf.x, this.luniKopf.y - 61, songT, FROSCH_DURATION_SECONDS, this.elapsed, -1);
+  }
 
 
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) this.drawKesselEffekte(ctx);
@@ -7312,10 +7417,10 @@ export class House {
     }
   }
 
-  /** Weihnachtsbogen auf dem Klavier; die Flammen brennen, solange `kerzenAn` gilt. */
-  private drawKlavierBogen(c: C) {
+  /** Lichtbogen mittig auf der Fensterbank des Gaming-Zimmers (Fenster 330..386, Mitte 358). */
+  private drawFensterBogen(c: C) {
     if (!this.istNormalHaus || this.welt === "gruesel") return;
-    if (this.weihnachtsdeko) pianoBogen(c, 545, FD, this.elapsed, 1, this.kerzenAn);
+    if (this.weihnachtsdeko) pianoBogen(c, 336, FD, this.elapsed, 1, this.kerzenAn);
   }
 
   private stopKlavier() {
@@ -10998,21 +11103,21 @@ export class House {
       }
     }
 
-    // Kerzen: Luni streckt sich auf die Zehenspitzen und schaltet sie um.
+    // Lichtbogen im Gaming-Fenster & Lavalampe auf dem Spieleregal: Luni streckt sich auf Zehenspitzen.
     if (this.activity?.id === "kerzen" && !a && this.kerzenLauft) {
       state = "reachUp";
       expr = "focus";
-      face = 1;
+      face = -1;
       back = false;
       posePhase = clamp(this.kerzenT / 1.8, 0, 1);
-      // Luni steigt auf den Klavierschemel (Sitzhöhe 9), streckt sich dort zu den
-      // Kerzen und steigt danach wieder ab. Im Stand reicht die Hand nicht hinauf.
-      const t = this.kerzenT;
-      const glatt = (v: number) => v * v * (3 - 2 * v);
-      const hoch = t < 0.4 ? glatt(t / 0.4) : t > 1.4 ? 1 - glatt((t - 1.4) / 0.4) : 1;
-      // Im Höhepunkt auf den Zehenspitzen (3,5 mehr): die Hand erreicht den Kerzenhalter.
-      const zehen = Math.sin(clamp(t / 1.8, 0, 1) * Math.PI) * 3.5;
-      yOff = -(SCHEMEL_HOEHE + zehen) * hoch;
+      yOff = -Math.sin(posePhase * Math.PI) * 3.5;
+    } else if (this.activity?.id === "lavalampe" && !a && this.lavaLauft) {
+      state = "reachUp";
+      expr = "happy";
+      face = 1;
+      back = false;
+      posePhase = clamp(this.lavaT / 1.4, 0, 1);
+      yOff = -Math.sin(posePhase * Math.PI) * 3.5;
     }
     if (this.musikzimmer && this.lf === 3 && !a && (this.activity?.id === "klavier" || this.pianoRise > 0)) {
       pianoPose = this.pianoSeat;

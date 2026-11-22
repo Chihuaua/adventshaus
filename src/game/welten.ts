@@ -19,6 +19,7 @@
 import { loadJson, saveJson } from "./storage";
 import type { TVStand } from "./tv";
 import type { FlauschiStand } from "./flauschi";
+import type { LavaSnapshot } from "./lavalampe";
 
 export type WeltId = "normal" | "traum" | "gruesel" | "weihnacht";
 
@@ -84,8 +85,10 @@ export interface HausSnapshot {
   ashButts?: number;
   bucketButts?: number;
   lighterOnTable?: boolean;
-  /** Kerzen auf dem Klavier: brennen dauerhaft, Luni schaltet sie um. */
+  /** Kerzen im Gaming-Fenster: brennen dauerhaft, Luni schaltet sie um. */
   kerzenAn?: boolean;
+  /** 90er-Lavalampe auf dem Spieleregal: Schaltzustand, Wärme und Erkaltungsform. */
+  lavalampe?: LavaSnapshot;
   /** Senderwahl und Lautstaerke je Fernseher und Hauswelt. */
   tv?: TVStand;
   /** Teleflauschi „Flauschi“ im Weihnachtshaus: Zustand, Regal, Konsole. */

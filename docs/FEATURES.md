@@ -228,6 +228,12 @@ weihnachtshaus-warmes-licht | src/game/house.ts | zeichneWeihnachtsAbendlicht
 weihnachtshaus-weihnachtsbaum | src/game/weihnachtshaus.ts | wohnzimmerWeihnachtsbaum
 weihnachtshaus-samtvorhaenge | src/game/weihnachtshaus.ts | goldstangeMitSamt
 weihnachtshaus-steppdecke | src/game/weihnachtshaus.ts | winterSteppdecke
+fenster-lichtbogen | src/game/house.ts | drawFensterBogen
+lavalampe-modul | src/game/lavalampe.ts | drawLavaLampe
+lavalampe-station | src/game/house.ts | id: "lavalampe"
+lavalampe-tests | tools/test-lavalampe.mjs | Lavalampe-Tests bestanden
+frosch-denkblase | src/game/froschblase.ts | drawFroschDenkblase
+frosch-denkblase-gesang | src/game/house.ts | drawFroschDenkblase
 
 ## Hunde Odin & Apollo
 

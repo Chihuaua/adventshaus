@@ -1379,27 +1379,39 @@ test("Klavier: niedriger Schemel mittig vor dem Klavier, Lunis Hüfte sitzt auf 
 test("Weihnachtsbogen: Tannengrün mit drei Kerzen auf dem Klavierdeckel, Flammen ruhen (kein Blinken)", () => {
   const mess = (t, stark = 1) => {
     const c = canvas();
-    G.pianoBogen(c.ctx, 545, 200, t, stark);
+    G.pianoBogen(c.ctx, 336, 200, t, stark);
     const kerzen = c.shapes.filter(z => z.color === "#f4ecd8");
-    return { kerzen: kerzen.length, gruen: c.shapes.filter(z => z.color === "#2f6b3c").length, beeren: c.shapes.filter(z => z.color === "#c9302f").length,
-      flammen: c.arcs.filter(a => a.y < 200 - 58 - 10).length, top: Math.min(...c.shapes.map(z => z.top)) };
+    return {
+      kerzen,
+      gruen: c.shapes.filter(z => z.color === "#2f6b3c").length,
+      beeren: c.shapes.filter(z => z.color === "#c9302f").length,
+      top: Math.min(...c.shapes.map(z => z.top)),
+    };
   };
   const a = mess(0.3), b = mess(2.9);
   for (const m of [a, b]) {
-    assert.equal(m.kerzen, 3, "drei Kerzen");
-    assert.ok(m.gruen >= 2, "Tannenzweige");
+    assert.equal(m.kerzen.length, 5, "fünf Kerzen");
+    assert.ok(m.gruen >= 1, "Tannenbogen");
     assert.ok(m.beeren >= 5, "Beeren");
   }
-  // Der Bogen steht auf dem Deckel und ragt hinauf, aber nie in den Dachbereich
-  assert.ok(a.top > 118 && a.top < 142, `Bogen von y=${a.top.toFixed(1)} bis zum Deckel (142)`);
-  // Beim Ausklingen werden die Flammen kleiner (stark 0.35) statt auszugehen.
+  // Gleichmäßiger Abstand 11 und jede Kerze steht senkrecht AUF (oberhalb) dem äußeren Bogenrand
+  const mitten = a.kerzen.map(k => (k.left + k.right) / 2);
+  for (let i = 1; i < mitten.length; i++) {
+    assert.ok(Math.abs((mitten[i] - mitten[i - 1]) - 11) < 0.05, "gleicher Kerzenabstand 11");
+  }
+  G.BOGEN_KERZEN.forEach((dx, i) => {
+    const aussenRand = G.bogenAussenRandY(142, dx);
+    assert.ok(a.kerzen[i].bottom <= aussenRand + 0.05, `Kerze ${i} steht auf dem äußeren Bogenrand (nicht im Bogen)`);
+    assert.ok(Math.abs((a.kerzen[i].right - a.kerzen[i].left) - 2.7) < 0.05, "senkrechter Schaft");
+  });
+  assert.ok(a.top > 115 && a.top < 142, `Bogen von y=${a.top.toFixed(1)} bis zur Fensterbank (142)`);
   const flammenHoehe = (stark) => {
     const c = canvas();
-    G.pianoBogen(c.ctx, 545, 200, 0.3, stark);
-    const kerzenOben = 200 - 58 - 13; // mittlere Kerze: Oberkante
-    return Math.max(0, kerzenOben - Math.min(...c.shapes.filter(z => z.bottom <= kerzenOben && z.top > 118).map(z => z.top)));
+    G.pianoBogen(c.ctx, 336, 200, 0.3, stark);
+    const kerzenOben = Math.min(...c.shapes.filter(z => z.color === "#f4ecd8").map(z => z.top)) - 1.0;
+    return Math.max(0, kerzenOben - Math.min(...c.shapes.filter(z => z.bottom <= kerzenOben + 0.2 && z.top > 115).map(z => z.top)));
   };
-  assert.ok(flammenHoehe(1) > flammenHoehe(0.35) + 1, `Flammen werden beim Ausklingen kleiner (${flammenHoehe(1).toFixed(1)} -> ${flammenHoehe(0.35).toFixed(1)})`);
+  assert.ok(flammenHoehe(1) > flammenHoehe(0.35) + 0.8, `Flammen skalieren mit stark (${flammenHoehe(1).toFixed(1)} -> ${flammenHoehe(0.35).toFixed(1)})`);
 });
 
 test("Klavier-Ausklang: nach dem Lied klingt der Klang aus, Luni steht auf, dreht sich und verbeugt sich", () => {
@@ -1456,26 +1468,29 @@ test("Kerzenlicht hellt Luni ab und liegt über ihr (nicht nur auf der Wand)", (
   const src = readFileSync("src/game/house.ts", "utf8");
   assert.ok(src.includes('c.globalCompositeOperation = "lighter";'), "additives Licht");
   assert.ok(src.includes('"source-in"'), "Silhouette von Luni wird mit Licht gefüllt");
-  // Der Schein auf das Klavier liegt VOR Luni (sonst legt er sich als Schleier über den Kopf),
-  // das Licht auf Luni kommt danach.
-  assert.ok(src.includes("kerzenSchein(ctx, 545, FD,"), "Schein auf das Klavier");
-  assert.ok(src.includes("drawKerzenlicht(ctx, 1, this.silBuf,"), "Licht wird über Luni gelegt");
-  assert.ok(src.indexOf("this.drawKlavierBogen(ctx);") < src.indexOf("kerzenSchein(ctx, 545, FD,"), "Bogen zuerst, dann der Schein");
-  assert.ok(src.indexOf("kerzenSchein(ctx, 545, FD,") < src.indexOf("this.drawLuniLayered(ctx);"), "Schein vor Luni");
-  assert.ok(src.indexOf("this.drawLuniLayered(ctx);") < src.indexOf("drawKerzenlicht(ctx, 1, this.silBuf,"), "erst Luni, dann das Licht auf Luni");
+  // Der Schein des Lichtbogens auf der Gaming-Fensterbank liegt VOR Luni,
+  // tagsüber dezent (bogenLicht) und nachts warmweiß verstärkt; das Licht auf Luni kommt danach.
+  assert.ok(src.includes("kerzenSchein(ctx, 336, FD, bogenLicht);"), "Schein am Gaming-Fenster (tagsüber gedämpft, nachts kräftiger)");
+  assert.ok(!src.includes("pianoBogen(c, 545,"), "Lichtbogen nicht mehr auf dem Klavier");
+  assert.ok(src.includes("drawKerzenlicht(ctx,"), "Licht wird über Luni gelegt");
+  assert.ok(src.indexOf("this.drawFensterBogen(ctx);") < src.indexOf("kerzenSchein(ctx, 336, FD, bogenLicht);"), "Bogen zuerst, dann der Schein");
+  assert.ok(src.indexOf("kerzenSchein(ctx, 336, FD, bogenLicht);") < src.indexOf("this.drawLuniLayered(ctx);"), "Schein vor Luni");
+  assert.ok(src.indexOf("this.drawLuniLayered(ctx);") < src.indexOf("drawKerzenlicht(ctx,"), "erst Luni, dann das Licht auf Luni");
 });
 
 
-test("Kerzen: Station am Klavier, Luni steigt zum Schalten auf den Schemel; Gruselhaus ohne Kerzen", () => {
+test("Kerzen: Lichtbogen mittig im Gaming-Fenster, Luni streckt sich auf Zehenspitzen; Gruselhaus ohne Kerzen", () => {
   const st = G.STATIONS.find(z => z.id === "kerzen");
   assert.ok(st, "Station kerzen vorhanden");
   assert.equal(st.floor, 3, "im Dachgeschoss");
   assert.equal(st.state, "reachUp", "streckt sich zu den Kerzen");
-  for (const [, , w, hh] of st.hits) assert.ok(w >= 24 && hh >= 24, "Klickfläche mindestens 24×24");
+  const [hx, , hw, hh] = st.hits[0];
+  assert.ok(hw >= 24 && hh >= 24, "Klickfläche mindestens 24×24");
+  assert.equal(hx + hw / 2, 330 + 56 / 2, "mittig auf der Fensterbank des Gaming-Fensters (x=358)");
   const src = readFileSync("src/game/house.ts", "utf8");
   assert.ok(src.includes('x.id !== "kessel" && x.id !== "kerzen"'), "Gruselhaus ohne Kerzen-Station");
   assert.ok(src.includes("this.kerzenAn = !this.kerzenAn;"), "Umschalten an der Station");
-  assert.ok(src.includes("yOff = -(SCHEMEL_HOEHE + zehen) * hoch;"), "Luni steigt auf den Schemel");
+  assert.ok(src.includes("yOff = -Math.sin(posePhase * Math.PI) * 3.5;"), "Luni streckt sich vom Boden auf Zehenspitzen");
   // Kerzen brennen dauerhaft (Standard an), Stand wird gespeichert
   assert.ok(src.includes("private kerzenAn = true;"), "Standard: brennen");
   assert.ok(src.includes("kerzenAn: this.kerzenAn,"), "Speichern");
