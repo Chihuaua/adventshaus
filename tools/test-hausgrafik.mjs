@@ -294,7 +294,7 @@ test("Saxophonhände bleiben beim Anheben, Spielen und Abstellen an den Griffen"
   }
 });
 
-test("Saxophonärmel beginnt am Schultergelenk; das Instrument behält seine Größe", () => {
+test("Saxophonärmel beginnt an der Schulter (4,4 vom Körpermittelpunkt); das Instrument behält seine Größe", () => {
   const h = haus({ stations: G.STATIONS, lx: G.STATIONS.find(z => z.id === "saxophon").x, saxPhase: "play", saxT: 0, saxStarted: true,
     saxMusic: { currentTime: 0 }, elapsed: 0, scale: 1, dpr: 1 });
   const c = canvas();
@@ -302,7 +302,8 @@ test("Saxophonärmel beginnt am Schultergelenk; das Instrument behält seine Gr�
     handTarget: h.saxGripAt(G.SAX_GRIP_UP), handTarget2: h.saxGripAt(G.SAX_GRIP_LOW),
     handElbow: 1, handElbow2: -1, handKontakt: true });
   const arm = c.shapes.find(s => s.kind === "stroke" && s.color === "#dcc9a5" && s.points.length === 3);
-  assert.ok(arm); near(arm.points[0][0], G.STATIONS.find(z => z.id === "saxophon").x + 3.4 * 1.08); near(arm.points[0][1], 200 - 34 * 1.08);
+  // Der Ärmel setzt an der Schulter an; die Griffpositionen der Hände prüft die vorige Prüfung.
+  assert.ok(arm); near(arm.points[0][0], G.STATIONS.find(z => z.id === "saxophon").x + 4.4 * 1.08); near(arm.points[0][1], 200 - 34 * 1.08);
   const getragen = canvas(); h.drawSaxCarried(getragen.ctx);
   h.saxPhase = null;
   const abgestellt = canvas(); h.drawSax(abgestellt.ctx);
@@ -1541,10 +1542,10 @@ test("Schneedecke: gewellte Kante am Dach und Eiszapfen in verschiedenen Dicken 
 
 test("Tapeten: Weihnachtsgestaltung nur im Weihnachtshaus, normale Streifen bleiben erhalten", () => {
   const src = readFileSync("src/game/house.ts", "utf8");
-  assert.ok(src.includes("weihnachtsTapete(c, 530, HR, 30, FD)"), "Tapete für das Musikzimmer");
+  assert.ok(src.includes('weihnachtsTapete(c, 530, HR, 30, FD, "musik")'), "Tapete für das Musikzimmer");
   assert.ok(src.includes("if (weihnacht && !gr) weihnachtsTapete"), "nur in der Weihnachtswelt");
   assert.ok(src.includes('else wallBand(c, 530, HR, 30, FD, "#9a5750", "#7e433e", 30);'), "normales Haus behaelt seine Tapete");
-  assert.ok(src.includes('weihnachtsTapete(c, DG_X0, 530, 30, FD, true)'), "weihnachtliches Gamingzimmer");
+  assert.ok(src.includes('weihnachtsTapete(c, DG_X0, 530, 30, FD, "gaming")'), "weihnachtliches Gamingzimmer");
   assert.ok(src.includes("Rautenmuster"), "Rautenmuster");
 });
 

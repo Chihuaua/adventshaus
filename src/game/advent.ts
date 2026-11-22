@@ -1328,6 +1328,50 @@ export function adventHinweis(c: C, nachDatum: boolean, dezember: boolean, stil:
   c.textBaseline = "alphabetic";
 }
 
+/**
+ * Weihnachtsgruß beim 24. Türchen: eine Tafel mitten über dem Kalender. Sie
+ * bleibt stehen, bis sie weggeklickt wird (Zeiger, Touch, Enter oder Esc).
+ */
+export function adventGruss(c: C, stil: AdventStil = "klassisch") {
+  const bx = W / 2 - 270;
+  const by = H / 2 - 24;
+  const bw = 540;
+  const bh = 120;
+  // Der Kalender dahinter tritt etwas zurück.
+  c.fillStyle = "rgba(0,0,0,.4)";
+  c.fillRect(0, 0, W, H);
+  balken(c, bx + 3, by + 6, bw, bh, "rgba(0,0,0,.5)", 14);
+  balken(c, bx, by, bw, bh, stil === "weltraum" ? "rgba(10,15,38,.97)" : "rgba(44,15,10,.97)", 14);
+  c.strokeStyle = GOLD;
+  c.lineWidth = 1.6;
+  c.strokeRect(bx + 0.8, by + 0.8, bw - 1.6, bh - 1.6);
+  c.strokeStyle = "rgba(232,194,90,.35)";
+  c.lineWidth = 1;
+  c.strokeRect(bx + 5.5, by + 5.5, bw - 11, bh - 11);
+  // Zwei kleine goldene Sterne rahmen die Zeilen
+  for (const sx of [bx + 46, bx + bw - 46]) {
+    for (const [r, f] of [[9, GOLD_TIEF], [7.4, GOLD], [3.2, GOLD_HELL]] as const) {
+      c.fillStyle = f;
+      c.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const w = -Math.PI / 2 + (i * Math.PI) / 5;
+        const rr = i % 2 === 0 ? r : r * 0.46;
+        if (i === 0) c.moveTo(sx + Math.cos(w) * rr, by + bh / 2 + Math.sin(w) * rr);
+        else c.lineTo(sx + Math.cos(w) * rr, by + bh / 2 + Math.sin(w) * rr);
+      }
+      c.closePath();
+      c.fill();
+    }
+  }
+  goldText(c, "Frohe Weihnachten,", W / 2, by + 44, 30);
+  goldText(c, "liebe Luni", W / 2, by + 86, 26);
+  c.font = '700 10px "Silkscreen", monospace';
+  c.textAlign = "center";
+  c.fillStyle = "rgba(243,231,205,.85)";
+  c.fillText("ANKLICKEN ODER ENTER", W / 2, by + bh + 22);
+  c.textAlign = "left";
+}
+
 /* ------------------------- Kleiner Wandkalender ------------------------ */
 
 /** Hängt im Wohnzimmer über dem Fernseher, auf dessen Mitte ausgerichtet. */

@@ -60,7 +60,7 @@ test("Steintreppe ersetzt nur die Treppe zum 1. Stock und liegt nach dem Fenster
   assert.match(house, /if \(!\(gr\?\.kueche && s\.id === "eg_og"\)\) drawStair\(c, s\)/);
   const i = house.indexOf("drawKuchenFenster(c, sky"), j = house.indexOf("drawSteintreppe(c, st.footX");
   assert.ok(i > 0 && j > i, "Geländer muss nach dem Fenster gezeichnet werden");
-  assert.ok(K.KUECHE_WAND.gelaenderHoehe >= 48 && K.KUECHE_WAND.gelaenderHoehe <= 54);
+  assert.equal(K.KUECHE_WAND.gelaenderHoehe, 25, "Streben der Steintreppe: halb so hoch wie früher (50 % von 50)");
 });
 test("Holzlager-Mauerwerk: Steine liegen im Rechteck, überlappen nie und schließen jede Reihe", () => {
   for (const [x0, y0, w, h, seed] of [[650, 414, 6, 34, 13], [680, 414, 6, 34, 47], [648, 410, 40, 5, 29]]) {

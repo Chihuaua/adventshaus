@@ -266,6 +266,12 @@ test("Deko: jedes Stück malt nur innerhalb seiner Box", () => {
   }
 });
 
+// --- Kleiner Kalender an der Wand (Weihnachtshaus) ------------------------
+const wandBundle = await build({
+  entryPoints: ["src/game/advent-wand.ts"], bundle: true, write: false, format: "esm", platform: "node",
+});
+const W = await import(`data:text/javascript;base64,${Buffer.from(wandBundle.outputFiles[0].text).toString("base64")}`);
+
 // --- Schließen des großen Kalenders (house.ts) ---------------------------
 const hausBundle = await build({
   stdin: {
@@ -400,6 +406,99 @@ test("Türchen-Bilder im Weltall-Stil: alle 24 malen ohne Fehler, der klassische
   const zu = stumpfCanvas();
   A.adventTuer(zu, klappe, 5, { offen: false, anim: 0 }, ruhe, 2, "weltraum");
   assert.ok(zu.__aufrufe < klassisch.__aufrufe);
+});
+
+test("24. Türchen: „Frohe Weihnachten, liebe Luni“ erscheint und bleibt bis zum Wegklicken", () => {
+  const h = Object.assign(Object.create(Hs.House.prototype), {
+    adventStand: { jahr: 2026, offen: Array.from({ length: 23 }, (_, i) => i + 1), reihenfolge: Array.from({ length: 23 }, (_, i) => i + 1) },
+    adventTuerenCache: null, clock: { month: 12, day: 24 }, welt: "normal", adventAnims: new Map(),
+    adventSternT: 0, adventGruss: false, adventZoomT: 1, adventT: 1, adventFokus: 0, adventHover: -1,
+    adventSchliessen: false, adventFullscreen: true,
+  });
+  const index24 = A.adventTueren(A.adventMischung(2026)).findIndex((t2) => t2.tag === 24);
+  h.adventOeffne(index24);
+  assert.equal(h.adventGruss, true, "beim Öffnen des 24. Türchens erscheint der Gruß");
+  assert.ok(h.adventStand.offen.includes(24));
+  assert.equal(h.adventSternT, 4, "die geheime Belohnung (Reihenfolge 1–24) bleibt");
+  h.adventAktualisieren(0.5);
+  h.adventAktualisieren(0.5);
+  assert.equal(h.adventGruss, true, "er verschwindet nicht von selbst");
+
+  const texte = [];
+  const gradient = { addColorStop() {} };
+  const ziel = {
+    fillStyle: "", strokeStyle: "", lineWidth: 1, lineCap: "butt", globalAlpha: 1, font: "", textAlign: "left", textBaseline: "alphabetic",
+    createLinearGradient: () => gradient, createRadialGradient: () => gradient,
+    fillText: (t2) => texte.push(t2), measureText: (t2) => ({ width: t2.length * 6 }),
+  };
+  const c = new Proxy(ziel, { get(o, k) { return k in o ? o[k] : () => {}; }, set(o, k, v) { o[k] = v; return true; } });
+  h.drawAdventskalender(c);
+  assert.ok(texte.includes("Frohe Weihnachten,") && texte.includes("liebe Luni"), "der Gruß steht im Bild");
+  assert.ok(texte.includes("ANKLICKEN ODER ENTER"), "der Hinweis zum Wegklicken steht dabei");
+  assert.ok(!texte.some((t2) => t2.includes("REIHENFOLGE")), "der alte Text ist weg");
+
+  // Ein Klick irgendwo – auch auf den Zurück-Knopf – nimmt nur den Gruß weg.
+  h.adventKlick(841, 37);
+  assert.equal(h.adventGruss, false, "ein Klick nimmt den Gruß weg");
+  assert.equal(h.adventSchliessen, false, "derselbe Klick schließt den Kalender nicht");
+  texte.length = 0;
+  h.drawAdventskalender(c);
+  assert.ok(!texte.includes("Frohe Weihnachten,"), "nach dem Wegklicken ist der Gruß weg");
+
+  // Andere Türchen bringen keinen Gruß.
+  const ohne = Object.assign(Object.create(Hs.House.prototype), { ...h, adventStand: { jahr: 2026, offen: [], reihenfolge: [] }, adventTuerenCache: null, adventGruss: false, adventSternT: 0 });
+  const index5 = A.adventTueren(A.adventMischung(2026)).findIndex((t2) => t2.tag === 5);
+  ohne.adventOeffne(index5);
+  assert.equal(ohne.adventGruss, false, "Türchen 5 allein bringt keinen Gruß");
+});
+
+test("Mikrofon: der Kopf liegt unter Lunis Mund und verdeckt es höchstens zu einem Fünftel", () => {
+  // Gemessen am stehenden Luni (Bodenmaß F = 200): der Mund reicht bis etwa F - 28,5.
+  const mundUnterkante = 200 - 28.5;
+  const mundHoehe = 6;
+  const kopfOben = 200 - 27;
+  const ueberdeckung = Math.max(0, mundUnterkante - kopfOben);
+  assert.ok(ueberdeckung <= mundHoehe / 5 + 0.01, `der Mikrofonkopf verdeckt ${ueberdeckung.toFixed(2)} vom Mund`);
+  assert.ok(kopfOben > mundUnterkante - mundHoehe / 5, "und liegt so tief wie verlangt");
+});
+
+test("Kleiner Kalender im Weihnachtshaus: Er trägt denselben Schmuck wie der große, Stück für Stück", () => {
+  const alle = Array.from({ length: 24 }, (_, i) => i + 1);
+  let vorher = -1;
+  for (let n = 0; n <= 24; n++) {
+    const c = stumpfCanvas();
+    W.adventWandWeihnacht(c, alle.slice(0, n), 2026, 0);
+    assert.ok(c.__aufrufe > vorher, `Stück ${n} kommt dazu`);
+    vorher = c.__aufrufe;
+  }
+  const leer = stumpfCanvas();
+  W.adventWandWeihnacht(leer, [], 2026, 0);
+  assert.ok(leer.__aufrufe > 30, "auch ohne Türchen ist die kleine Tafel da");
+  const advent = stumpfCanvas();
+  W.adventWandWeihnacht(advent, [], 2026, 4);
+  assert.ok(advent.__aufrufe > leer.__aufrufe, "am 4. Advent kommen die leuchtenden Ecken-Kugeln dazu");
+});
+
+test("Kleiner Kalender: dieselbe Größe und derselbe Rahmen wie der klassische", () => {
+  const rechtecke = [];
+  const gradient = { addColorStop() {} };
+  const ziel = { fillStyle: "", createLinearGradient: () => gradient, createRadialGradient: () => gradient };
+  const c = new Proxy(ziel, {
+    get(o, k) {
+      if (k === "rechtecke") return rechtecke;
+      if (k in o) return o[k];
+      if (k === "fillRect") return (x, y, w, h) => { rechtecke.push({ x, y, w, h, f: ziel.fillStyle }); };
+      return () => {};
+    },
+    set(o, k, v) { o[k] = v; return true; },
+  });
+  W.adventWandWeihnacht(c, [1, 2, 3], 2026, 0);
+  const { x, y, w, h } = A.ADVENT_WAND;
+  assert.equal(w, 34);
+  assert.equal(h, 34);
+  assert.ok(rechtecke.some((r) => r.f === "#5c1f18" && r.x === x && r.y === y && r.w === w && r.h === h), "Filzfläche in Originalgröße");
+  assert.ok(rechtecke.some((r) => r.f === "#5a3a20" && r.x === x - 2 && r.y === y - 2 && r.w === w + 4 && r.h === h + 4), "Rahmen wie beim klassischen Kalender");
+  assert.ok(rechtecke.some((r) => r.f === "#6b4423" && r.w > 3 && r.h > 3), "geschlossene Türchen im klassischen Layout");
 });
 
 console.log(`\n${bestanden} Adventskalender-Tests bestanden.`);

@@ -100,10 +100,12 @@ try {
   if (neu.length) execFileSync("git", ["add", "-N", ...neu]);
 
   // Diff direkt gegen origin/main, erste Zeile beginnt exakt mit "diff --git"
-  const patch = git("diff", "--no-color", "origin/main");
+  // Der Patch braucht auch eine leere letzte Kontextzeile mitsamt ihrem Leerzeichen.
+  const patchInhalt = execFileSync("git", ["diff", "--no-color", "origin/main"], {
+    encoding: "utf8", maxBuffer: 64 * 1024 * 1024,
+  });
   const statistik = git("diff", "--stat", "--no-color", "origin/main");
 
-  const patchInhalt = patch ? patch + "\n" : "";
   if (patchInhalt && !patchInhalt.startsWith("diff --git ")) {
     throw new Error("aktuell.patch beginnt nicht mit 'diff --git '");
   }

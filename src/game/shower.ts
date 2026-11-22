@@ -207,7 +207,7 @@ export function drawTowelOnRod(c: C, F: number) {
  * Kleiderschrank im Schlafzimmer, Türen offen. `open` 0..1.
  * Die Türflügel drehen nach außen und werden schmaler.
  */
-export function drawWardrobeOpen(c: C, x: number, F: number, open: number, towelTaken: boolean) {
+export function drawWardrobeOpen(c: C, x: number, F: number, open: number, towelTaken: boolean, tuerFarbe = "#8a6a3c") {
   if (open <= 0.01) return;
   const e = open * open * (3 - 2 * open);
   // Innenraum
@@ -239,7 +239,7 @@ export function drawWardrobeOpen(c: C, x: number, F: number, open: number, towel
   c.fillRect(x + 30, F - 36, 10, 4);
   // Türflügel, nach außen geklappt
   const dw = 18 - 13 * e;
-  c.fillStyle = "#8a6a3c";
+  c.fillStyle = tuerFarbe;
   c.fillRect(x + 3 - (18 - dw) * 0.55 * e - dw * e, F - 80, dw, 76);
   c.fillRect(x + 45 + (18 - dw) * 0.55 * e - dw * (1 - e), F - 80, dw, 76);
   c.fillStyle = "rgba(0,0,0,.22)";

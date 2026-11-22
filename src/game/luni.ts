@@ -447,8 +447,14 @@ function keys(p: number, ks: [number, V][]): V {
   return ks[ks.length - 1][1];
 }
 
-/** Schultergelenk der Alltagsposen (halbe Breite) und der Tanzposen. */
+/** Schultergelenk der Alltagsposen (halbe Breite) und der Tanzposen – die Bewegung rechnet von hier. */
 const SCHULTER_X = 3.4;
+/**
+ * Halbbreite des Ärmelansatzes der Alltagsposen: Der Ärmel beginnt an der
+ * Schulter (4,4 vom Körpermittelpunkt), nicht schon am Kragen. Die Griff- und
+ * Mundpositionen der Hände bleiben unverändert, sie rechnen weiter mit SCHULTER_X.
+ */
+const SCHULTER_ANSATZ = 4.4;
 const TANZ_SCHULTER = 5.6;
 const GRAD = Math.PI / 180;
 const ZWEI_PI = Math.PI * 2;
@@ -544,8 +550,9 @@ function baseRig(): Rig {
     shoulderY: SHOULDER_Y,
     headY: HEAD_Y,
     headTilt: 0,
-    armFar: { elbow: [-6, -29], hand: [-7.5, -22] },
-    armNear: { elbow: [6, -29], hand: [7.5, -22] },
+    // Arme hängen nah am Körper und kaum gespreizt (früher Ellbogen ±6, Hand ±7,5).
+    armFar: { elbow: [-5.8, -29], hand: [-7, -22] },
+    armNear: { elbow: [5.8, -29], hand: [7, -22] },
     legFar: { knee: [-3.6, -10], hand: [-4, 0] } as unknown as Limb,
     legNear: { knee: [3.6, -10], hand: [4, 0] } as unknown as Limb,
     hairFlow: 0,
@@ -3053,9 +3060,11 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   const armFront = r.armFar;
   const tanzt = state.startsWith("dance");
   /** Beim Tanzen zeigt der Daumen nach oben und leicht zur Körpermitte –
-   *  an beiden Händen spiegelbildlich. Alltagsposen behalten ihre Seite. */
+   *  an beiden Händen spiegelbildlich. In den Alltagsposen zeigen die
+   *  Handflächen nach außen (zur Betrachterin): Beide Daumen zeigen zur
+   *  Körpermitte, spiegelbildlich. */
   const daumenSeite = (side: 1 | -1, arm: Limb): number => {
-    if (!tanzt) return 1;
+    if (!tanzt) return side;
     const a = Math.atan2(arm.hand[1] - arm.elbow[1], arm.hand[0] - arm.elbow[0]);
     const d = (-Math.sin(a) * -side * 0.35 - Math.cos(a)) / Math.hypot(0.35, 1);
     return Math.max(-1, Math.min(1, d * 5));
@@ -3063,7 +3072,9 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   const naheHandHoeher = armBehind.hand[1] < armFront.hand[1];
   const gesteNah: Geste = r.fingerUp && naheHandHoeher ? "zeig" : r.handNear;
   const gesteFern: Geste = r.fingerUp && !naheHandHoeher ? "zeig" : r.handFar;
-  const SCHULTER_HINTEN: V = [r.schulterX, r.shoulderY + 2];
+  // Alltagsposen: Ärmelansatz an der Schulter; Tanzposen behalten ihre äußere Schulterecke.
+  const ansatzX = r.schulterX > SCHULTER_X + 0.5 ? r.schulterX : SCHULTER_ANSATZ;
+  const SCHULTER_HINTEN: V = [ansatzX, r.shoulderY + 2];
 
   /* --- hinterer Arm (früher der vordere) --- */
   const drawBackArm = (nurHand = false) =>
@@ -3103,7 +3114,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   }
 
   // Zeichnung und Armbewegung beginnen am selben Schultergelenk.
-  const SCHULTER_VORN: V = [-r.schulterX, r.shoulderY + 2];
+  const SCHULTER_VORN: V = [-ansatzX, r.shoulderY + 2];
   const drawFrontArm = () =>
     upperLean(() => {
       const wrist = pullBack(armFront.elbow, armFront.hand, 1.5);
@@ -3145,7 +3156,8 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
         } else {
           stroke3(ctx, [side * 6.2, r.shoulderY + 2.2], arm.elbow, arm.hand, side < 0 ? K.cardiganDark : K.cardigan, 4.5);
         }
-        drawHand(ctx, arm.elbow, arm.hand, K.skin, K.skinShade);
+        // Rückansicht: ebenfalls Handflächen nach außen, Daumen zur Körpermitte.
+        drawHand(ctx, arm.elbow, arm.hand, K.skin, K.skinShade, -side);
       }
     };
     // Nur Posen, die bewusst hinter den Rücken greifen (Schrank, Waschen),
