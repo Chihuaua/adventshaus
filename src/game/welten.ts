@@ -18,6 +18,7 @@
 
 import { loadJson, saveJson } from "./storage";
 import type { TVStand } from "./tv";
+import type { FlauschiStand } from "./flauschi";
 
 export type WeltId = "normal" | "traum" | "gruesel" | "weihnacht";
 
@@ -87,6 +88,10 @@ export interface HausSnapshot {
   kerzenAn?: boolean;
   /** Senderwahl und Lautstaerke je Fernseher und Hauswelt. */
   tv?: TVStand;
+  /** Teleflauschi „Flauschi“ im Weihnachtshaus: Zustand, Regal, Konsole. */
+  flauschi?: FlauschiStand | null;
+  flauschiEingelegt?: boolean;
+  flauschiOnShelf?: boolean;
   /** Positionen von Odin und Apollo im normalen Haus. */
   hunde?: {
     odin?: { x: number; floor: 0 | 1 | 2; face: 1 | -1 };

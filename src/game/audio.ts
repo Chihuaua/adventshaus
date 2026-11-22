@@ -107,6 +107,14 @@ export class Sfx {
     this.tone({ f: 108 * pitch, f2: 66 * pitch, dur: 0.075, type: "sine", gain: 0.1 });
   }
 
+  /**
+   * Ein einzelner synthetischer Ton als Baustein für Klangrezepte
+   * (z. B. die Gegenstände im Teleflauschi). Keine Audiodatei.
+   */
+  ton(f: number, dauer: number, form: Wave = "sine", pegel = 0.1, wann = 0, f2?: number) {
+    this.tone({ f, f2, dur: dauer, type: form, gain: pegel, delay: wann });
+  }
+
   jump() {
     this.tone({ f: 300, f2: 720, dur: 0.14, type: "square", gain: 0.16 });
   }
