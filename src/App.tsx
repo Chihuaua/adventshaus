@@ -8,6 +8,8 @@ import PatchView from "@/components/PatchView";
 import MethanStudio from "@/components/MethanStudio";
 import NikolausStudio from "@/components/NikolausStudio";
 import LuniFeinStudio from "@/components/LuniFeinStudio";
+import FigurenAtelier from "@/components/FigurenAtelier";
+import { atelierAusHash } from "@/game/atelier/figuren";
 import { FigurenEditor } from "@/components/FigurenEditor";
 
 /** Hash-Weiche: "#studio" Figuren-Studio, "#studio-frosch" Methan Frog, "#editor" Figuren-Editor,
@@ -25,6 +27,9 @@ function useHash() {
 
 export default function App() {
   const hash = useHash();
+  if (hash === "#studio-schwebetransporter") return <FigurenAtelier key="schwebetransporter" id="briefkurier" fahrzeug />;
+  const atelier = atelierAusHash(hash);
+  if (atelier) return <FigurenAtelier key={atelier} id={atelier} />;
   if (hash === "#studio") return <StudioApp />;
   if (hash === "#studio-luni-fein") return <LuniFeinStudio />;
   if (hash === "#studio-odin") return <OdinStudio />;

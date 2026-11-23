@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { HundStage } from "@/components/HundStage";
+import { HundStage, FeinHundStage, HundVergleichStage } from "@/components/HundStage";
 import { HundPoseSheet, HundPalette, HundKopfSheet } from "@/components/HundSheet";
 import {
   APOLLO_FARBEN,
@@ -146,6 +146,7 @@ function Panel({
 }
 
 function HundeStudio({ id }: { id: HundId }) {
+  const [ansichtModus, setAnsichtModus] = useState<"spiel" | "fein" | "vergleich">("vergleich");
   const [pose, setPose] = useState<HundPose>("stand");
   const [face, setFace] = useState<1 | -1>(1);
   const [zoom, setZoom] = useState(4.4);
@@ -178,6 +179,12 @@ function HundeStudio({ id }: { id: HundId }) {
               >
                 {id === "odin" ? "APOLLO-STUDIO" : "ODIN-STUDIO"}
               </a>
+              <a
+                href={`#studio-atelier-${id}`}
+                className="rounded bg-[#132a33] px-2 py-1 tracking-[0.2em] text-amber-glow ring-1 ring-white/10 transition hover:bg-ink-700"
+              >
+                FIGURENATELIER &rarr;
+              </a>
             </div>
             <h1 className="mt-1 font-display text-[22px] leading-none text-mint-50 text-shadow-hard sm:text-[34px]">
               {name.toUpperCase()} <span className="text-amber-glow">CHARAKTER-STUDIO</span>
@@ -189,6 +196,17 @@ function HundeStudio({ id }: { id: HundId }) {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex gap-1 rounded-lg bg-[#08151a]/70 p-1 ring-1 ring-white/10">
+              <Chip active={ansichtModus === "spiel"} onClick={() => setAnsichtModus("spiel")}>
+                Ursprung (Spiel)
+              </Chip>
+              <Chip active={ansichtModus === "vergleich"} onClick={() => setAnsichtModus("vergleich")}>
+                Vergleich
+              </Chip>
+              <Chip active={ansichtModus === "fein"} onClick={() => setAnsichtModus("fein")}>
+                Aufgehübscht
+              </Chip>
+            </div>
             <Chip active={grid} onClick={() => setGrid((v) => !v)}>
               Raster {grid ? "an" : "aus"}
             </Chip>
@@ -202,17 +220,42 @@ function HundeStudio({ id }: { id: HundId }) {
           {/* Bühne */}
           <div className="rounded-2xl bg-[#08151a] p-1.5 ring-1 ring-teal/20 sm:p-2">
             <div className="screen-glass relative h-[380px] overflow-hidden rounded-xl sm:h-[480px]">
-              <HundStage
-                id={id}
-                pose={pose}
-                face={face}
-                zoom={zoom}
-                grid={grid}
-                paused={paused}
-                speed={speed}
-              />
+              {ansichtModus === "vergleich" ? (
+                <HundVergleichStage
+                  id={id}
+                  pose={pose}
+                  face={face}
+                  zoom={Math.min(zoom, 5)}
+                  paused={paused}
+                  speed={speed}
+                />
+              ) : ansichtModus === "fein" ? (
+                <FeinHundStage
+                  id={id}
+                  pose={pose}
+                  face={face}
+                  zoom={zoom}
+                  grid={grid}
+                  paused={paused}
+                  speed={speed}
+                />
+              ) : (
+                <HundStage
+                  id={id}
+                  pose={pose}
+                  face={face}
+                  zoom={zoom}
+                  grid={grid}
+                  paused={paused}
+                  speed={speed}
+                />
+              )}
               <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-black/45 px-2 py-1 font-display text-[9px] tracking-[0.18em] text-mint-200">
-                {name.toUpperCase()} · {ALL_POSES.find((s) => s.k === pose)?.label}
+                {ansichtModus === "vergleich"
+                  ? `${name.toUpperCase()} · VERGLEICH (URSPRUNG & FEIN)`
+                  : ansichtModus === "fein"
+                    ? `${name.toUpperCase()} (FEINZEICHNUNG) · ${ALL_POSES.find((s) => s.k === pose)?.label}`
+                    : `${name.toUpperCase()} (SPIEL) · ${ALL_POSES.find((s) => s.k === pose)?.label}`}
               </div>
             </div>
 

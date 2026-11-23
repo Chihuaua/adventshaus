@@ -277,3 +277,16 @@ ruprecht-tests | tools/test-ruprecht.mjs | HALBER_SCHRITT
 luni-fein-zeichnung | src/game/luni-fein.ts | zeichneLuniFein
 luni-fein-studio | src/App.tsx | studio-luni-fein
 luni-fein-anatomie | tools/test-luni-fein.mjs | Konturmasken
+atelier-briefkurier | src/game/atelier/briefkurier.ts | zeichneBriefkurier
+atelier-weihnachtsmann | src/game/atelier/neonweihnachtsmann.ts | zeichneNeonweihnachtsmann
+atelier-schneemann | src/game/atelier/frostschneemann.ts | zeichneFrostschneemann
+atelier-hunde | src/game/atelier/hundefell.ts | zeichneAtelierHund
+atelier-studio | src/components/FigurenAtelier.tsx | gruppenbild
+atelier-ansichten | src/game/atelier/figuren.ts | atelierAusHash
+atelier-tests | tools/test-figurenatelier.mjs | Alle 68 Kombinationen
+kurier-cargohose | src/game/atelier/kurier-anatomie.ts | hosenbein
+stafford-koerper | src/game/atelier/stafford.ts | STAFFORD
+apollo-originalfell | src/game/atelier/stafford.ts | APOLLOS_FELL
+schwebetransporter | src/game/atelier/schwebetransporter.ts | zeichneSchwebetransporter
+kurier-fahrertuer | src/game/atelier/kurierhof.ts | fahrerWechsel
+kurier-fahrprobe | src/components/FigurenAtelier.tsx | FAHRPROBEN
