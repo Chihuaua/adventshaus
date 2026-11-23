@@ -79,7 +79,7 @@ import { KlavierMusik, klavierHaendeAt } from "./audio/klavierVoice";
 import { TVKlang } from "./audio/tvVoice";
 import { drawSternennacht } from "./sternennacht";
 import {
-  drawFernbedienung, leseTVStand, neuerTVStand, tvFernTreffer, tvKanaele, tvNaechsterKanal, TV_FERN_STATIONS,
+  drawFernbedienung, leseTVStand, neuerTVStand, tvFernTreffer, tvKanaele, tvNaechsterKanal, TV_FERN_STATIONS, TV_KANAL_NAMEN,
   type TVBefehl, type TVId, type TVInhalt, type TVKanal, type TVStand,
 } from "./tv";
 import { PLATTEN_DURATION_SECONDS } from "./audio/plattenNotes";
@@ -8742,7 +8742,13 @@ export class House {
     }
   }
 
-  /** Zeichnet das aktive TV-Bild (Harvest/Musikvideo, Konsole oder Spiel des Lebens) in den Bereich (x, y, w, h). */
+  private drawTVKennung(c: C, x: number, y: number, name: string) {
+    c.fillStyle = "#eef7f2";
+    c.font = '700 4px "Silkscreen", monospace';
+    c.fillText(name, x + 2, y + 5);
+  }
+
+  /** Zeichnet das aktive TV-Bild in den Bereich (x, y, w, h). */
   private drawTvProgram(c: C, x: number, y: number, w: number, h: number, mode: Exclude<TVInhalt, "off">) {
     const cozy = mode === "cozy" || mode === "garten" || mode === "musik";
     const t = cozy ? this.harvestClock : this.elapsed;
@@ -8750,6 +8756,7 @@ export class House {
     if (mode === "sterne") {
       // Ruhiges Bild ohne eigenen Ton; eine spätere Musikuntermalung kann hier ansetzen.
       drawSternennacht(c, x, y, w, h, this.elapsed);
+      this.drawTVKennung(c, x, y, TV_KANAL_NAMEN[mode]);
     } else if (cozy) {
       // Wohnzimmer-Kanäle: Harvest-Spiel und Musikvideo im Wechsel,
       // dazwischen kurz Umschalt-Statik wie bei einem echten Röhren-TV.
@@ -8894,9 +8901,7 @@ export class House {
       } else {
         this.drawRickTV(c, x, y, w, h, t);
       }
-      c.fillStyle = "#eef7f2";
-      c.font = '700 4px "Silkscreen", monospace';
-      c.fillText(tt < TV_RICK_AT ? "CH1" : "CH2", x + 2, y + 5);
+      this.drawTVKennung(c, x, y, tt < TV_RICK_AT ? "CH1" : "CH2");
       c.fillStyle = "#ff5d8f";
       c.fillText("♪", x + w - 6, y + 5);
     } else if (mode === "flauschi" && this.flauschiState) {

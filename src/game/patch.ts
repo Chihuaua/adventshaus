@@ -2,7 +2,7 @@
    Patch-Dateien der aktuellen Sitzung (Inhalt der UFO-/Schlitten-Station)
 
    Dieses Modul wird von tools/ufo-bauen.mjs erzeugt. Das Menü oben rechts
-   bietet LCL-NMS-83.zip, die TXT-Datei und die Code-Vorschau an.
+   bietet LCL-NMS-87.zip, die TXT-Datei und die Code-Vorschau an.
    ======================================================================= */
 
 export interface PatchDatei {
@@ -12,7 +12,7 @@ export interface PatchDatei {
 }
 
 export const PATCH_KURZ = "NMS";
-export const PATCH_NUMMER = 83;
+export const PATCH_NUMMER = 87;
 export const PATCH_ZIP =
   `LCL-${PATCH_KURZ}-${String(PATCH_NUMMER).padStart(2, "0")}.zip`;
 export const PATCH_TXT =
