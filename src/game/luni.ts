@@ -118,6 +118,24 @@ export type LuniExpr =
   | "sing"
   | "focus";
 
+/** Ein Studiopinsel bemalt vorhandene Schnittteile. Gelenke und Zeichenreihenfolge bleiben bei Luni. */
+export interface LuniZeichenpinsel {
+  haar(c: C, teil: "fall" | "pony" | "seite" | "scheitel", laenge: number, fluss: number, seite: number): void;
+  gewebe(c: C, teil: "shirt" | "shirtsaum" | "taillenbund" | "kragen" | "jacke" | "ruecken", oben: number, unten: number, seite: number): void;
+  glied(c: C, a: V, gelenk: V, ende: V, breite: number, farbe: string, bein: boolean): void;
+  socke(c: C, farben: string[]): void;
+  knopf(c: C, x: number, y: number): void;
+  bund(c: C, breite: number): void;
+  hand(c: C, seite: number, spitzen: number[], geste: Geste, handruecken: boolean): void;
+  hautton(c: C, y: number, r: number, haut: string, schatten: string): CanvasGradient;
+  gesicht(c: C, expr: LuniExpr, blink: number, t: number, brille: boolean, blick: number, flau: number, gesang: number): void;
+}
+
+/** Die aktive Originalkontur ist die Maske, nicht ein nachgeschaetztes Rechteck. */
+function imSchnitt(c: C, zeichnen: () => void) {
+  c.save(); c.clip(); zeichnen(); c.restore();
+}
+
 export interface LuniOpts {
   /** Sekunden, treibt alle Eigenbewegungen */
   t?: number;
@@ -283,7 +301,8 @@ function rr(ctx: C, x: number, y: number, w: number, h: number, r: number) {
   ctx.closePath();
 }
 
-function stroke3(ctx: C, a: V, b: V, c: V, color: string, w: number) {
+function stroke3(ctx: C, a: V, b: V, c: V, color: string, w: number, pinsel?: LuniZeichenpinsel, bein = false) {
+  if (pinsel) { pinsel.glied(ctx, a, b, c, w, color, bein); return; }
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.strokeStyle = color;
@@ -1685,7 +1704,7 @@ function buildRig(state: LuniState, t: number, walkP: number, phase: number, rea
 
 /* ------------------------------ Haare --------------------------------- */
 
-function drawHairBack(ctx: C, flow: number, up: boolean, lenK: number, centered = false) {
+function drawHairBack(ctx: C, flow: number, up: boolean, lenK: number, centered = false, pinsel?: LuniZeichenpinsel) {
   ctx.save();
   ctx.translate(0, HEAD_Y);
   if (up) ctx.scale(1, -1);
@@ -1709,10 +1728,15 @@ function drawHairBack(ctx: C, flow: number, up: boolean, lenK: number, centered 
   ctx.closePath();
   ctx.fillStyle = LUNI_COLORS.hair;
   ctx.fill();
+  if (pinsel) imSchnitt(ctx, () => {
+    if (centered) ctx.scale(1 / .84, 1);
+    else ctx.translate(2.6, 0);
+    pinsel.haar(ctx, "fall", L, flow, centered ? 0 : -1);
+  });
   ctx.restore();
 }
 
-function drawHairFront(ctx: C, flow: number, up: boolean, lenK: number) {
+function drawHairFront(ctx: C, flow: number, up: boolean, lenK: number, pinsel?: LuniZeichenpinsel) {
   ctx.save();
   ctx.translate(0, HEAD_Y);
   if (up) ctx.scale(1, -1);
@@ -1725,6 +1749,7 @@ function drawHairFront(ctx: C, flow: number, up: boolean, lenK: number) {
   ctx.closePath();
   ctx.fillStyle = LUNI_COLORS.hair;
   ctx.fill();
+  if (pinsel) imSchnitt(ctx, () => pinsel.haar(ctx, "pony", HAIR_LEN * lenK, flow, 0));
 
   // Seitensträhnen rahmen das Gesicht (glatt, nicht spitz)
   for (const sgn of [-1, 1]) {
@@ -1737,9 +1762,11 @@ function drawHairFront(ctx: C, flow: number, up: boolean, lenK: number) {
     ctx.closePath();
     ctx.fillStyle = LUNI_COLORS.hair;
     ctx.fill();
+    if (pinsel) imSchnitt(ctx, () => pinsel.haar(ctx, "seite", sl, flow, sgn));
   }
 
   // dezenter Glanz
+  if (pinsel) { ctx.restore(); return; }
   ctx.save();
   ctx.globalAlpha = 0.45;
   ctx.strokeStyle = LUNI_COLORS.hairSheen;
@@ -1791,7 +1818,12 @@ function drawEyeRoll(ctx: C, p: number) {
 
 /* ------------------------------ Gesicht -------------------------------- */
 
-function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = true, gaze = 0, queasy = 0, singOpen = 0) {
+function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = true, gaze = 0, queasy = 0, singOpen = 0, pinsel?: LuniZeichenpinsel) {
+  if (pinsel) {
+    ctx.save(); ctx.translate(0, HEAD_Y);
+    pinsel.gesicht(ctx, expr, blink, t, glasses, gaze, queasy, singOpen);
+    ctx.restore(); return;
+  }
   // Krank (grünes Gesicht): kein fröhliches Augenkneifen mehr.
   const closed =
     blink > 0.5 || expr === "sleep" ||
@@ -2064,7 +2096,7 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
 
 /* ------------------------------- Socken -------------------------------- */
 
-function drawSock(ctx: C, foot: V, ang: number, cols: string[], dir: 1 | -1 = 1) {
+function drawSock(ctx: C, foot: V, ang: number, cols: string[], dir: 1 | -1 = 1, pinsel?: LuniZeichenpinsel) {
   ctx.save();
   ctx.translate(foot[0], foot[1]);
   ctx.rotate(ang);
@@ -2074,6 +2106,10 @@ function drawSock(ctx: C, foot: V, ang: number, cols: string[], dir: 1 | -1 = 1)
   ctx.fillStyle = cols[0];
   rr(ctx, -2.2, -3.6, 7.4, 3.6, 1.6);
   ctx.fill();
+  if (pinsel) {
+    imSchnitt(ctx, () => pinsel.socke(ctx, cols));
+    ctx.restore(); return;
+  }
   ctx.fillStyle = cols[1];
   rr(ctx, 2.6, -3.6, 2.2, 3.6, 1);
   ctx.fill();
@@ -2095,7 +2131,7 @@ function pullBack(from: V, to: V, d: number): V {
  * `daumen` (-1..1): auf welcher Seite der Daumen sitzt und wie weit er absteht.
  * `geste`: offene Hand, Faust oder ausgestreckter Zeigefinger.
  */
-function drawHand(ctx: C, elbow: V, hand: V, skin: string, shade: string, daumen = 1, geste: Geste = "offen") {
+function drawHand(ctx: C, elbow: V, hand: V, skin: string, shade: string, daumen = 1, geste: Geste = "offen", pinsel?: LuniZeichenpinsel, handruecken = false) {
   const s = daumen >= 0 ? 1 : -1;
   const ab = Math.min(1, Math.abs(daumen));
   ctx.save();
@@ -2156,6 +2192,7 @@ function drawHand(ctx: C, elbow: V, hand: V, skin: string, shade: string, daumen
   ctx.moveTo(-0.55, s * 1.05);
   ctx.lineTo(0.25, s * 1.3);
   ctx.stroke();
+  pinsel?.hand(ctx, s, spitzen, geste, handruecken);
   ctx.restore();
 }
 
@@ -2262,7 +2299,7 @@ function armKaro(ctx: C, pts: V[]) {
   ctx.restore();
 }
 
-function drawTorso(ctx: C, r: Rig, K = LUNI_COLORS) {
+function drawTorso(ctx: C, r: Rig, K = LUNI_COLORS, pinsel?: LuniZeichenpinsel) {
   const topY = r.shoulderY;
   const botY = r.hipY;
   const h = botY - topY;
@@ -2271,14 +2308,17 @@ function drawTorso(ctx: C, r: Rig, K = LUNI_COLORS) {
   ctx.fillStyle = K.tee;
   rr(ctx, -7.2, topY, 14.4, h + 1.5, 5);
   ctx.fill();
+  if (pinsel) imSchnitt(ctx, () => pinsel.gewebe(ctx, "shirt", topY, botY, 0));
   ctx.fillStyle = K.teeShade;
   rr(ctx, -7.2, botY - 3.4, 14.4, 3.4, 2);
   ctx.fill();
+  if (pinsel) imSchnitt(ctx, () => pinsel.gewebe(ctx, "shirtsaum", topY, botY, 0));
 
   // Leggings-Bund
   ctx.fillStyle = K.leggings;
   rr(ctx, -6.8, botY - 2.4, 13.6, 4.4, 2);
   ctx.fill();
+  if (pinsel) imSchnitt(ctx, () => pinsel.gewebe(ctx, "taillenbund", topY, botY, 0));
 
   // offene Strickjacke: zwei Vorderteile, Mitte bleibt weiß
   for (const sgn of [-1, 1] as const) {
@@ -2286,9 +2326,10 @@ function drawTorso(ctx: C, r: Rig, K = LUNI_COLORS) {
     vorderteilPfad(ctx, sgn, topY, botY);
     ctx.fillStyle = sgn > 0 ? K.cardigan : K.cardiganDark;
     ctx.fill();
+    if (pinsel) imSchnitt(ctx, () => pinsel.gewebe(ctx, "jacke", topY, botY, sgn));
   }
   // Holzfäller-Karo nur auf der hellen Standardweste, nicht im Pyjama- oder Vampir-Look
-  if (K.cardigan === LUNI_COLORS.cardigan) {
+  if (!pinsel && K.cardigan === LUNI_COLORS.cardigan) {
     ctx.save();
     ctx.beginPath();
     vorderteilPfad(ctx, -1, topY, botY);
@@ -2307,10 +2348,12 @@ function drawTorso(ctx: C, r: Rig, K = LUNI_COLORS) {
   ctx.closePath();
   ctx.fillStyle = K.cardiganLight;
   ctx.fill();
+  if (pinsel) imSchnitt(ctx, () => pinsel.gewebe(ctx, "kragen", topY, botY, 0));
 
   // Knopfleiste auf dem vorderen Teil (Jacke bleibt offen)
   ctx.fillStyle = K.cardiganLight;
   for (let i = 0; i < 3; i++) {
+    if (pinsel) { pinsel.knopf(ctx, 3.3, topY + 5.5 + i * 4.2); continue; }
     ctx.beginPath();
     ctx.arc(3.3, topY + 5.5 + i * 4.2, 0.62, 0, Math.PI * 2);
     ctx.fill();
@@ -2373,7 +2416,7 @@ function backArms(state: LuniState, r: Rig, phase: number): { near: Limb; far: L
 }
 
 /** Oberkörper von hinten: Strickjacke ohne Knöpfe, Handtuch oder Haut. */
-function drawTorsoBack(ctx: C, r: Rig, outfit: "dressed" | "towel" | "none", K: typeof LUNI_COLORS) {
+function drawTorsoBack(ctx: C, r: Rig, outfit: "dressed" | "towel" | "none", K: typeof LUNI_COLORS, pinsel?: LuniZeichenpinsel) {
   const topY = r.shoulderY;
   const botY = r.hipY;
   if (outfit === "dressed") {
@@ -2392,6 +2435,7 @@ function drawTorsoBack(ctx: C, r: Rig, outfit: "dressed" | "towel" | "none", K: 
     ctx.lineTo(-7.6, botY + 1.4);
     ctx.closePath();
     ctx.fill();
+    if (pinsel) imSchnitt(ctx, () => pinsel.gewebe(ctx, "ruecken", topY, botY, 0));
     // Rückennaht und Schulterschatten
     ctx.fillStyle = K.cardiganDark;
     ctx.fillRect(-0.4, topY + 2, 0.8, botY - topY - 1);
@@ -2936,7 +2980,7 @@ export function luniPunkte(state: LuniState, t: number, walk = 0, phase = 0): Re
   };
 }
 
-function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
+function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: LuniZeichenpinsel): V {
   const {
     t = 0,
     face = 1,
@@ -3077,7 +3121,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
 
   const klavierHaareVorn = back && (state === "piano" || pianoSeat !== undefined);
   /* --- Haare hinten (beim Vorbeugen hängen sie am Kopf, siehe dort) --- */
-  if (r.bend < 0.7 && !klavierHaareVorn) upperLean(() => drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen));
+  if (r.bend < 0.7 && !klavierHaareVorn) upperLean(() => drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen, false, pinsel));
 
   /* Beine tauschen: das helle Bein steht jetzt hinten, das dunkle vorn. Jedes Bein behält
      Gelenk, Gangphase, Socke und Farbe; nur die Zeichenreihenfolge ändert sich. */
@@ -3107,8 +3151,9 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
       pullBack(beinHell.leg.elbow, beinHell.leg.hand, 3.1),
       beinHell.farbe,
       5.4,
+      pinsel, true,
     );
-    drawSock(ctx, [beinHell.leg.hand[0], beinHell.leg.hand[1] + r.footDrop], beinHell.ang, beinHell.sock, beinHell.dir);
+    drawSock(ctx, [beinHell.leg.hand[0], beinHell.leg.hand[1] + r.footDrop], beinHell.ang, beinHell.sock, beinHell.dir, pinsel);
   }
 
   /* --- Arme: Rollen getauscht ---
@@ -3140,8 +3185,8 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     upperLean(() => {
       if (!nurHand) {
         const wrist = pullBack(armBehind.elbow, armBehind.hand, 1.5);
-        stroke3(ctx, SCHULTER_HINTEN, armBehind.elbow, wrist, K.cardiganDark, 4.4);
-        if (state !== "sax" && K.cardigan === LUNI_COLORS.cardigan) armKaro(ctx, [SCHULTER_HINTEN, armBehind.elbow, wrist]);
+        stroke3(ctx, SCHULTER_HINTEN, armBehind.elbow, wrist, K.cardiganDark, 4.4, pinsel);
+        if (!pinsel && state !== "sax" && K.cardigan === LUNI_COLORS.cardigan) armKaro(ctx, [SCHULTER_HINTEN, armBehind.elbow, wrist]);
         if (tanzt) {
           // Beim Tanzen sind beide Arme ganz zu sehen: auch dieser bekommt sein Bündchen.
           ctx.save();
@@ -3150,10 +3195,11 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
           ctx.fillStyle = mixCol(K.cardiganLight, K.cardiganDark, 0.35);
           rr(ctx, -1.5, -2.2, 1.8, 4.4, 0.8);
           ctx.fill();
+          if (pinsel) imSchnitt(ctx, () => pinsel.bund(ctx, 4.4));
           ctx.restore();
         }
       }
-      drawHand(ctx, armBehind.elbow, armBehind.hand, K.skin, K.skinShade, daumenSeite(1, armBehind), gesteNah);
+      drawHand(ctx, armBehind.elbow, armBehind.hand, K.skin, K.skinShade, daumenSeite(1, armBehind), gesteNah, pinsel);
     });
   // Beim Tragen eines Instruments und beim Tanzen liegt der Arm vor dem Korpus,
   // nicht dahinter – Arme und Hände verschwinden so nie hinter dem Körper.
@@ -3168,8 +3214,9 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
       pullBack(beinDunkel.leg.elbow, beinDunkel.leg.hand, 3.1),
       beinDunkel.farbe,
       5.6,
+      pinsel, true,
     );
-    drawSock(ctx, [beinDunkel.leg.hand[0], beinDunkel.leg.hand[1] + r.footDrop], beinDunkel.ang, beinDunkel.sock, beinDunkel.dir);
+    drawSock(ctx, [beinDunkel.leg.hand[0], beinDunkel.leg.hand[1] + r.footDrop], beinDunkel.ang, beinDunkel.sock, beinDunkel.dir, pinsel);
   }
 
   // Zeichnung und Armbewegung beginnen am selben Schultergelenk.
@@ -3177,8 +3224,8 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   const drawFrontArm = () =>
     upperLean(() => {
       const wrist = pullBack(armFront.elbow, armFront.hand, 1.5);
-      stroke3(ctx, SCHULTER_VORN, armFront.elbow, wrist, K.cardigan, 4.6);
-      if (state !== "sax" && K.cardigan === LUNI_COLORS.cardigan) armKaro(ctx, [SCHULTER_VORN, armFront.elbow, wrist]);
+      stroke3(ctx, SCHULTER_VORN, armFront.elbow, wrist, K.cardigan, 4.6, pinsel);
+      if (!pinsel && state !== "sax" && K.cardigan === LUNI_COLORS.cardigan) armKaro(ctx, [SCHULTER_VORN, armFront.elbow, wrist]);
       // Ärmelbündchen
       ctx.save();
       const ha = Math.atan2(armFront.hand[1] - armFront.elbow[1], armFront.hand[0] - armFront.elbow[0]);
@@ -3187,8 +3234,9 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
       ctx.fillStyle = K.cardiganLight;
       rr(ctx, -1.5, -2.3, 1.8, 4.6, 0.8);
       ctx.fill();
+      if (pinsel) imSchnitt(ctx, () => pinsel.bund(ctx, 4.6));
       ctx.restore();
-      drawHand(ctx, armFront.elbow, armFront.hand, K.skin, K.skinShade, daumenSeite(-1, armFront), gesteFern);
+      drawHand(ctx, armFront.elbow, armFront.hand, K.skin, K.skinShade, daumenSeite(-1, armFront), gesteFern, pinsel);
     });
 
   if (P && oberteil === "dressed" && !back && !vampir) drawPajamaDetails(ctx, r, P.top, P.bottom);
@@ -3213,16 +3261,16 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
           ctx.lineTo(arm.hand[0], arm.hand[1]);
           ctx.stroke();
         } else {
-          stroke3(ctx, [side * 6.2, r.shoulderY + 2.2], arm.elbow, arm.hand, side < 0 ? K.cardiganDark : K.cardigan, 4.5);
+          stroke3(ctx, [side * 6.2, r.shoulderY + 2.2], arm.elbow, arm.hand, side < 0 ? K.cardiganDark : K.cardigan, 4.5, pinsel);
         }
         // Rückansicht: ebenfalls Handflächen nach außen, Daumen zur Körpermitte.
-        drawHand(ctx, arm.elbow, arm.hand, K.skin, K.skinShade, -side);
+        drawHand(ctx, arm.elbow, arm.hand, K.skin, K.skinShade, -side, "offen", pinsel, true);
       }
     };
     // Nur Posen, die bewusst hinter den Rücken greifen (Schrank, Waschen),
     // werden vor dem Rumpf gezeichnet und damit verdeckt.
     if (!bedCover && arms.behind && !armeVorn) drawArms();
-    drawTorsoBack(ctx, r, oberteil, K);
+    drawTorsoBack(ctx, r, oberteil, K, pinsel);
     if (kleidung?.hose && !kleidung.oberteil) {
       ctx.fillStyle = K.leggings;
       rr(ctx, -6.8, r.hipY - 1.6, 13.6, 3.6, 1.6);
@@ -3233,7 +3281,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     if (!bedCover && (!arms.behind || armeVorn)) drawArms(false);
     if (vampir?.umhang && oberteil === "dressed" && umhang > 0.01) drawUmhangRuecken(ctx, r, vampir.umhang, umhang);
     // Die langen Haare liegen über Rücken und Schultern.
-    if (!klavierHaareVorn) drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen * (wet > 0.3 ? 0.94 : 1), true);
+    if (!klavierHaareVorn) drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen * (wet > 0.3 ? 0.94 : 1), true, pinsel);
   } else {
     // Tanz: ein Arm, der hinter dem Körper durchschwingt (Floss), wird vor dem
     // Rumpf gezeichnet und dadurch von ihm verdeckt.
@@ -3247,7 +3295,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
       ctx.scale(-1, 1);
       if (r.spineCurve > 0.01) drawLabTorso(ctx, r, oberteil, K);
       else if (oberteil === "dressed") {
-        drawTorso(ctx, r, kleidung || (P && state === "lie") ? K : LUNI_COLORS);
+        drawTorso(ctx, r, kleidung || (P && state === "lie") ? K : LUNI_COLORS, pinsel);
         if (vampir) drawVampirTorso(ctx, r, vampir);
       }
       else if (oberteil === "towel") drawTowel(ctx, r);
@@ -3299,6 +3347,8 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
   /* --- Kopf --- */
   upperLean(() => {
   ctx.save();
+  // Ein gemeinsamer Fadenlauf auf Hinterkopf und Rueckenhaar verhindert eine sichtbare Kreisnaht.
+  const haarraum = pinsel && back ? ctx.getTransform() : null;
   if (r.neckBend) {
     ctx.translate(0, r.shoulderY); ctx.rotate(r.neckBend); ctx.translate(0, -r.shoulderY);
   }
@@ -3315,7 +3365,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     ctx.beginPath();
     ctx.arc(-7.4, HEAD_Y + 1.2, 1.9, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = K.skin;
+    ctx.fillStyle = pinsel ? pinsel.hautton(ctx, HEAD_Y, HEAD_R, K.skin, K.skinShade) : K.skin;
     ctx.beginPath();
     ctx.arc(0, HEAD_Y, HEAD_R, 0, Math.PI * 2);
     ctx.fill();
@@ -3325,11 +3375,15 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     ctx.fillStyle = LUNI_COLORS.hair;
     ctx.beginPath();
     ctx.arc(0, HEAD_Y - 0.6, HEAD_R + 0.8, 0, Math.PI * 2);
-    ctx.fill();
+    if (!pinsel) ctx.fill();
+    if (pinsel) imSchnitt(ctx, () => {
+      if (haarraum) ctx.setTransform(haarraum);
+      ctx.translate(0, HEAD_Y); pinsel.haar(ctx, "scheitel", HAIR_LEN * r.hairLen, r.hairFlow, 0);
+    });
   } else if (r.bend >= 0.7) {
     // Vorgebeugt: Gesicht zeigt zum Boden. Haare bedecken den Hinterkopf und
     // hängen senkrecht herunter, bis knapp über den Boden.
-    drawFace(ctx, expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0, singOpen);
+    drawFace(ctx, expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0, singOpen, pinsel);
     ctx.fillStyle = LUNI_COLORS.hair;
     ctx.beginPath();
     ctx.arc(-1.4, HEAD_Y - 1.6, HEAD_R + 0.6, 0, Math.PI * 2);
@@ -3372,20 +3426,20 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     // und als Blitzen des Kopfes sichtbar sein.
     const k = clamp01(hairAside);
     if (k < 0.005) {
-      drawHairFront(ctx, r.hairFlow, r.hairUp, r.hairLen);
+      drawHairFront(ctx, r.hairFlow, r.hairUp, r.hairLen, pinsel);
     } else if (k > 0.995) {
       drawHairAside(ctx, k);
     } else {
       ctx.save();
       ctx.globalAlpha *= 1 - k;
-      drawHairFront(ctx, r.hairFlow, r.hairUp, r.hairLen);
+      drawHairFront(ctx, r.hairFlow, r.hairUp, r.hairLen, pinsel);
       ctx.restore();
       ctx.save();
       ctx.globalAlpha *= k;
       drawHairAside(ctx, k);
       ctx.restore();
     }
-    drawFace(ctx, eyeRoll > 0.01 ? "annoyed" : expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0, singOpen);
+    drawFace(ctx, eyeRoll > 0.01 ? "annoyed" : expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0, singOpen, pinsel);
     if (eyeRoll > 0.01) drawEyeRoll(ctx, eyeRoll);
   }
   if (wet > 0.02 && r.bend < 0.7) {
@@ -3435,8 +3489,8 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
     ctx.translate(0, r.headY);
     ctx.rotate(r.headTilt + headShake * 0.12);
     ctx.translate(0, -r.headY);
-    drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen);
-    drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen * (wet > 0.3 ? 0.94 : 1), true);
+    drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen, false, pinsel);
+    drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen * (wet > 0.3 ? 0.94 : 1), true, pinsel);
     ctx.restore();
   });
 
@@ -3490,8 +3544,8 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
 /* -------------------------- Drehung: entfernt -------------------------- */
 
 /** Zeichnet die Figur (kein 2D-Rotate mehr; die Rotationsansicht ist entfernt). */
-export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}): V {
-  return renderFig(ctx, x, y, opts);
+export function drawLuni(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: LuniZeichenpinsel): V {
+  return renderFig(ctx, x, y, opts, pinsel);
 }
 
 /* ---------------------------- Zzz-Partikel ----------------------------- */

@@ -2,7 +2,7 @@
    Patch-Dateien der aktuellen Sitzung (Inhalt der UFO-/Schlitten-Station)
 
    Dieses Modul wird von tools/ufo-bauen.mjs erzeugt. Das Menü oben rechts
-   bietet LCL-Knecht-Ruprecht-80.zip, die TXT-Datei und die Code-Vorschau an.
+   bietet LCL-Luni-Feinzeichnung-81.zip, die TXT-Datei und die Code-Vorschau an.
    ======================================================================= */
 
 export interface PatchDatei {
@@ -11,8 +11,8 @@ export interface PatchDatei {
   inhalt: string;
 }
 
-export const PATCH_KURZ = "Knecht-Ruprecht";
-export const PATCH_NUMMER = 80;
+export const PATCH_KURZ = "Luni-Feinzeichnung";
+export const PATCH_NUMMER = 81;
 export const PATCH_ZIP =
   `LCL-${PATCH_KURZ}-${String(PATCH_NUMMER).padStart(2, "0")}.zip`;
 export const PATCH_TXT =

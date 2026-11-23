@@ -185,7 +185,7 @@ export default function StudioApp() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <div className="flex gap-1 rounded-lg bg-[#08151a]/70 p-1 ring-1 ring-white/10">
+            <div className="flex max-w-full flex-wrap gap-1 rounded-lg bg-[#08151a]/70 p-1 ring-1 ring-white/10">
               <Chip active={view === "original"} onClick={() => setView("original")}>
                 Ursprungsfigur
               </Chip>
@@ -195,6 +195,12 @@ export default function StudioApp() {
               <Chip active={view === "luni"} onClick={() => setView("luni")}>
                 Luni
               </Chip>
+              <a
+                href="#studio-luni-fein"
+                className="btn-press rounded-md bg-[#132a33] px-2.5 py-1.5 text-[11px] font-medium tracking-wide text-amber-glow ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
+              >
+                Luni-Feinzeichnung
+              </a>
             </div>
             <Chip active={grid} onClick={() => setGrid((v) => !v)}>
               Raster {grid ? "an" : "aus"}

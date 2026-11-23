@@ -7,6 +7,7 @@ import TanzStudio from "@/components/TanzStudio";
 import PatchView from "@/components/PatchView";
 import MethanStudio from "@/components/MethanStudio";
 import NikolausStudio from "@/components/NikolausStudio";
+import LuniFeinStudio from "@/components/LuniFeinStudio";
 import { FigurenEditor } from "@/components/FigurenEditor";
 
 /** Hash-Weiche: "#studio" Figuren-Studio, "#studio-frosch" Methan Frog, "#editor" Figuren-Editor,
@@ -25,6 +26,7 @@ function useHash() {
 export default function App() {
   const hash = useHash();
   if (hash === "#studio") return <StudioApp />;
+  if (hash === "#studio-luni-fein") return <LuniFeinStudio />;
   if (hash === "#studio-odin") return <OdinStudio />;
   if (hash === "#studio-apollo") return <ApolloStudio />;
   if (hash === "#studio-mons") return <MonsStudio />;
