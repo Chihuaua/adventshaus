@@ -19,6 +19,9 @@ import {
 } from "./advent";
 import { HundeWelt, type HundId } from "./hunde";
 import { HandyAblauf, HANDY_TASCHE_SICHTBAR } from "./handy";
+import { abendWelt, BettHandy, bettArm, pyjamaStoff, type Schlafanzug } from "./abendroutine";
+import { istZahnschritt, ZAHN_WEG, ZAHN_TAKTE, zahnbild, zahnfach, zahnHandobjekte, zahnWasser, type Zahnbild } from "./zahnpflege";
+import { WaschbeckenKlang } from "./audio/waschbecken";
 import {
   GOL_BTN,
   GOL_RULES,
@@ -96,7 +99,7 @@ import {
 } from "./gruselhaus/kueche";
 import { drawWetter, ladeWetter, tickWetter, waehleJahreszeit, waehleWetter, schalteZusatz, echtwetter, type WetterState } from "./wetter";
 import { drawWetterStation, wetterStationHit, wetterStationLayout, type WetterBefehl, type WetterTreffer } from "./wetterstation";
-import { drawStein, steinAn, steinSlots, NIKOLAUS_STEIN, type SteinSlot } from "./steine";
+import { drawStein, steinAn, steinSlots, BETT_STEIN, NIKOLAUS_STEIN, type SteinSlot } from "./steine";
 import { NikolausBesuch, zeichneNikolausSpur, type NikolausStand } from "./nikolaus-besuch";
 import { zeichneNikolaus, type NikolausBild } from "./nikolaus-figur";
 import { ruprechtBegleitung, zeichneRuprechtSpur } from "./ruprecht-begleitung";
@@ -553,6 +556,10 @@ export interface Station {
 type LuniCommand = string | Station;
 
 const [FK, FE, FO, FD] = FLOOR_Y;
+const BETTRUF: Station = {
+  id: "stein_bett", label: "Bett-Stein", floor: 0, x: BETT_STEIN.x,
+  face: 1, state: "idle", expr: "neutral", hits: [BETT_STEIN.hit],
+};
 const NIKOLAUSRUF: Station = {
   id: "stein_nikolaus", label: "Nikolausstein", floor: 0, x: NIKOLAUS_STEIN.x,
   face: 1, state: "idle", expr: "happy", hits: [NIKOLAUS_STEIN.hit],
@@ -681,6 +688,7 @@ export const STATIONS: Station[] = [
   },
   { id: "kellertreppe", label: "Kellertreppe", floor: 1, x: 523, face: 1, state: "idle", expr: "neutral", hits: [[440, 470, 70, 102]] },
   NIKOLAUSRUF,
+  BETTRUF,
 ];
 
 /* -------------------------------- Treppen ------------------------------ */
@@ -952,19 +960,20 @@ function drawBedScene(
   x: number,
   y: number,
   t: number,
-  pj: { top: string; bottom: string } | null,
+  pj: Schlafanzug | null,
   o: { pull: number; grab: number; turn: number; hair: number },
   sarg = false,
   outfit: "dressed" | "towel" | "none" = "dressed",
   glasses = false,
   weihnacht = false,
+  wach: LuniExpr | null = null,
 ) {
   const zug = clamp(o.pull, 0, 1);
   const links = lerp(338, 320, zug);
   const oben = sarg ? FLOOR_Y[2] - 36 - 12 * zug : lerp(288, 281, zug);
   clipBedCover(c, links, oben);
   drawLuni(c, x, y, {
-    t, state: "lie", expr: "sleep", blink: 1, scale: LUNI_SCALE,
+    t, state: "lie", expr: wach ?? "sleep", blink: wach ? Number(t % 4.8 < .12) : 1, scale: LUNI_SCALE,
     shadow: false, glasses, outfit, pajama: pj, hairAside: o.hair, bedCover: true,
   });
   // Hände zuerst: die Decke verdeckt sie, sobald sie darunter liegen.
@@ -1405,7 +1414,7 @@ function brushObj(c: C, x: number, y: number, rot: number, face: 1 | -1 = 1) {
 }
 
 /** Offener Spiegelschrank: Innenraum mit Becher und Bürste, Türen nach außen. */
-function drawCabinetOpen(c: C, open: number, brushInside: boolean) {
+function drawCabinetOpen(c: C, open: number, brushInside: boolean, pflege?: Zahnbild | null) {
   if (open <= 0.01) return;
   const x = SINK_X;
   const top = CAB_TOP;
@@ -1414,12 +1423,15 @@ function drawCabinetOpen(c: C, open: number, brushInside: boolean) {
   rect(c, x + 3, top + 2, 30, 1.5, "rgba(0,0,0,.12)");
   rect(c, x + 3, top + 15, 30, 1.6, "#c9d6d4");
   // oberes Fach: Zahnputzbecher, Creme
-  rrect(c, x + 6, top + 7, 5, 8, 1, "#7ec4dc");
-  rect(c, x + 7, top + 4, 1, 4, "#f2f7f4");
-  rect(c, x + 9, top + 3.6, 1, 4.4, "#ff9fb0");
+  if (pflege === undefined) {
+    rrect(c, x + 6, top + 7, 5, 8, 1, "#7ec4dc");
+    rect(c, x + 7, top + 4, 1, 4, "#f2f7f4");
+    rect(c, x + 9, top + 3.6, 1, 4.4, "#ff9fb0");
+  }
   rrect(c, x + 22, top + 10, 7, 5, 1.5, "#f2f7f4");
   // unteres Fach: die Bürste
   if (brushInside) brushObj(c, x + 15, top + 29.5, -Math.PI / 2);
+  if (pflege !== undefined) zahnfach(c, x, FO, pflege);
   // Türen klappen nach außen und werden schmaler
   const dw = 14.6 - 11.4 * e;
   rect(c, x + 3 - dw * e, top + 2, dw, 30, "#bcd9dc");
@@ -3479,6 +3491,7 @@ interface SargPose {
   walk?: number; hand?: Pt | null; hand2?: Pt | null; backReach?: boolean; lean?: number; umhang?: number; shake?: number;
 }
 type ShPhase =
+  | (typeof ZAHN_WEG)[number]
   | (typeof SH_SEQ)[number]
   | (typeof DEKON_SEQ)[number]
   | (typeof DRESS_SEQ)[number]
@@ -3487,10 +3500,15 @@ type ShPhase =
   | (typeof CAB_CLOSE_SEQ)[number]
   | (typeof BRUSH_SEQ)[number]
   | (typeof BED_SEQ)[number];
+const ABEND_SEQ: readonly ShPhase[] = [
+  ...SH_SEQ, ...GLASS_SEQ, ...CAB_OPEN_SEQ, ...ZAHN_WEG,
+  ...BRUSH_SEQ, ...CAB_CLOSE_SEQ, "bToWardrobe", "bedOpen", "bedPants", "bedPajama", "bedClose",
+];
 /** Flugdauer der Brille in Sekunden */
 const GLASSES_FLIGHT = 1.35;
 /** Dauer in Sekunden; Laufschritte haben keine Dauer, sie enden mit der Ankunft. */
 const SH_DUR: Partial<Record<ShPhase, number>> = {
+  ...ZAHN_TAKTE,
   glassesOff: 1.3, tossGlasses: 0.9,
   openWardrobe: 0.7, undress: 1.6, wrap: 1.5, closeWardrobe: 0.6,
   pressPanel: 0.8, capsuleOpen: 1.1, turnFront: 0.8, capsuleClose: 1.1,
@@ -3519,6 +3537,9 @@ const SH_INSIDE: ShPhase[] = [
   "rinse", "waterOff", "takeTowel", "wrapOn", "openCurtain",
 ];
 const SH_STAND: Record<string, { x: number; face: 1 | -1 }> = {
+  zPlatz: { x: SINK_X + 17, face: 1 },
+  zZumBecken: { x: SINK_X + 4, face: 1 },
+  zZumBecher: { x: SINK_X + 17, face: 1 },
   toWardrobe: { x: 458, face: 1 },
   dToWardrobe: { x: 458, face: 1 },
   toSink: { x: 602, face: 1 },
@@ -3919,12 +3940,16 @@ export class House {
 
   // Bett-Routine und Traum
   private bedPhase: "toss" | null = null;
+  private abendAktiv = false;
+  private abendWartet = false;
+  private bettHandy: BettHandy | null = null;
+  private hahnKlang = new WaschbeckenKlang();
   private pyjama: { top: string; bottom: string } | null = null;
   private bedEinstieg: "anfahrt" | "umschlagen" | "setzen" | "fuesse" | "greifen" | "toss" | null = null;
   private bedEinstiegT = 0;
   private bedBrilleBehalten = false;
   private bedKleidungAn: "dressed" | "towel" | "none" = "dressed";
-  private bedPyjama: { top: string; bottom: string } | null = null;
+  private bedPyjama: Schlafanzug | null = null;
   /** 0 = zu Hause, 1 = oben am Himmel */
   private tossUp = 0;
   private tossLand = 1;
@@ -4199,7 +4224,7 @@ export class House {
     this.onUfo = opts.onUfo ?? null;
     this.steine = steinSlots(this.welt);
     // Rufsteine gehören nur einmal in den Fokusumlauf, zusammen mit den Wechselsteinen.
-    this.stations = this.stations.filter((st) => st.id !== NIKOLAUSRUF.id);
+    this.stations = this.stations.filter((st) => st.id !== NIKOLAUSRUF.id && st.id !== BETTRUF.id);
     if (this.postWelt) {
       this.nikolaus.laden(loadJson<NikolausStand>(this.nikolausSchluessel));
       this.nikolausEinladen = this.nikolaus.phase === "warten";
@@ -4208,7 +4233,7 @@ export class House {
       // eigene Kopie der Haustür-Station: die Beschriftung wechselt nur in dieser Welt
       this.stations = this.stations.map((st) => (st.id === "haustuer" ? { ...st, hits: [...st.hits] } : st));
     }
-    this.steinStationen = this.steine.map((sl) => sl.aktion === "nikolaus" ? NIKOLAUSRUF : ({
+    this.steinStationen = this.steine.map((sl) => sl.aktion === "nikolaus" ? NIKOLAUSRUF : sl.aktion === "abend" ? BETTRUF : ({
       id: `stein_${sl.art}`,
       label: sl.label,
       floor: 0,
@@ -4256,6 +4281,7 @@ export class House {
   }
 
   destroy() {
+    this.hahnKlang.stop();
     this.speichern();
     window.removeEventListener("pagehide", this.onPageHide);
     this.destroyed = true;
@@ -4351,7 +4377,7 @@ export class House {
       // Ohne Brille im Waschbecken trägt Luni sie (sonst ginge sie verloren).
       glassesOn: this.glassesOn || !this.glassesInSink,
       glassesInSink: this.glassesInSink && !this.glassesOn,
-      brushInCab: this.brushInCab,
+      brushInCab: this.brushInCab || (this.abendAktiv && this.brushInHand),
       gardenDoor: this.gardenDoor >= 0.5 ? 1 : 0,
       cellarDoorV: this.cellarDoorV >= 0.5 ? 1 : 0,
       golOnShelf: this.golOnShelf,
@@ -4394,7 +4420,8 @@ export class House {
     this.pyjama = s.pyjama ?? null;
     this.glassesOn = s.glassesOn;
     this.glassesInSink = s.glassesInSink;
-    this.brushInCab = s.brushInCab;
+    // Alte Stände können mitten im Bürsten gespeichert sein. Ohne laufenden Griff liegt sie wieder im Fach.
+    this.brushInCab = abendWelt(this.welt) || s.brushInCab;
     this.gardenDoor = s.gardenDoor;
     this.gardenWant = s.gardenDoor;
     this.cellarDoorV = s.cellarDoorV;
@@ -4442,6 +4469,7 @@ export class House {
   private steinWechsel(st: Station) {
     const sl = this.steine[this.steinStationen.indexOf(st)];
     if (!sl) return;
+    if (sl.aktion === "abend") { this.command(BETTRUF.id); return; }
     if (sl.aktion === "nikolaus") {
       if (this.nikolaus.rufen(this.clock)) {
         sfx.ui();
@@ -4776,6 +4804,16 @@ export class House {
    */
   command(request: LuniCommand) {
     const id = typeof request === "string" ? request : request.id;
+    if (this.abendAktiv) return;
+    if (id === BETTRUF.id) {
+      if (!abendWelt(this.welt)) return;
+      if (this.shPhase && (SH_SEQ as readonly string[]).includes(this.shPhase)) {
+        // Eine schon begonnene Dusche zählt mit; kein zweiter Gang unter die Brause.
+        this.abendWartet = false; this.abendAktiv = true; this.chain = []; sfx.ui(); return;
+      }
+      if (this.abendBeschaeftigt()) { this.abendWartet = true; return; }
+      this.abendWartet = false;
+    }
     if (id === NIKOLAUSRUF.id) {
       if (this.postWelt) this.steinWechsel(NIKOLAUSRUF);
       return;
@@ -4899,6 +4937,7 @@ export class House {
         return;
       }
       this.aufwachen();
+      if (id === BETTRUF.id) { this.wakeNext = request; return; }
     }
     if (this.lieDown && id !== "bett") {
       this.lieDown = false;
@@ -5014,6 +5053,18 @@ export class House {
       this.chain = [];
       this.ashNext = request;
       this.startAsh("quench");
+      return;
+    }
+
+    if (id === BETTRUF.id) {
+      if (this.holding || this.cigButt) {
+        this.ashNext = request; this.smokeRequested = false; this.startAsh("quench"); return;
+      }
+      this.abendAktiv = true;
+      this.chain = []; this.pending = null; this.smokeRequested = false;
+      this.packMove = false; this.takeMove = false; this.doorIntent = null;
+      sfx.ensure(); sfx.ui();
+      this.startSh(this.outfit === "towel" ? "toSink" : "toWardrobe");
       return;
     }
 
@@ -5559,6 +5610,7 @@ export class House {
 
   private update(dt: number, roomDt = dt, live = false) {
     this.elapsed += dt;
+    if (this.abendWartet && !this.abendBeschaeftigt()) this.command(BETTRUF.id);
     this.updatePost(dt);
     this.updateNikolaus(dt);
     this.updateTVAudio();
@@ -7087,7 +7139,7 @@ export class House {
     const weihnacht = this.welt === "weihnacht";
     const bettBelegt = this.welt === "normal" || this.welt === "weihnacht"
       ? (this.lf === 2 && !this.cur && !this.pending
-        && this.path.length === 0 && (this.lieDown || !!this.sleepPhase || this.asleep ||
+        && this.path.length === 0 && (this.lieDown || !!this.sleepPhase || this.asleep || !!this.bettHandy ||
           (this.bedEinstieg !== null && this.bedEinstieg !== "anfahrt")))
       : false;
     if (bettBelegt !== this.bettRendered) {
@@ -7201,8 +7253,10 @@ export class House {
     }
     if (this.glassesInSink) glassesObj(ctx, SINK_DROP[0], SINK_DROP[1], 0.12, 0.45);
     if (this.gruselSarg) this.drawBedToss(ctx);
+    const zahn = this.zahnpflegeBild();
     if (this.gruselBad) drawLabLockerOpen(ctx, this.cabinetOpen, this.brushInCab);
-    else drawCabinetOpen(ctx, this.cabinetOpen, this.brushInCab);
+    else drawCabinetOpen(ctx, this.cabinetOpen, this.brushInCab, abendWelt(this.welt) ? zahn : undefined);
+    if (zahn) zahnWasser(ctx, SINK_X, FO, zahn);
     // Auch der animierte Ofen steht hinter Luni, nicht vor ihrem Laufweg.
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) this.drawHexenofen(ctx);
     this.drawSargPass(ctx, false);
@@ -8705,7 +8759,7 @@ export class House {
     const shared = sfx.peekSharedAudio();
     if (!shared) return;
     if (document.visibilityState === "hidden") {
-      this.tvKlang.tv_e?.stop(); this.tvKlang.tv_d?.stop();
+      this.tvKlang.tv_e?.pause(); this.tvKlang.tv_d?.pause();
       return;
     }
     for (const id of ["tv_e", "tv_d"] as const) {
@@ -8754,7 +8808,6 @@ export class House {
     const t = cozy ? this.harvestClock : this.elapsed;
 
     if (mode === "sterne") {
-      // Ruhiges Bild ohne eigenen Ton; eine spätere Musikuntermalung kann hier ansetzen.
       drawSternennacht(c, x, y, w, h, this.elapsed);
       this.drawTVKennung(c, x, y, TV_KANAL_NAMEN[mode]);
     } else if (cozy) {
@@ -9048,13 +9101,14 @@ export class House {
   private onPageHide = () => this.speichern();
 
   private onVisibility = () => {
+    if (document.visibilityState === "hidden") this.hahnKlang.stop();
     if (this.musikzimmer) {
       this.musikzimmer.setPaused(document.visibilityState === "hidden");
       this.last = performance.now();
     }
     if (document.visibilityState === "hidden") {
-      this.tvKlang.tv_e?.stop();
-      this.tvKlang.tv_d?.stop();
+      this.tvKlang.tv_e?.pause();
+      this.tvKlang.tv_d?.pause();
       this.speichern();
       if (this.saxPhase === "play" && this.saxStarted && this.saxMusic) {
         this.saxPausedAt = this.saxMusic.pause();
@@ -9154,12 +9208,29 @@ export class House {
 
   /* ------------------------------ Duschen -------------------------------- */
 
+  private abendBeschaeftigt() {
+    return !!(this.shPhase || this.bedEinstieg || this.bedPhase || this.sleepPhase || this.lieDown || this.wakeT > 0
+      || this.cur?.step.k === "stair" || this.wcInside || this.luniTraegtPaket || this.post?.anDerTuer
+      || this.nikolaus?.aktiv || this.golPhase === "insert" || this.golPhase === "press" || this.flauschiPhase === "insert");
+  }
+
+  private zahnpflegeBild() {
+    if (!this.abendAktiv) return null;
+    if (this.shPhase === "zZumBecken" || this.shPhase === "zZumBecher") {
+      const ph = this.shPhase === "zZumBecken" ? "zTubeZurueck" : "zHahnZu";
+      return zahnbild(ph, ZAHN_TAKTE[ph], SINK_X, FO);
+    }
+    return istZahnschritt(this.shPhase) ? zahnbild(this.shPhase, this.shT, SINK_X, FO) : null;
+  }
+
   private shStation(phase: ShPhase): Station {
     const st = (this.gruselBad && DEKON_STAND[phase]) || SH_STAND[phase];
     return { id: `sh_${phase}`, label: "", floor: 2, x: st.x, face: st.face, state: "idle", expr: "happy", hits: [] };
   }
 
   private startSh(phase: ShPhase) {
+    if (this.abendAktiv && phase === "bedPants") this.makePajama();
+    if (this.abendAktiv && phase === "cOpen" && this.cabinetOpen >= .99) phase = "zPlatz";
     // Ohne Brille (weder auf der Nase noch in der Hand) gibt es nichts zu werfen.
     if (!this.glassesOn && !this.glassesInHand && (phase === "toSink" || phase === "glassesOff" || phase === "tossGlasses")) {
       phase = this.gruselBad ? "toPanel" : "toShower";
@@ -9178,12 +9249,13 @@ export class House {
   private nextSh() {
     const p = this.shPhase;
     if (!p) return;
-    const seq = (this.gruselBad && (DEKON_SEQ as readonly string[]).includes(p)
+    const seq = (this.abendAktiv ? ABEND_SEQ : this.gruselBad && (DEKON_SEQ as readonly string[]).includes(p)
       ? DEKON_SEQ : ALL_SEQS.find((q) => q.includes(p)) ?? []) as readonly ShPhase[];
     const i = seq.indexOf(p);
     if (i < 0 || i === seq.length - 1) {
       this.shPhase = null;
       this.shT = 0;
+      if (this.abendAktiv && p === "bedClose") this.startBedEinstieg();
       return;
     }
     this.startSh(seq[i + 1]);
@@ -9235,9 +9307,21 @@ export class House {
       }
       return;
     }
+    const vorher = this.shT;
     this.shT += dt;
     const p = clamp(this.shT / dur, 0, 1);
     const e = p * p * (3 - 2 * p);
+    if (istZahnschritt(ph) && this.abendAktiv) {
+      const z = zahnbild(ph, this.shT, SINK_X, FO);
+      const sichtbar = typeof document === "undefined" || document.visibilityState !== "hidden";
+      if (sichtbar) {
+        this.hahnKlang.fluss(z.fluss, sfx.peekSharedAudio());
+        if (ph === "zPutzen" && p > .12 && p < .88 && Math.floor(vorher * 14 / Math.PI) !== Math.floor(this.shT * 14 / Math.PI))
+          sfx.zahnpflege("putzen", Math.cos(this.shT * 14) < 0);
+        if (ph === "zGurgeln" && Math.floor(vorher * 4.5) !== Math.floor(this.shT * 4.5)) sfx.zahnpflege("gurgeln");
+        if (ph === "zSpucken" && vorher / dur < .38 && p >= .38) sfx.zahnpflege("spucken");
+      }
+    }
     switch (ph) {
       case "openWardrobe":
       case "dOpen":
@@ -9345,10 +9429,14 @@ export class House {
   }
 
   /** Oberteil und Hose beim Umziehen getrennt; das Handtuch gehört nur zur Dusche. */
-  private bedKleidung(): { oberteil: boolean; hose: boolean } | undefined {
+  private bedKleidung(): { oberteil: boolean; hose: boolean; handtuch?: boolean } | undefined {
     const ph = this.shPhase;
     if (!ph) return undefined;
     const p = clamp(this.shT / (SH_DUR[ph] ?? 1), 0, 1);
+    if (this.abendAktiv && (ph === "bedPants" || ph === "bedPajama")) {
+      const oben = ph === "bedPajama" && p >= .75;
+      return { oberteil: oben, hose: ph === "bedPajama" || p >= .4, handtuch: !oben };
+    }
     switch (ph) {
       case "bedTop": return { oberteil: p < 0.3, hose: true };
       case "bedBottom": return { oberteil: false, hose: p < 0.55 };
@@ -9383,7 +9471,7 @@ export class House {
         if (p >= 0.55) this.outfit = "none";
         break;
       case "bedPants":
-        if (p >= 0.4) this.outfit = "none";
+        if (!this.abendAktiv && p >= 0.4) this.outfit = "none";
         break;
       case "bedPajama":
         if (p >= 0.75 && this.outfit !== "dressed") {
@@ -9467,7 +9555,7 @@ export class House {
         return { state: "glassesOn", face: 1, phase: p, back: false };
       case "bedOpen":
       case "bedClose":
-        return { state: "act", face: 1, phase: p, back: this.gruselSarg };
+        return { state: "act", face: 1, phase: p, back: this.gruselSarg || this.abendAktiv };
       case "bedCape":
         return { state: "act", face: 1, phase: 0, back: true };
       case "bedTop":
@@ -9946,8 +10034,8 @@ export class House {
     this.chain = [];
     this.smokeRequested = false;
     this.bedKleidungAn = this.outfit;
-    this.bedPyjama = this.pyjama ? { ...this.pyjama } : null;
-    this.bedBrilleBehalten = this.glassesOn && Math.random() < 0.03;
+    this.bedPyjama = pyjamaStoff(this.pyjama, this.clock, this.welt);
+    this.bedBrilleBehalten = !this.abendAktiv && this.glassesOn && Math.random() < 0.03;
     this.bedEinstieg = "anfahrt";
     this.bedEinstiegT = 0;
     if (schonAmBett && this.lf === 2 && Math.abs(this.lx - BETT_STAND_X) < 1) {
@@ -9976,6 +10064,7 @@ export class House {
     if (ph === "umschlagen") this.bedEinstieg = "setzen";
     else if (ph === "setzen") this.bedEinstieg = "fuesse";
     else if (ph === "fuesse") this.bedEinstieg = "greifen";
+    else if (this.abendAktiv) this.beginLieDown();
     else {
       this.bedEinstieg = "toss";
       if (this.bedBrilleBehalten || !this.beginBedToss()) {
@@ -10049,6 +10138,7 @@ export class House {
     if (this.tossLanded && this.bedPhase === "toss") {
       // Nach dem Landen: hinsetzen, zudecken, Hand unter das Ohr.
       this.bedPhase = null;
+      if (this.bettHandy) { this.abendEinschlafen(); return; }
       if (this.gruselSarg) {
         // Gruselhaus: Deckel zuziehen und dabei zurücklehnen.
         this.sargStart("deckelZu");
@@ -10078,8 +10168,8 @@ export class House {
     const u = this.tossLanded ? 1 : clamp(this.tossUp / T, 0, 1);
     const [x1, y1] = this.tossTarget();
     const imGrusel = this.gruselSarg;
-    const x0 = imGrusel ? SCHLAFZIMMER.sitzX + 9 : 340;
-    const y0 = imGrusel ? FLOOR_Y[2] - 52 : 306;
+    const x0 = this.bettHandy ? 311 : imGrusel ? SCHLAFZIMMER.sitzX + 9 : 340;
+    const y0 = this.bettHandy ? 282 : imGrusel ? FLOOR_Y[2] - 52 : 306;
     // Hoher Bogen, aber nie durch die Zimmerdecke (Decke bei y 212).
     const hgt = imGrusel ? clamp((y0 + y1) / 2 - 216, 12, 70) : 70;
     if (u >= 1 && imGrusel) return;
@@ -10146,7 +10236,17 @@ export class House {
     }
   }
 
+  private abendEinschlafen() {
+    this.bettHandy = null;
+    this.sleepPhase = "settle"; this.sleepPhaseT = 0;
+  }
+
   private updateBedState(dt: number) {
+    if (this.bettHandy) {
+      this.bettHandy.tick(dt);
+      if (this.bettHandy.fertig && !this.bedPhase && !this.beginBedToss()) this.abendEinschlafen();
+      return;
+    }
     if (this.sleepRest > 0) this.sleepRest = Math.max(0, this.sleepRest - dt);
     // Steht sie auf oder bricht ab, haengen die Haare wieder normal.
     if (this.bedSitHair > 0 && !this.asleep && !this.lieDown && !this.sleepPhase && !this.bedEinstieg) {
@@ -10162,6 +10262,7 @@ export class House {
       this.lieT += dt;
       if (this.lieT >= 1.4) {
         this.lieDown = false;
+        if (this.abendAktiv) { this.bettHandy = new BettHandy(); this.bedSitHair = 1; return; }
         // Die Decke wurde bereits im Sitzen herangezogen; nur noch zurechtlegen.
         this.sleepPhase = "settle";
         this.sleepPhaseT = 0;
@@ -10182,6 +10283,7 @@ export class House {
           this.sleepPhase = null;
           this.sleepPhaseT = 0;
           this.asleep = true;
+          this.abendAktiv = false;
           this.sleepT = 0;
           this.bedSitHair = 1;
         } else {
@@ -10200,7 +10302,7 @@ export class House {
   /** Während der Bettfolge liegt die Hand unter dem Stoff: kein Gegenstand
    *  darf nachträglich über die Decke gemalt werden. */
   private handUnterDecke(): boolean {
-    return this.lieDown || this.asleep || !!this.sleepPhase ||
+    return this.lieDown || this.asleep || !!this.sleepPhase || !!this.bettHandy ||
       (!!this.bedEinstieg && this.bedEinstieg !== "anfahrt");
   }
 
@@ -11227,14 +11329,14 @@ export class House {
         t: this.elapsed,
         face: 1,
         state: "lie",
-        expr: "sleep",
+        expr: this.abendAktiv ? "tired" : "sleep",
         phase: e,
         lieDown: e,
         // Die Strähnen werden beim Hinlegen neben das Ohr gelegt und bleiben
         // dort: dieses Umschalten läuft nur einmal, nie zurück.
         hairAside: Math.max(e, this.bedSitHair),
         bedCover: true,
-        blink: 1,
+        blink: this.abendAktiv ? 0 : 1,
         scale: LUNI_SCALE,
         shadow: false,
         glasses: this.glassesOn,
@@ -11252,7 +11354,7 @@ export class House {
       return;
     }
     const ruhtImBett = this.istNormalHaus && !a && this.activity?.id === "bett" && !this.bedEinstieg;
-    if (this.sleepPhase || this.asleep || ruhtImBett) {
+    if (this.sleepPhase || this.asleep || ruhtImBett || this.bettHandy) {
       // Kopfmitte bei x≈310, y≈286: direkt auf dem Kissen (294–324, 286–298).
       st = this.stations.find((sn) => sn.id === "bett") ?? null;
       x = 345;
@@ -11271,10 +11373,19 @@ export class House {
       // Sperre legten grab/pull/turn sie zurueck ins Gesicht (Blitzen).
       hairAside = Math.max(pr.hair, this.bedSitHair);
       this.bedSitHair = hairAside;
-      this.lastPose = "sleep";
+      if (this.abendAktiv) pr = { ...pr, hair: hairAside };
+      const handyImBett = this.bettHandy?.bild();
+      this.lastPose = handyImBett ? "lie" : "sleep";
       const inSarg = this.welt === "gruesel" && GRUSELRAEUME.schlafzimmer;
       drawBedScene(c, x, y + yOff, this.elapsed, this.gruselSarg ? this.pyjama : this.bedPyjama,
-        pr, inSarg, this.gruselSarg ? "dressed" : this.bedKleidungAn, this.glassesOn, this.welt === "weihnacht");
+        pr, inSarg, this.gruselSarg ? "dressed" : this.bedKleidungAn, this.glassesOn, this.welt === "weihnacht",
+        handyImBett ? (handyImBett.spricht ? "talk" : "focus") : null);
+      if (handyImBett) {
+        const hand = this.bedPhase ? punktMischen(handyImBett.hand, [325, 288], sanft(this.tossUp / .65)) : handyImBett.hand;
+        bettArm(c, hand, this.bedPyjama?.top ?? LUNI_COLORS.cardigan, LUNI_COLORS.skin);
+        c.save(); c.translate(...hand); c.rotate(-1.32 * handyImBett.pose.ohr);
+        drawHandy(c, [0, 0], 1, handyImBett.pose, this.elapsed); c.restore();
+      }
       if (this.asleep || ruhtImBett) drawSleepZ(c, 312, y - 52, this.asleep ? this.sleepT : this.elapsed);
       return;
     }
@@ -11581,7 +11692,7 @@ export class House {
     const zuendZeit = !a && !this.standing && !this.ashMove && st?.id === "raucherstuhl" && state === "sit" ? this.lightT : null;
     const zuenden = zuendZeit === null ? null : zuendPose(x, y + yOff, face, zuendZeit, this.lightAblegen);
     const tee = !a && st?.id === "tee" && this.teaT > 0 ? this.teeZiele(x, y + yOff) : null;
-    const hustet = this.sick > 0.3 && !zuenden && !tee && !handy;
+    const hustet = this.sick > 0.3 && !zuenden && !tee && !handy && !istZahnschritt(this.shPhase);
     const teeGeht = !!tee && Math.abs(teeStandX(this.teaT + 0.01) - teeStandX(this.teaT - 0.01)) > 0.2;
     // Aschenbecher: sitzend am Stuhl oder stehend davor – der Arm greift in beiden Fällen.
     let aschgriff: Pt | null = null; // sitzend, im lokalen Koordinatensystem
@@ -11660,6 +11771,14 @@ export class House {
     // Wird von drawLuni gefüllt: beide Handpositionen in Weltkoordinaten.
     const saxHands = { front: [0, 0] as [number, number], rear: [0, 0] as [number, number] };
     const kleidung = this.bedKleidung();
+    const pflege = this.zahnpflegeBild();
+    const zahn = !a && istZahnschritt(this.shPhase) ? pflege : null;
+    if (zahn) {
+      const griff = zahn.ph === "zNehmen" || zahn.ph === "zTube" || zahn.ph === "zTubeZurueck" || zahn.ph === "zZurueck";
+      state = griff ? "reachUp" : "idle"; face = 1; back = false; posePhase = zahn.p;
+      expr = zahn.ph === "zGurgeln" || zahn.ph === "zSpucken" ? "talk" : "focus";
+      saxHand = zahn.r; saxHand2 = zahn.l; handElbow = 1; handElbow2 = -1;
+    }
     const hand = drawLuni(c, x, y + yOff, {
       t: this.elapsed,
       face,
@@ -11676,10 +11795,13 @@ export class House {
       sick: this.sick,
       outfit: this.outfit,
       kleidung,
+      schrankRuecken: abendWelt(this.welt) && back && (state === "undress" || state === "wrap"),
+      mundSchaum: zahn?.schaum,
+      bedLean: zahn?.neigung,
       back,
       wet: this.wet,
       glasses: this.glassesOn,
-      pajama: this.outfit === "dressed" || kleidung ? this.pyjama : null,
+      pajama: this.outfit === "dressed" || kleidung ? pyjamaStoff(this.pyjama, this.clock, this.welt) : null,
       vampir: this.outfit === "dressed" && this.vampirStil !== null ? VAMPIR_OUTFITS[this.vampirStil] : null,
       umhang,
       backReach: sargBack,
@@ -11695,9 +11817,9 @@ export class House {
       handElbow2,
       sitzgriff: zuenden?.rechts ?? aschgriff,
       sitzgriffLinks: handy ? handyGriff(handy) : null,
-      handKontakt: !!this.saxPhase || !!tee || st?.id === "eimer" || !!aschziel,
+      handKontakt: !!zahn || !!this.saxPhase || !!tee || st?.id === "eimer" || !!aschziel,
       handVorRumpf: !!handy,
-      armeVorne: !!tee || traegt,
+      armeVorne: !!zahn || !!tee || traegt,
       rauchzeit: this.smokeIdleT,
       handOut: saxHands,
       betweenBodyAndArms: this.saxPhase ? () => this.drawSaxCarried(c) : null,
@@ -11714,6 +11836,7 @@ export class House {
     this.hand[0] = hand[0];
     this.hand[1] = hand[1];
     this.luniHaende = { front: [saxHands.front[0], saxHands.front[1]], rear: [saxHands.rear[0], saxHands.rear[1]] };
+    if (pflege) zahnHandobjekte(c, pflege, saxHands.front, saxHands.rear, SINK_X, FO);
     this.luniKopf = { x, y: y + yOff, face, sichtbar: !hiddenInWc && this.alpha > 0.5 };
     if (traegt) {
       const px = (saxHands.front[0] + saxHands.rear[0]) / 2;

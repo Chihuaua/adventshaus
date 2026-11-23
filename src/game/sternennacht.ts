@@ -283,13 +283,38 @@ function berge(c: C): void {
 
 /* -------------------------------- Boden -------------------------------- */
 
-/** Start im Bild (0..1), Luftstrom in Bildeinheiten/Sekunde und Lichtfarbe. */
-const STAUB: readonly (readonly [number, number, number, number, string])[] = [
-  [0.378, 0.77, 4.8, -0.65, "255,96,110"], [0.136, 0.80, 3.8, -0.82, "255,96,110"],
-  [0.328, 0.53, -3.2, 0.46, "236,90,120"], [0.009, 0.58, 4.3, 0.58, "255,128,112"],
-  [0.344, 0.71, 5.0, -0.98, "220,236,112"], [0.490, 0.68, 4.1, 0.37, "220,236,112"],
-  [0.976, 0.47, 3.5, -0.43, "96,216,255"], [0.384, 0.45, -2.9, -0.54, "96,216,255"],
-];
+/** Start, Flugrichtung, mittlerer Kameraabstand (Figur = 1) und Lichtfarbe. */
+const STAUB = ([
+  [0.378, 0.77, 3.4, -0.7, 0.79, "255,96,110"], [0.136, 0.80, -3.9, -1.1, 1.28, "255,96,110"],
+  [0.328, 0.53, -2.2, 3.0, 1.43, "236,90,120"], [0.009, 0.58, 4.2, 1.1, 1.20, "255,128,112"],
+  [0.344, 0.71, 3.2, 1.2, 0.73, "220,236,112"], [0.490, 0.68, -1.4, -3.35, 1.22, "220,236,112"],
+  [0.976, 0.47, 4.1, -0.55, 1.39, "96,216,255"], [0.384, 0.45, 2.9, -1.8, 1.52, "96,216,255"],
+] as const).map(([u, v, dx, dy, abstand, rgb], id) => ({
+  id, u, v, dx, dy, rgb, massstab: 1 / abstand,
+  tempo: Math.hypot(dx, dy), hub: 0.10 + 0.065 * zufall(43 + id),
+  tiefentakt: TAU / (89 + 107 * zufall(83 + id)), tiefenphase: TAU * zufall(123 + id),
+  kurventakt: TAU / (71 + 77 * zufall(223 + id)), kurvenphase: TAU * zufall(327 + id),
+  bogenweite: 6 + 8 * zufall(419 + id),
+}));
+
+export function staubImRaum(t: number, links: number, oben: number, w: number, h: number) {
+  const saum = 44, breite = w + 2 * saum, hoehe = h + 2 * saum;
+  const umlauf = (n: number, laenge: number) => n - laenge * Math.floor(n / laenge);
+  return STAUB.map(k => {
+    const a = k.tiefenphase + t * k.tiefentakt;
+    const mass = k.massstab * (1 + k.hub * Math.sin(a));
+    // Integrierte Parallaxe: beim Näherkommen wird derselbe Flug größer und schneller,
+    // ohne dass die Position bei langen Laufzeiten springt oder von der Bildrate abhängt.
+    const weg = k.massstab * (t + k.hub / k.tiefentakt * (Math.cos(k.tiefenphase) - Math.cos(a)));
+    const b = t * k.kurventakt;
+    const quer = k.bogenweite * mass / k.tempo *
+      (Math.sin(b + k.kurvenphase) + 0.35 * Math.sin(0.61 * b + k.tiefenphase));
+    const x = links - saum + umlauf(k.u * breite + k.dx * weg - k.dy * quer, breite);
+    const y = oben - saum + umlauf(k.v * hoehe + k.dy * weg + k.dx * quer, hoehe);
+    return { id: k.id, x, y, r: 2.55 * mass, rgb: k.rgb, vorn: mass > 1,
+      lichtsaum: mass * (13 + 1.5 * mass), glanz: 0.22 + 0.18 * mass };
+  }).sort((a, b) => a.r - b.r);
+}
 
 function boden(c: C): void {
   const g = c.createLinearGradient(0, 400, 0, 900);
@@ -333,21 +358,11 @@ function boden(c: C): void {
   linie(c, [[120, 618], [300, 649], [470, 610], [640, 657]], "rgba(125,168,232,.12)", 3);
 }
 
-function lichtpartikel(c: C, t: number, links: number, oben: number, w: number, h: number, nah: boolean): void {
-  // Der Umlauf liegt jenseits des gesamten Lichtsaums, auch im breiten Dachgeschoss-TV.
-  const saum = 32, breite = w + 2 * saum, hoehe = h + 2 * saum;
-  const umlauf = (n: number, laenge: number) => n - laenge * Math.floor(n / laenge);
-  for (let i = 0; i < STAUB.length; i++) {
-    const [u, v, dx, dy, rgb] = STAUB[i];
-    const vorn = Math.abs(dx) > 4.6;
-    if (vorn !== nah) continue;
-    const phase = i * 2.4;
-    const x = u * breite + t * dx + 5 * Math.sin(t * 0.031 + phase);
-    const y = v * hoehe + t * dy + 12 * Math.sin(t * 0.026 + phase) + 4 * Math.sin(t * 0.047 - phase);
-    const px = links - saum + umlauf(x, breite), py = oben - saum + umlauf(y, hoehe);
-    const r = vorn ? 3.1 : 2.4;
-    schein(c, px, py, r * 5.5, r * 5.5, rgb, vorn ? 0.48 : 0.38);
-    kreis(c, px, py, r, `rgba(${rgb},.95)`);
+function lichtpartikel(c: C, staub: ReturnType<typeof staubImRaum>, nah: boolean): void {
+  for (const k of staub) {
+    if (k.vorn !== nah) continue;
+    schein(c, k.x, k.y, k.lichtsaum, k.lichtsaum, k.rgb, k.glanz);
+    kreis(c, k.x, k.y, k.r, `rgba(${k.rgb},.95)`);
   }
 }
 
@@ -847,14 +862,15 @@ export function drawSternennacht(c: C, x: number, y: number, w: number, h: numbe
   const vy = (y - oy) / s;
   const vw = w / s;
   const vh = h / s;
+  const staub = staubImRaum(t, vx, vy, vw, vh);
 
   himmel(c, vx, vy, vw, vh, t);
   berge(c);
   boden(c);
-  lichtpartikel(c, t, vx, vy, vw, vh, false);
+  lichtpartikel(c, staub, false);
   plattform(c);
   raumfahrer(c);
-  lichtpartikel(c, t, vx, vy, vw, vh, true);
+  lichtpartikel(c, staub, true);
 
   // Nur ein Hauch Randabdunkelung; die Mitte bleibt hell.
   const rand = c.createRadialGradient(BW * 0.5, BH * 0.46, 420, BW * 0.5, BH * 0.46, 1150);

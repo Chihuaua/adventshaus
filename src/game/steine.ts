@@ -17,7 +17,7 @@ import type { WeltId } from "./welten";
 type C = CanvasRenderingContext2D;
 type Rect4 = [number, number, number, number];
 
-export type SteinArt = "wach" | "traum" | "horror" | "weihnacht" | "bote" | "nikolaus";
+export type SteinArt = "wach" | "traum" | "horror" | "weihnacht" | "bote" | "nikolaus" | "bett";
 
 /** Platz A: der ursprüngliche Steinplatz (unverändert). */
 export const STEIN: { x: number; y: number; hit: Rect4 } = {
@@ -52,6 +52,10 @@ export const NIKOLAUS_STEIN: { x: number; y: number; hit: Rect4 } = {
   x: 116, y: 540, hit: [96, 509, 41, 57],
 };
 
+export const BETT_STEIN: { x: number; y: number; hit: Rect4 } = {
+  x: 222, y: 487, hit: [201, 461, 42, 43],
+};
+
 const ZIEL_ART: Record<WeltId, SteinArt> = {
   normal: "wach",
   traum: "traum",
@@ -66,6 +70,7 @@ export const STEIN_NAMEN: Record<SteinArt, string> = {
   weihnacht: "Weihnachtsstein",
   bote: "Poststein",
   nikolaus: "Nikolausstein",
+  bett: "Bett-Stein",
 };
 
 export interface SteinSlot {
@@ -77,7 +82,7 @@ export interface SteinSlot {
   hit: Rect4;
   label: string;
   /** Poststein: löst statt eines Weltwechsels die Postfrosch-Zustellung aus. */
-  aktion?: "post" | "nikolaus";
+  aktion?: "post" | "nikolaus" | "abend";
 }
 
 /**
@@ -113,6 +118,8 @@ export function steinSlots(welt: WeltId): SteinSlot[] {
       ziel: welt,
       label: STEIN_NAMEN.nikolaus,
       aktion: "nikolaus",
+    }, {
+      ...BETT_STEIN, art: "bett", ziel: welt, label: STEIN_NAMEN.bett, aktion: "abend",
     }]);
 }
 
@@ -140,6 +147,7 @@ const FARBEN: Record<SteinArt, { main: string; edge: string; glow: string }> = {
   weihnacht: { main: "#7a242c", edge: "#f5d36c", glow: "rgba(255,210,110,.26)" },
   bote: { main: "#2c5674", edge: "#9fe0a8", glow: "rgba(150,230,170,.22)" },
   nikolaus: { main: "#805046", edge: "#f3d59a", glow: "rgba(244,202,125,.28)" },
+  bett: { main: "#51465f", edge: "#dccde7", glow: "rgba(198,177,222,.18)" },
 };
 
 /** Halb eingegrabener Stein; Symbol und Farbe zeigen eindeutig, wohin er führt. */
@@ -177,7 +185,15 @@ export function drawStein(c: C, kind: SteinArt, t = 0, px: number = STEIN.x, py:
   c.lineTo(x + 4, y + 10);
   c.stroke();
   c.fillStyle = edge;
-  if (kind === "nikolaus") {
+  if (kind === "bett") {
+    c.fillStyle = "#f2ddc8";
+    c.fillRect(x - 11, y - 15, 2.5, 17); c.fillRect(x + 9, y - 9, 2, 11);
+    c.fillRect(x - 10, y - 4, 20, 2.2);
+    c.beginPath(); c.roundRect(x - 8, y - 11, 6, 4.5, 1.8); c.fill();
+    c.fillStyle = "#acc8d3";
+    c.beginPath(); c.roundRect(x - 2.5, y - 11.5, 12, 7.3, 2); c.fill();
+    c.fillStyle = "#eae2ef"; c.fillRect(x, y - 11, 1.3, 5.5);
+  } else if (kind === "nikolaus") {
     // Kleine Emaille-Mitra mit Perlenrand und der goldenen Schnecke seines Stabs.
     poly(c, [[x - 9, y - 10], [x - 3, y - 19], [x + 3.8, y - 10.5], [x + 3, y - 2.1], [x - 8.1, y - 2.2]], "#efcc82");
     poly(c, [[x - 7.7, y - 9.7], [x - 3, y - 16.9], [x + 2.6, y - 10], [x + 1.9, y - 5.4], [x - 7.2, y - 5.5]], "#a93849");

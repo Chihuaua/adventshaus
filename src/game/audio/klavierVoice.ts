@@ -21,8 +21,8 @@ const TON_LAENGE_S = 2.8;
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /** Ein Klavierton der MIDI-Tonhöhe `pitch` als Audiopuffer. */
-export function klavierTon(ctx: BaseAudioContext, pitch: number): AudioBuffer {
-  const n = Math.round(TON_LAENGE_S * SAMPLERATE);
+export function klavierTon(ctx: BaseAudioContext, pitch: number, dauer = TON_LAENGE_S): AudioBuffer {
+  const n = Math.round(dauer * SAMPLERATE);
   const buf = ctx.createBuffer(1, n, SAMPLERATE);
   const out = buf.getChannelData(0);
 

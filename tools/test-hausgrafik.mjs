@@ -624,19 +624,16 @@ test("Beide Bett-Zeichnungen setzen bedCover; die Decke behält ihre eigene Form
   assert.ok(src.includes("g * 9"), "Rollkante hebt sich");
 });
 
-test("Umziehen: ganze Arme vor dem Rumpf, keine Oberarme auf dem Rücken", () => {
-  const src = readFileSync("src/game/luni.ts", "utf8");
-  assert.ok(src.includes("const armeVorn = state === \"undress\" || state === \"wrap\""));
-  assert.ok(src.includes("if (!bedCover && (!arms.behind || armeVorn)) drawArms(false);"));
-  assert.equal(src.includes("drawArms(oberteilArbeit)"), false, "Aufteilung entfernt");
-  const c = canvas();
-  G.drawLuni(c.ctx, 0, 0, { state: "undress", phase: 0.5, back: true, shadow: false, t: 0 });
-  const arme = c.shapes.filter(z => z.kind === "stroke" &&
-    ["#dcc9a5", "#c4ad84"].includes(z.color));
-  const ganz = arme.filter(z => z.points && z.points.length >= 3);
-  const halb = arme.filter(z => z.points && z.points.length === 2);
-  assert.ok(ganz.length >= 2, "zwei ganze Arme sichtbar");
-  assert.equal(halb.length, 0, "keine abgetrennten Oberarme");
+test("Umziehen: ganze Arme in der richtigen Ebene, der Schrankgriff liegt hinter dem Ruecken", () => {
+  for (const schrankRuecken of [false, true]) for (const state of ["undress", "wrap"]) {
+    const c = canvas();
+    G.drawLuni(c.ctx, 0, 0, { state, phase: .5, back: true, schrankRuecken, shadow: false, t: 0 });
+    const arme = c.shapes.filter(z => z.kind === "stroke" && ["#dcc9a5", "#c4ad84"].includes(z.color));
+    assert.equal(arme.length, 2); assert.ok(arme.every(z => z.points.length >= 3), "zwei ungeteilte Arme");
+    const ruecken = c.shapes.findIndex(z => z.kind === "path" && z.color === "#dcc9a5" && z.right-z.left > 13);
+    assert.ok(ruecken >= 0);
+    assert.ok(arme.every(a => schrankRuecken ? c.shapes.indexOf(a) < ruecken : c.shapes.indexOf(a) > ruecken));
+  }
 });
 
 test("Brillenwurf: immer Nachttisch, nie Boden", () => {
@@ -1212,7 +1209,7 @@ test("Weihnachtshaus & Weihnachtsstein: vierte Hauswelt, drei überlappungsfreie
     assert.equal(wechsel.length, 3, `${w}: drei Steine der anderen Welten`);
     assert.equal(wechsel.some(s => s.ziel === w), false, `${w}: eigener Wechselstein fehlt`);
     assert.deepEqual(slots.filter(s => s.aktion).map(s => s.aktion),
-      w === "normal" || w === "weihnacht" ? ["post", "nikolaus"] : [], `${w}: passende Rufsteine`);
+      w === "normal" || w === "weihnacht" ? ["post", "nikolaus", "abend"] : [], `${w}: passende Rufsteine`);
     for (let i = 0; i < slots.length; i++) {
       const [hx, hy, hw, hh] = slots[i].hit;
       assert.ok(hw >= 24 && hh >= 24, `${slots[i].label}: mindestens 24×24`);

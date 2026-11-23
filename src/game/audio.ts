@@ -24,7 +24,7 @@ export class Sfx {
       try {
         this.ctx = new Ctor();
         this.master = this.ctx.createGain();
-        this.master.gain.value = 0.3;
+        this.master.gain.value = this.muted ? 0 : 0.3;
         this.master.connect(this.ctx.destination);
       } catch {
         this.ctx = null;
@@ -203,6 +203,18 @@ export class Sfx {
 
   ui() {
     this.tone({ f: 660, dur: 0.05, type: "square", gain: 0.1 });
+  }
+
+  zahnpflege(art: "putzen" | "gurgeln" | "spucken", rueckstrich = false) {
+    if (art === "putzen") this.noise(.105, .14, rueckstrich ? 2380 : 3300, .85);
+    else if (art === "gurgeln") {
+      this.tone({ f: 143, f2: 98, dur: .16, gain: .15, type: "triangle", attack: .025 });
+      this.noise(.12, .13, 510, 2.3);
+      this.tone({ f: 308, f2: 435, dur: .08, gain: .08, type: "sine", delay: .055 });
+    } else {
+      this.noise(.085, .22, 1580, .9); this.noise(.13, .16, 2750, 1.2, .11);
+      this.tone({ f: 470, f2: 190, dur: .07, gain: .09, delay: .12, type: "sine" });
+    }
   }
 
   /** Türklingel: klassisches zweitöniges Ding-Dong (E5, dann C5, mit Oberton). */

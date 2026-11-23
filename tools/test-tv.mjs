@@ -5,7 +5,7 @@ import { build } from "esbuild";
 
 const source = readFileSync("src/game/house.ts", "utf8");
 const b = await build({
-  stdin: { contents: source + '\nexport { drawHouse, micStand };\nexport * from "./tv";\nexport { drawSternennacht, STERNENNACHT_FARBEN, STERNENNACHT_STERNE, sternenLicht } from "./sternennacht";\nexport { TVKlang } from "./audio/tvVoice";\nexport { createState as neuesGOL } from "./gol";',
+  stdin: { contents: source + '\nexport { drawHouse, micStand };\nexport * from "./tv";\nexport { drawSternennacht, STERNENNACHT_FARBEN, STERNENNACHT_STERNE, sternenLicht, staubImRaum } from "./sternennacht";\nexport { TVKlang } from "./audio/tvVoice";\nexport { createState as neuesGOL } from "./gol";',
     resolveDir: path.resolve("src/game"), loader: "ts" },
   bundle: true, write: false, platform: "node", format: "esm",
 });
@@ -128,6 +128,7 @@ test("NMS: helles Bild mit genau einer Person, ruhige Szene und sehr langsames S
     assert.ok(Math.abs(G.sternenLicht(s, 12 + s.periode) - a) < 1e-10, "sanfter, reproduzierbarer Zyklus");
   }
   const sternFarbe = f => f.startsWith("rgba(226,238,255,") || f.startsWith("rgba(255,236,214,");
+  const staubFarben = new Set(G.staubImRaum(0, 0, 0, 1568, 876).map(k => `rgba(${k.rgb},.95)`));
   for (const [w, h] of [[40, 26], [72, 30], [560, 364]]) {
     const a = canvas(), b = canvas();
     G.drawSternennacht(a.ctx, 0, 0, w, h, 5);
@@ -136,8 +137,8 @@ test("NMS: helles Bild mit genau einer Person, ruhige Szene und sehr langsames S
     assert.equal(a.ops.length, b.ops.length, "keine Form kommt hinzu oder verschwindet");
     assert.ok(!a.ops.some(o => o.farbe === "rgba(0,0,0,.12)"), "keine Scanlines");
     const anders = a.ops.filter((o, i) => typeof o.farbe === "string" && o.farbe !== b.ops[i].farbe);
-    assert.ok(anders.length > 100, "die Sterne leuchten ueber die Zeit anders");
-    assert.ok(anders.every(o => sternFarbe(o.farbe)), "nur die Sterne wechseln ihre Helligkeit");
+    assert.ok(anders.filter(o => sternFarbe(o.farbe)).length > 100, "die Sterne leuchten ueber die Zeit anders");
+    assert.ok(anders.every(o => sternFarbe(o.farbe) || staubFarben.has(o.farbe)), "Landschaft und Raumfahrer bleiben unveraendert");
     const sterne = ops => ops.filter(o => typeof o.farbe === "string" && sternFarbe(o.farbe)).map(o => o.pfad);
     assert.deepEqual(sterne(a.ops), sterne(b.ops), "alle Sterne und ihre Strahlen bleiben am selben Ort");
     assert.equal(a.ops.filter(o => o.farbe === "#8fe4ff").length, 1, "genau ein Helm mit Lampe: nur eine Person im Bild");
@@ -179,40 +180,49 @@ test("NMS: Senderkennung steht an der Stelle von CH1 in dessen Schrift", () => {
   }
 });
 
-test("NMS: Nur der Staub durchquert das Sichtfeld und wechselt unsichtbar die Bildseite", () => {
-  const punkte = (w, h, t) => {
-    const c = canvas();
-    G.drawSternennacht(c.ctx, 0, 0, w, h, t);
-    return c.ops.filter(o => o.art === "fill" && o.pfad[0]?.length === 3 &&
-      typeof o.farbe === "string" && o.farbe.endsWith(",.95)")).map(o => o.pfad[0]);
-  };
+test("NMS: Acht eigene Flugbahnen, sanfte Tiefenwechsel und unsichtbarer Randumlauf", () => {
   for (const [w, h] of [[1568, 876], [960, 720], [720, 300]]) {
     const s = Math.min(w / 1568, h / 876);
     const links = (1568 - w / s) / 2, rechts = links + w / s;
     const oben = (876 - h / s) / 2, unten = oben + h / s;
-    const innen = ([x, y]) => x >= links && x <= rechts && y >= oben && y <= unten;
+    const innen = ({ x, y }) => x >= links && x <= rechts && y >= oben && y <= unten;
+    const bild = t => G.staubImRaum(t, links, oben, w / s, h / s);
+    const nachId = t => bild(t).sort((a, b) => a.id - b.id);
     const rein = new Set(), raus = new Set();
-    let a = punkte(w, h, 0);
+    let a = nachId(0);
     assert.equal(a.length, 8);
+    const klein = a.map(k => k.r), gross = [...klein];
+    const c = canvas(); G.drawSternennacht(c.ctx, 0, 0, w, h, 21);
+    const kerne = c.ops.filter(o => o.art === "fill" && o.pfad[0]?.length === 3 &&
+      typeof o.farbe === "string" && o.farbe.endsWith(",.95)"));
+    assert.deepEqual(kerne.map(o => o.pfad[0]), bild(21).map(k => [k.x, k.y, k.r]), "Kerne in echter Tiefenreihenfolge gezeichnet");
+    assert.ok(bild(21).some(k => k.vorn) && bild(21).some(k => !k.vorn));
+    const phasen = a.map((k, i) => [21, 65].map(t => (nachId(t)[i].r / k.r).toFixed(3)).join("/"));
+    assert.equal(new Set(phasen).size, a.length, "kein gemeinsames Aufpumpen aller Partikel");
     for (let t = 2; t <= 900; t += 2) {
-      const b = punkte(w, h, t);
+      const b = nachId(t);
       assert.equal(b.length, a.length);
       for (let i = 0; i < a.length; i++) {
-        const [ax, ay] = a[i], [bx, by] = b[i];
+        const { x: ax, y: ay } = a[i], { x: bx, y: by, r } = b[i];
+        klein[i] = Math.min(klein[i], r); gross[i] = Math.max(gross[i], r);
+        assert.ok(Math.abs(r - a[i].r) < 0.09, "Tiefe aendert sich langsam");
         if (!innen(a[i]) && innen(b[i])) rein.add(i);
         if (innen(a[i]) && !innen(b[i])) raus.add(i);
+        const saum = Math.max(a[i].lichtsaum, b[i].lichtsaum);
         if (Math.abs(bx - ax) > w / s / 2) {
-          assert.ok(Math.min(ax, bx) < links - 18 && Math.max(ax, bx) > rechts + 18, "Lichtsaum beim Seitenwechsel ausserhalb");
+          assert.ok(Math.min(ax, bx) < links - saum && Math.max(ax, bx) > rechts + saum, "Lichtsaum beim Seitenwechsel ausserhalb");
         } else if (Math.abs(by - ay) > h / s / 2) {
-          assert.ok(Math.min(ay, by) < oben - 18 && Math.max(ay, by) > unten + 18, "kein Sprung am oberen/unteren Rand");
+          assert.ok(Math.min(ay, by) < oben - saum && Math.max(ay, by) > unten + saum, "kein Sprung am oberen/unteren Rand");
         } else {
-          assert.ok(Math.abs(bx - ax) > 4 && Math.hypot(bx - ax, by - ay) < 12, "stetiger langsamer Durchzug statt Pendeln");
+          const weg = Math.hypot(bx - ax, by - ay);
+          assert.ok(weg > 2 && weg < 12, "stetiger langsamer Durchzug, auch auf den schraegen Bahnen");
         }
       }
       a = b;
     }
     assert.equal(rein.size, 8); assert.equal(raus.size, 8);
-    assert.deepEqual(a, punkte(w, h, 900), "Positionen sind unabhaengig von der Bildrate");
+    assert.ok(klein.every((r, i) => gross[i] > 1.2 * r && gross[i] < 1.45 * r), "jedes Korn wird behutsam groesser und kleiner");
+    assert.deepEqual(a, nachId(900), "Position und Tiefe sind unabhaengig von der Bildrate");
   }
 });
 
