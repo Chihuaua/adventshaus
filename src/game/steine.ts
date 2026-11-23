@@ -17,7 +17,7 @@ import type { WeltId } from "./welten";
 type C = CanvasRenderingContext2D;
 type Rect4 = [number, number, number, number];
 
-export type SteinArt = "wach" | "traum" | "horror" | "weihnacht";
+export type SteinArt = "wach" | "traum" | "horror" | "weihnacht" | "bote";
 
 /** Platz A: der ursprüngliche Steinplatz (unverändert). */
 export const STEIN: { x: number; y: number; hit: Rect4 } = {
@@ -40,6 +40,13 @@ export const STEIN_C: { x: number; y: number; hit: Rect4 } = {
   hit: [303, 511, 34, 56],
 };
 
+/** Platz D: Poststein, links von Platz B im Erdreich (innerhalb der 10-%-Randregel). */
+export const STEIN_D: { x: number; y: number; hit: Rect4 } = {
+  x: 166,
+  y: 541,
+  hit: [143, 511, 46, 56],
+};
+
 const ZIEL_ART: Record<WeltId, SteinArt> = {
   normal: "wach",
   traum: "traum",
@@ -52,6 +59,7 @@ export const STEIN_NAMEN: Record<SteinArt, string> = {
   traum: "Traumstein",
   horror: "Horrorstein",
   weihnacht: "Weihnachtsstein",
+  bote: "Poststein",
 };
 
 export interface SteinSlot {
@@ -62,6 +70,8 @@ export interface SteinSlot {
   y: number;
   hit: Rect4;
   label: string;
+  /** Poststein: löst statt eines Weltwechsels die Postfrosch-Zustellung aus. */
+  aktion?: "post";
 }
 
 /**
@@ -75,14 +85,23 @@ export function steinSlots(welt: WeltId): SteinSlot[] {
   const plaetze = [STEIN, STEIN_B, STEIN_C];
   return reihenfolge
     .filter((w) => w !== welt)
-    .map((ziel, i) => ({
+    .map((ziel, i): SteinSlot => ({
       art: ZIEL_ART[ziel],
       ziel,
       x: plaetze[i].x,
       y: plaetze[i].y,
       hit: plaetze[i].hit,
       label: STEIN_NAMEN[ZIEL_ART[ziel]],
-    }));
+    }))
+    .concat(welt !== "normal" && welt !== "weihnacht" ? [] : [{
+      art: "bote",
+      ziel: welt,
+      x: STEIN_D.x,
+      y: STEIN_D.y,
+      hit: STEIN_D.hit,
+      label: STEIN_NAMEN.bote,
+      aktion: "post",
+    }]);
 }
 
 export function steinAn(slots: SteinSlot[], x: number, y: number): SteinSlot | null {
@@ -107,6 +126,7 @@ const FARBEN: Record<SteinArt, { main: string; edge: string; glow: string }> = {
   wach: { main: "#758b60", edge: "#e6d58a", glow: "rgba(255,224,139,.18)" },
   horror: { main: "#2b1a26", edge: "#ff6a3c", glow: "rgba(255,98,52,.26)" },
   weihnacht: { main: "#7a242c", edge: "#f5d36c", glow: "rgba(255,210,110,.26)" },
+  bote: { main: "#2c5674", edge: "#9fe0a8", glow: "rgba(150,230,170,.22)" },
 };
 
 /** Halb eingegrabener Stein; Symbol und Farbe zeigen eindeutig, wohin er führt. */
@@ -144,7 +164,28 @@ export function drawStein(c: C, kind: SteinArt, t = 0, px: number = STEIN.x, py:
   c.lineTo(x + 4, y + 10);
   c.stroke();
   c.fillStyle = edge;
-  if (kind === "traum") {
+  if (kind === "bote") {
+    // Briefumschlag mit Klappe und grünem Froschsiegel (Frog Company)
+    c.fillStyle = "#eef3e6";
+    c.fillRect(x - 6.5, y - 13.5, 13, 8.6);
+    c.strokeStyle = "rgba(20,40,55,.7)";
+    c.lineWidth = 0.9;
+    c.strokeRect(x - 6.5, y - 13.5, 13, 8.6);
+    c.beginPath();
+    c.moveTo(x - 6.5, y - 13.5);
+    c.lineTo(x, y - 8.4);
+    c.lineTo(x + 6.5, y - 13.5);
+    c.stroke();
+    c.fillStyle = "#4f9a52";
+    c.beginPath();
+    c.arc(x, y - 8.6, 2.1, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = "#eef3e6";
+    c.beginPath();
+    c.arc(x - 0.8, y - 9.3, 0.55, 0, Math.PI * 2);
+    c.arc(x + 0.8, y - 9.3, 0.55, 0, Math.PI * 2);
+    c.fill();
+  } else if (kind === "traum") {
     // liegende Mondsichel
     c.beginPath();
     c.arc(x - 2, y - 8, 5.5, 0.5, Math.PI * 1.6);
