@@ -213,6 +213,12 @@ export class Sfx {
     this.tone({ f: 1046, dur: 0.6, type: "sine", gain: 0.045, attack: 0.004, delay: 0.6 });
   }
 
+  /** Ein Klopfen an der Holztür (Fingerknöchel). */
+  klopfen() {
+    this.tone({ f: 190, f2: 120, dur: 0.09, type: "sine", gain: 0.24, attack: 0.002 });
+    this.noise(0.05, 0.12, 900, 1.4);
+  }
+
   /** Knie stößt an den Glastisch: dumpfer Stoß und kurzes Glasklirren. */
   glasStoss() {
     this.tone({ f: 140, f2: 80, dur: 0.14, type: "sine", gain: 0.16 });
