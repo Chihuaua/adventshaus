@@ -274,3 +274,6 @@ ruprecht-figur | src/game/ruprecht-figur.ts | zeichneRuprecht
 ruprecht-begleitung | src/game/house.ts | ruprechtBegleitung
 ruprecht-studio | src/App.tsx | studio-ruprecht
 ruprecht-tests | tools/test-ruprecht.mjs | HALBER_SCHRITT
+luni-fein-zeichnung | src/game/luni-fein.ts | zeichneLuniFein
+luni-fein-studio | src/App.tsx | studio-luni-fein
+luni-fein-anatomie | tools/test-luni-fein.mjs | Konturmasken
