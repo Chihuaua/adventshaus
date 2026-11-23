@@ -5,7 +5,7 @@ import { build } from "esbuild";
 
 const source = readFileSync("src/game/house.ts", "utf8");
 const b = await build({
-  stdin: { contents: source + '\nexport { drawHouse, micStand };\nexport * from "./tv";\nexport { drawSternennacht, STERNENNACHT_STERNE, sternenLicht } from "./sternennacht";\nexport { TVKlang } from "./audio/tvVoice";\nexport { createState as neuesGOL } from "./gol";',
+  stdin: { contents: source + '\nexport { drawHouse, micStand };\nexport * from "./tv";\nexport { drawSternennacht, STERNENNACHT_FARBEN, STERNENNACHT_STERNE, sternenLicht } from "./sternennacht";\nexport { TVKlang } from "./audio/tvVoice";\nexport { createState as neuesGOL } from "./gol";',
     resolveDir: path.resolve("src/game"), loader: "ts" },
   bundle: true, write: false, platform: "node", format: "esm",
 });
@@ -26,7 +26,7 @@ function canvas() {
     fill() { ops.push({ art: "fill", farbe: this.fillStyle, pfad: [...pfad] }); },
     stroke() { ops.push({ art: "stroke", farbe: this.strokeStyle, pfad: [...pfad] }); },
     fillRect(x, y, w, h) { ops.push({ art: "rect", farbe: this.fillStyle, x, y, w, h }); },
-    fillText(text, x, y) { ops.push({ art: "text", text, x, y }); },
+    fillText(text, x, y) { ops.push({ art: "text", text, x, y, font: this.font, farbe: this.fillStyle }); },
     measureText(text) { return { width: text.length * 6 }; },
     createImageData(w, h) { return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }; },
     createLinearGradient() { return { addColorStop() {} }; }, createRadialGradient() { return { addColorStop() {} }; },
@@ -104,25 +104,115 @@ test("TV: Kanaltasten schalten wirklich um, unabhaengig je Geraet", () => {
   }
 });
 
-test("Sternennacht: ruhiges Bild in mehreren TV-Formaten und sehr langsames Sternenlicht", () => {
-  assert.ok(G.STERNENNACHT_STERNE.length >= 160);
-  assert.ok(G.STERNENNACHT_STERNE.every(s => s.periode >= 28 && s.periode <= 66));
+test("NMS: helles Bild mit genau einer Person, ruhige Szene und sehr langsames Sternenlicht", () => {
+  assert.equal(G.TV_KANAL_NAMEN.sterne, "NMS", "das helle Bild heisst NMS");
   assert.deepEqual(G.tvKanaele("tv_e", false), ["garten", "musik", "sterne"]);
-  assert.equal(G.TV_KANAL_NAMEN.sterne, "NMS", "die Szene erscheint auf Kanal NMS");
-  assert.ok(G.tvKanaele("tv_d", false).includes("sterne"));
-  const gespeichert = G.leseTVStand({ tv_e: { kanal: "sterne", lautstaerke: 40 } });
-  assert.equal(gespeichert.tv_e.kanal, "sterne", "der neue Kanal bleibt im Speicherstand erhalten");
+  assert.deepEqual(G.tvKanaele("tv_d", false), ["garten", "musik", "sterne", "konsole"]);
+  assert.ok(!("sterne_hell" in G.TV_KANAL_NAMEN), "der Zweitkanal NMS 2 ist entfernt");
+  assert.equal(G.leseTVStand({ tv_e: { kanal: "sterne", lautstaerke: 40 } }).tv_e.kanal, "sterne");
+  assert.equal(G.leseTVStand({ tv_d: { kanal: "sterne_hell", lautstaerke: 30 } }).tv_d.kanal, "sterne",
+    "wer NMS 2 eingestellt hatte, landet auf NMS");
+  // Nicht wieder zu dunkel: jede Grundflaeche liegt mindestens 20 % ueber dem Messwert der hellen Vorlage.
+  const lum = hex => { const n = parseInt(hex.slice(1), 16); return 0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255); };
+  const vorlage = { himmelLinks: "#3d5a80", himmelRechts: "#213766", berg: "#0e1c32", boden: "#0f2238", deck: "#1e2d51" };
+  for (const [name, farbe] of Object.entries(vorlage)) {
+    assert.ok(lum(G.STERNENNACHT_FARBEN[name]) >= lum(farbe) * 1.2, `${name} heller als die Vorlage`);
+  }
+  assert.ok(G.STERNENNACHT_STERNE.length >= 220);
+  assert.ok(G.STERNENNACHT_STERNE.every(s => s.r >= 1.6 && s.periode >= 28 && s.periode <= 66),
+    "Sterne gross genug fuer die TV-Flaeche und langsam");
   for (const s of G.STERNENNACHT_STERNE) {
     const a = G.sternenLicht(s, 12);
     assert.ok(a > 0 && a <= 1);
     assert.ok(Math.abs(G.sternenLicht(s, 12.05) - a) < 0.02, "kein schnelles Flackern");
     assert.ok(Math.abs(G.sternenLicht(s, 12 + s.periode) - a) < 1e-10, "sanfter, reproduzierbarer Zyklus");
   }
-  for (const [w, h] of [[160, 90], [120, 90], [216, 90]]) {
+  const sternFarbe = f => f.startsWith("rgba(226,238,255,") || f.startsWith("rgba(255,236,214,");
+  for (const [w, h] of [[40, 26], [72, 30], [560, 364]]) {
+    const a = canvas(), b = canvas();
+    G.drawSternennacht(a.ctx, 0, 0, w, h, 5);
+    G.drawSternennacht(b.ctx, 0, 0, w, h, 25);
+    assert.ok(a.ops.length > 600, `${w}x${h}: vollstaendige Szene statt Platzhalter`);
+    assert.equal(a.ops.length, b.ops.length, "keine Form kommt hinzu oder verschwindet");
+    assert.ok(!a.ops.some(o => o.farbe === "rgba(0,0,0,.12)"), "keine Scanlines");
+    const anders = a.ops.filter((o, i) => typeof o.farbe === "string" && o.farbe !== b.ops[i].farbe);
+    assert.ok(anders.length > 100, "die Sterne leuchten ueber die Zeit anders");
+    assert.ok(anders.every(o => sternFarbe(o.farbe)), "nur die Sterne wechseln ihre Helligkeit");
+    const sterne = ops => ops.filter(o => typeof o.farbe === "string" && sternFarbe(o.farbe)).map(o => o.pfad);
+    assert.deepEqual(sterne(a.ops), sterne(b.ops), "alle Sterne und ihre Strahlen bleiben am selben Ort");
+    assert.equal(a.ops.filter(o => o.farbe === "#8fe4ff").length, 1, "genau ein Helm mit Lampe: nur eine Person im Bild");
+  }
+  const h = haus();
+  const c = canvas(); h.drawTvProgram(c.ctx, 0, 0, 40, 26, "sterne");
+  assert.ok(c.ops.length > 600 && !c.ops.some(o => o.farbe === "rgba(0,0,0,.12)"), "Haus zeigt NMS ohne Scanlines");
+});
+
+test("NMS: Die profilierte Stiefelunterseite liegt im vermessenen Ausschnitt hinter der Hose", () => {
+  const c = canvas(); G.drawSternennacht(c.ctx, 0, 0, 1568, 876, 0);
+  const kontur = (op, soll) => {
+    if (op.art !== "fill" || op.pfad.length < 10) return false;
+    const coords = op.pfad.flat(), x = coords.filter((_, i) => i % 2 === 0), y = coords.filter((_, i) => i % 2 !== 0);
+    return [Math.min(...x), Math.min(...y), Math.max(...x), Math.max(...y)].every((v, i) => Math.abs(v - soll[i]) <= 5);
+  };
+  const sohle = c.ops.findIndex(op => kontur(op, [847, 756, 1019, 833]));
+  const hose = c.ops.findIndex(op => kontur(op, [880, 590, 1266, 826]));
+  assert.ok(sohle >= 0 && hose > sohle, "die Hose ueberdeckt den Stiefelschaft, nicht umgekehrt");
+  const rippen = c.ops.slice(sohle + 1, hose).filter(op => op.art === "stroke" && op.pfad.length === 2 &&
+    op.pfad[0][1] >= 759 && op.pfad[0][1] <= 812 && op.pfad[1].at(-2) - op.pfad[0][0] > 40);
+  assert.ok(rippen.length >= 6, "quer verlaufende Profilrippen unter Ballen und Ferse");
+});
+
+test("NMS: Senderkennung steht an der Stelle von CH1 in dessen Schrift", () => {
+  const h = haus();
+  for (const [x, y, w, hoehe] of [[445, 395, 40, 26], [410, 137, 54, 34], [0, 0, 40, 26], [0, 0, 72, 30]]) {
+    const kennung = (modus, name) => {
+      const c = canvas(); h.drawTvProgram(c.ctx, x, y, w, hoehe, modus);
+      const texte = c.ops.filter(o => o.art === "text");
+      if (modus === "sterne") assert.deepEqual(texte.map(o => o.text), ["NMS"]);
+      return texte.find(o => o.text === name);
+    };
+    const alt = kennung("garten", "CH1"), nms = kennung("sterne", "NMS");
+    assert.ok(alt && nms);
+    assert.deepEqual(nms, { ...alt, text: "NMS" });
+    assert.equal(nms.x, x + 2); assert.equal(nms.y, y + 5);
+    assert.equal(nms.font, '700 4px "Silkscreen", monospace');
+  }
+});
+
+test("NMS: Nur der Staub durchquert das Sichtfeld und wechselt unsichtbar die Bildseite", () => {
+  const punkte = (w, h, t) => {
     const c = canvas();
-    G.drawSternennacht(c.ctx, 0, 0, w, h, 12);
-    assert.ok(c.ops.length > 450, `${w}x${h}: vollständige Szene statt Platzhalter`);
-    assert.ok(!c.ops.some(o => o.farbe === "rgba(0,0,0,.12)"), "keine Scanlines über dem ruhigen Bild");
+    G.drawSternennacht(c.ctx, 0, 0, w, h, t);
+    return c.ops.filter(o => o.art === "fill" && o.pfad[0]?.length === 3 &&
+      typeof o.farbe === "string" && o.farbe.endsWith(",.95)")).map(o => o.pfad[0]);
+  };
+  for (const [w, h] of [[1568, 876], [960, 720], [720, 300]]) {
+    const s = Math.min(w / 1568, h / 876);
+    const links = (1568 - w / s) / 2, rechts = links + w / s;
+    const oben = (876 - h / s) / 2, unten = oben + h / s;
+    const innen = ([x, y]) => x >= links && x <= rechts && y >= oben && y <= unten;
+    const rein = new Set(), raus = new Set();
+    let a = punkte(w, h, 0);
+    assert.equal(a.length, 8);
+    for (let t = 2; t <= 900; t += 2) {
+      const b = punkte(w, h, t);
+      assert.equal(b.length, a.length);
+      for (let i = 0; i < a.length; i++) {
+        const [ax, ay] = a[i], [bx, by] = b[i];
+        if (!innen(a[i]) && innen(b[i])) rein.add(i);
+        if (innen(a[i]) && !innen(b[i])) raus.add(i);
+        if (Math.abs(bx - ax) > w / s / 2) {
+          assert.ok(Math.min(ax, bx) < links - 18 && Math.max(ax, bx) > rechts + 18, "Lichtsaum beim Seitenwechsel ausserhalb");
+        } else if (Math.abs(by - ay) > h / s / 2) {
+          assert.ok(Math.min(ay, by) < oben - 18 && Math.max(ay, by) > unten + 18, "kein Sprung am oberen/unteren Rand");
+        } else {
+          assert.ok(Math.abs(bx - ax) > 4 && Math.hypot(bx - ax, by - ay) < 12, "stetiger langsamer Durchzug statt Pendeln");
+        }
+      }
+      a = b;
+    }
+    assert.equal(rein.size, 8); assert.equal(raus.size, 8);
+    assert.deepEqual(a, punkte(w, h, 900), "Positionen sind unabhaengig von der Bildrate");
   }
 });
 

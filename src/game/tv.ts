@@ -39,7 +39,9 @@ export function leseTVStand(roh: unknown): TVStand {
   for (const id of ["tv_e", "tv_d"] as const) {
     const quelle = (roh as Partial<TVStand>)[id];
     if (!quelle || typeof quelle !== "object") continue;
-    if (quelle.kanal && tvKanaele(id, true, true).includes(quelle.kanal)) stand[id].kanal = quelle.kanal;
+    // Der frühere Zweitkanal „NMS 2“ ist jetzt NMS: gespeicherte Stände wandern mit.
+    const kanal = (quelle.kanal as string | null) === "sterne_hell" ? "sterne" : quelle.kanal;
+    if (kanal && tvKanaele(id, true, true).includes(kanal)) stand[id].kanal = kanal;
     if (typeof quelle.lautstaerke === "number" && Number.isFinite(quelle.lautstaerke)) {
       stand[id].lautstaerke = Math.max(0, Math.min(100, Math.round(quelle.lautstaerke)));
     }
