@@ -42,6 +42,7 @@ Verbesserungen nur als Frage im Chat, nicht als Tat. Nichts löschen oder umbene
 ## Arbeitsablauf / Postfach
 - **Kein Token im Chat, Screenshot oder Repo.** Kein Token anfordern. Der Besitzer legt die Patch-Dateien selbst ins Postfach. Die KI liefert den Patch als Datei/ZIP.
 - Basis = neuester `main`-Commit, kein Tag.
+- Jede beauftragte Änderung erhält einen neuen Patch mit der nächsten freien Versionsnummer aus dem aktuellen Projektstand. Die Nummer ohne Rückfrage vergeben; ausdrücklich genannte Nummern beachten.
 - Ablauf: klonen → bauen → zeigen → „ja“ → Patch als Datei/ZIP → Besitzer legt ins Postfach → Knopf → PR-Merge im Browser → Knopf (nachziehen + spiegeln).
 - `main` ist geschützt (PR-Pflicht, keine Force-Pushes); Tags nie verschieben.
 - Nur eine KI gleichzeitig ins Postfach; im Battle-Modus nur die benannte. Kennung KI-A/KI-B, jede Antwort mit Kennung; Umbenennung nur durch ausdrückliche Besitzer-Nachricht. Ist die Kennung unklar, vor Dateiänderungen fragen.
