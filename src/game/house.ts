@@ -95,7 +95,11 @@ import {
 } from "./gruselhaus/kueche";
 import { drawWetter, ladeWetter, tickWetter, waehleJahreszeit, waehleWetter, schalteZusatz, echtwetter, type WetterState } from "./wetter";
 import { drawWetterStation, wetterStationHit, wetterStationLayout, type WetterBefehl, type WetterTreffer } from "./wetterstation";
-import { drawStein, steinAn, steinSlots, type SteinSlot } from "./steine";
+import { drawStein, steinAn, steinSlots, NIKOLAUS_STEIN, type SteinSlot } from "./steine";
+import { NikolausBesuch, zeichneNikolausSpur, type NikolausStand } from "./nikolaus-besuch";
+import { zeichneNikolaus, type NikolausBild } from "./nikolaus-figur";
+import { ruprechtBegleitung, zeichneRuprechtSpur } from "./ruprecht-begleitung";
+import { zeichneRuprecht } from "./ruprecht-figur";
 import { Postfrosch, POST_FENSTER } from "./postfrosch";
 import { drawGeschenkPaket } from "./lieferfrosch";
 import { loadJson, saveJson } from "./storage";
@@ -548,6 +552,14 @@ export interface Station {
 type LuniCommand = string | Station;
 
 const [FK, FE, FO, FD] = FLOOR_Y;
+const NIKOLAUSRUF: Station = {
+  id: "stein_nikolaus", label: "Nikolausstein", floor: 0, x: NIKOLAUS_STEIN.x,
+  face: 1, state: "idle", expr: "happy", hits: [NIKOLAUS_STEIN.hit],
+};
+const NIKOLAUS_EMPFANG: Station = {
+  id: "nikolaus_empfang", label: "Nikolaus begrüßen", floor: 0, x: 791,
+  face: 1, state: "idle", expr: "happy", hits: [],
+};
 /** Kesselstation nur für das Gruselhaus; das normale Haus behält "Herd". */
 function baseKessel(): Station {
   return { id: "kessel", label: "Hexenkessel", floor: 1, x: 702, face: 1, state: "act", expr: "focus", hits: [[690, 380, 36, 26], [699, 356, 26, 24]] };
@@ -667,6 +679,7 @@ export const STATIONS: Station[] = [
     hits: [[824, 476, 26, 100]],
   },
   { id: "kellertreppe", label: "Kellertreppe", floor: 1, x: 523, face: 1, state: "idle", expr: "neutral", hits: [[440, 470, 70, 102]] },
+  NIKOLAUSRUF,
 ];
 
 /* -------------------------------- Treppen ------------------------------ */
@@ -2760,7 +2773,11 @@ function gardenOutside(c: C, deko = true) {
   poly(c, [[HR + 16, 506], [W, 498], [W, FK], [HR + 16, FK]], "#e4edf5");
   // Weg von der Tür in den Garten
   poly(c, [[HR + 16, FK - 2], [HR + 16, FK + 12], [W - 30, FK + 16], [W - 30, FK - 2]], "#d9e2ea");
-  // Zaun
+  gartenVordergrund(c, deko);
+}
+
+/** Der Besucher geht hinter dem vorhandenen Gartenzaun entlang, nicht über ihn. */
+function gartenVordergrund(c: C, deko: boolean) {
   for (let x = HR + 24; x < W - 6; x += 13) {
     rect(c, x, FK - 22, 6, 22, "#e9e2d0");
     rect(c, x - 0.5, FK - 24, 7, 3, "#ffffff");
@@ -3667,6 +3684,8 @@ export class House {
   private steine: SteinSlot[] = [];
   /** Postfrosch-Zustellung (Poststein); nur im normalen Haus und im Weihnachtshaus */
   private post = new Postfrosch();
+  private nikolaus = new NikolausBesuch();
+  private nikolausEinladen = false;
   /** Luni trägt das Paket von der Haustür zum Couchtisch */
   private luniTraegtPaket = false;
   /** Paket steht auf dem Couchtisch (gespeichert) */
@@ -4178,13 +4197,17 @@ export class House {
     this.onUpdate = opts.onUpdate ?? null;
     this.onUfo = opts.onUfo ?? null;
     this.steine = steinSlots(this.welt);
+    // Rufsteine gehören nur einmal in den Fokusumlauf, zusammen mit den Wechselsteinen.
+    this.stations = this.stations.filter((st) => st.id !== NIKOLAUSRUF.id);
     if (this.postWelt) {
+      this.nikolaus.laden(loadJson<NikolausStand>(this.nikolausSchluessel));
+      this.nikolausEinladen = this.nikolaus.phase === "warten";
       this.post.paketVorTuer = loadJson<boolean>(this.postSchluessel) ?? false;
       this.tischPaket = loadJson<boolean>(`lcp1.welt.${this.welt}.tischpaket`) ?? false;
       // eigene Kopie der Haustür-Station: die Beschriftung wechselt nur in dieser Welt
       this.stations = this.stations.map((st) => (st.id === "haustuer" ? { ...st, hits: [...st.hits] } : st));
     }
-    this.steinStationen = this.steine.map((sl) => ({
+    this.steinStationen = this.steine.map((sl) => sl.aktion === "nikolaus" ? NIKOLAUSRUF : ({
       id: `stein_${sl.art}`,
       label: sl.label,
       floor: 0,
@@ -4196,6 +4219,12 @@ export class House {
     }));
     // Jede Hauswelt stellt ausschließlich ihren eigenen Zustand wieder her.
     this.wiederherstellen(ladeSnapshot(this.welt));
+    if (["eintreten", "gruss", "austreten"].includes(this.nikolaus.phase)) {
+      this.gardenWant = this.gardenDoor = 1;
+      if (this.lf === 0 && Math.abs(this.lx - NIKOLAUS_EMPFANG.x) < 2) {
+        this.activity = { ...NIKOLAUS_EMPFANG, state: this.nikolaus.phase === "gruss" ? "wave" : "idle" };
+      }
+    }
     this.clock = this.fixedClock ?? berlinNow();
     this.resize();
   }
@@ -4347,6 +4376,7 @@ export class House {
   /** Speichert unter dem Schlüssel DIESER Hauswelt – nie unter einem fremden. */
   speichern() {
     speichereSnapshot(this.welt, this.schnappschuss());
+    if (this.nikolaus.aktiv) saveJson(this.nikolausSchluessel, this.nikolaus.stand());
   }
 
   private wiederherstellen(s: HausSnapshot | null) {
@@ -4411,6 +4441,13 @@ export class House {
   private steinWechsel(st: Station) {
     const sl = this.steine[this.steinStationen.indexOf(st)];
     if (!sl) return;
+    if (sl.aktion === "nikolaus") {
+      if (this.nikolaus.rufen(this.clock)) {
+        sfx.ui();
+        saveJson(this.nikolausSchluessel, this.nikolaus.stand());
+      }
+      return;
+    }
     if (sl.aktion === "post") {
       // Poststein: Zustellung starten (läuft sie schon, wird nichts getan)
       if (!this.post.aktiv) {
@@ -4431,6 +4468,54 @@ export class House {
 
   private get postSchluessel() {
     return `lcp1.welt.${this.welt}.postpaket`;
+  }
+
+  private get nikolausSchluessel() { return `lcp1.welt.${this.welt}.nikolaus`; }
+
+  private updateNikolaus(dt: number) {
+    const n = this.nikolaus;
+    if (!n.aktiv) return;
+    const da = this.activity?.id === NIKOLAUS_EMPFANG.id;
+    const vorher = n.phase;
+    const ereignis = n.schritt(dt, da, this.gardenDoor > .92);
+    if (ereignis === "anklopfen") {
+      sfx.klopfen();
+      this.nikolausEinladen = true;
+    }
+    if (n.phase === "warten" && this.nikolausEinladen && !this.luniTraegtPaket && !this.post.anDerTuer) {
+      this.nikolausEinladen = false;
+      if (n.tuerVorher === null) n.tuerVorher = this.gardenWant;
+      // Erst den Knauf am gewohnten Ort bedienen, dann dem Gast Platz machen.
+      this.command(this.gardenWant > .5 ? NIKOLAUS_EMPFANG : "aussentuer");
+    }
+    if (n.phase === "gruss" && vorher !== "gruss" && da) this.activity = { ...NIKOLAUS_EMPFANG, state: "wave" };
+    if (ereignis === "tuerFrei") {
+      this.nikolausEinladen = false;
+      if (da) {
+        this.finishActivity();
+        if (n.tuerVorher === 0 && this.gardenWant > .5) this.command("aussentuer");
+      }
+      n.tuerVorher = null;
+    }
+    if (n.phase !== vorher) saveJson(this.nikolausSchluessel, n.stand());
+  }
+
+  private zeichneNikolausBesuch(c: C) {
+    const bild = this.nikolaus.bild();
+    if (!bild) return;
+    const begleiter = ruprechtBegleitung(this.nikolaus);
+    zeichneNikolausSpur(c, this.nikolaus);
+    zeichneRuprechtSpur(c, this.nikolaus);
+    const gast = (b: NikolausBild & { x: number; y: number }, zeichnen: typeof zeichneNikolaus) => {
+      zeichnen(c, b.x, b.y, b);
+      if (b.y >= FK - 3) return;
+      c.save(); c.beginPath(); c.rect(b.x - 36 * b.skala - 1, b.y - 98 * b.skala - 1, 72 * b.skala + 2, 104 * b.skala + 3);
+      c.clip(); gartenVordergrund(c, this.weihnachtsdeko); c.restore();
+    };
+    // Beim Heimweg kehrt sich die Tiefenreihenfolge vor dem Gartenzaun um.
+    if (begleiter && begleiter.y <= bild.y) gast(begleiter, zeichneRuprecht);
+    gast(bild, zeichneNikolaus);
+    if (begleiter && begleiter.y > bild.y) gast(begleiter, zeichneRuprecht);
   }
 
   /** Zustellung weiterzählen; Luni an der Haustür öffnet bzw. holt das Paket. */
@@ -4690,6 +4775,11 @@ export class House {
    */
   command(request: LuniCommand) {
     const id = typeof request === "string" ? request : request.id;
+    if (id === NIKOLAUSRUF.id) {
+      if (this.postWelt) this.steinWechsel(NIKOLAUSRUF);
+      return;
+    }
+    if (id === NIKOLAUS_EMPFANG.id && this.nikolaus.phase !== "warten") return;
     const find = (k: string) => this.stations.find((s) => s.id === k) ?? null;
     if (id === "mikrofon" && !this.istNormalHaus) return;
     if (id === "laufziel" && (this.bedPhase || this.sleepPhase)) return;
@@ -5469,6 +5559,7 @@ export class House {
   private update(dt: number, roomDt = dt, live = false) {
     this.elapsed += dt;
     this.updatePost(dt);
+    this.updateNikolaus(dt);
     this.updateTVAudio();
     this.updateHarvest(dt);
     if (this.istNormalHaus) updateLavaLampe(this.lavaLampe, dt);
@@ -5526,6 +5617,9 @@ export class House {
     if (this.clockT > 1 || this.bucket < 0) {
       this.clockT = 0;
       this.clock = this.fixedClock ?? berlinNow();
+      if (this.postWelt && !this.tvZoom && !this.adventFullscreen && this.nikolaus.kalender(this.clock)) {
+        saveJson(this.nikolausSchluessel, this.nikolaus.stand());
+      }
       const b = Math.floor((this.clock.hour * 60 + this.clock.min) / 5);
       if (b !== this.bucket) {
         this.bucket = b;
@@ -6181,6 +6275,7 @@ export class House {
       if (this.doorT >= 1.6) {
         this.doorHand = null;
         this.finishActivity();
+        if (this.nikolaus.phase === "warten" && this.gardenWant > .5) this.command(NIKOLAUS_EMPFANG);
       }
       return;
     }
@@ -7004,6 +7099,7 @@ export class House {
     ctx.setTransform(s, 0, 0, s, 0, 0);
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(this.bg, 0, 0, W, H);
+    this.zeichneNikolausBesuch(ctx);
     this.zeichnePostTuer(ctx);
 
     // Wetter früh, damit Innenraum-Deko (Lichtbogen auf der Fensterbank), Truhe und Luni sauber davor liegen.

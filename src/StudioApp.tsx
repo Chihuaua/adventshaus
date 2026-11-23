@@ -202,7 +202,7 @@ export default function StudioApp() {
             <Chip active={paused} onClick={() => setPaused((v) => !v)}>
               {paused ? "Weiter" : "Standbild"}
             </Chip>
-            <div className="flex gap-1 rounded-lg bg-[#08151a]/70 p-1 ring-1 ring-white/10">
+            <div className="flex max-w-full flex-wrap gap-1 rounded-lg bg-[#08151a]/70 p-1 ring-1 ring-white/10">
               <a
                 href="#studio-odin"
                 className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-mint-200 ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
@@ -233,6 +233,18 @@ export default function StudioApp() {
                 className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-mint-200 ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
               >
                 Methan Frog
+              </a>
+              <a
+                href="#studio-nikolaus"
+                className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-amber-glow ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
+              >
+                Nikolaus
+              </a>
+              <a
+                href="#studio-ruprecht"
+                className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-amber-glow ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
+              >
+                Knecht Ruprecht
               </a>
               <a
                 href="#editor"

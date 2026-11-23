@@ -6,6 +6,7 @@ import MonsStudio from "@/components/MonsStudio";
 import TanzStudio from "@/components/TanzStudio";
 import PatchView from "@/components/PatchView";
 import MethanStudio from "@/components/MethanStudio";
+import NikolausStudio from "@/components/NikolausStudio";
 import { FigurenEditor } from "@/components/FigurenEditor";
 
 /** Hash-Weiche: "#studio" Figuren-Studio, "#studio-frosch" Methan Frog, "#editor" Figuren-Editor,
@@ -30,6 +31,8 @@ export default function App() {
   if (hash === "#studio-tanz") return <TanzStudio />;
   if (hash === "#patch") return <PatchView />;
   if (hash === "#studio-frosch") return <MethanStudio />;
+  if (hash === "#studio-nikolaus") return <NikolausStudio />;
+  if (hash === "#studio-ruprecht") return <NikolausStudio key="ruprecht" gast="ruprecht" />;
   if (hash === "#editor") return <FigurenEditor />;
   if (hash === "#traumhaus") return <HouseView key="traum" welt="traum" />;
   // key: jede Hauswelt bekommt ihre eigene Instanz (und damit ihren eigenen Speicher)

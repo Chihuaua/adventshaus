@@ -263,3 +263,14 @@ flauschi-wachstum | src/game/flauschi.ts | phasePruefen
 flauschi-pakete | src/game/flauschi.ts | flauschiAuspacken
 flauschi-album | src/game/flauschi.ts | drawFlauschiAlbum
 flauschi-grund | src/game/flauschi-dinge.ts | Futternapf
+nikolaus-figur | src/game/nikolaus-figur.ts | zeichneNikolaus
+nikolaus-waldweg | src/game/nikolaus-besuch.ts | nikolausWaldweg
+nikolaus-kalender | src/game/house.ts | nikolaus.kalender
+nikolaus-rufstein | src/game/steine.ts | NIKOLAUS_STEIN
+nikolaus-empfang | src/game/house.ts | NIKOLAUS_EMPFANG
+nikolaus-studio | src/components/NikolausStudio.tsx | Figurenblatt
+nikolaus-tests | tools/test-nikolaus.mjs | Berliner Mitternacht
+ruprecht-figur | src/game/ruprecht-figur.ts | zeichneRuprecht
+ruprecht-begleitung | src/game/house.ts | ruprechtBegleitung
+ruprecht-studio | src/App.tsx | studio-ruprecht
+ruprecht-tests | tools/test-ruprecht.mjs | HALBER_SCHRITT

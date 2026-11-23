@@ -17,7 +17,7 @@ import type { WeltId } from "./welten";
 type C = CanvasRenderingContext2D;
 type Rect4 = [number, number, number, number];
 
-export type SteinArt = "wach" | "traum" | "horror" | "weihnacht" | "bote";
+export type SteinArt = "wach" | "traum" | "horror" | "weihnacht" | "bote" | "nikolaus";
 
 /** Platz A: der ursprüngliche Steinplatz (unverändert). */
 export const STEIN: { x: number; y: number; hit: Rect4 } = {
@@ -47,6 +47,11 @@ export const STEIN_D: { x: number; y: number; hit: Rect4 } = {
   hit: [143, 511, 46, 56],
 };
 
+/** Der Nikolausstein nutzt den freien Platz links vom Poststein, ohne ihn zu versetzen. */
+export const NIKOLAUS_STEIN: { x: number; y: number; hit: Rect4 } = {
+  x: 116, y: 540, hit: [96, 509, 41, 57],
+};
+
 const ZIEL_ART: Record<WeltId, SteinArt> = {
   normal: "wach",
   traum: "traum",
@@ -60,6 +65,7 @@ export const STEIN_NAMEN: Record<SteinArt, string> = {
   horror: "Horrorstein",
   weihnacht: "Weihnachtsstein",
   bote: "Poststein",
+  nikolaus: "Nikolausstein",
 };
 
 export interface SteinSlot {
@@ -71,7 +77,7 @@ export interface SteinSlot {
   hit: Rect4;
   label: string;
   /** Poststein: löst statt eines Weltwechsels die Postfrosch-Zustellung aus. */
-  aktion?: "post";
+  aktion?: "post" | "nikolaus";
 }
 
 /**
@@ -101,6 +107,12 @@ export function steinSlots(welt: WeltId): SteinSlot[] {
       hit: STEIN_D.hit,
       label: STEIN_NAMEN.bote,
       aktion: "post",
+    }, {
+      ...NIKOLAUS_STEIN,
+      art: "nikolaus",
+      ziel: welt,
+      label: STEIN_NAMEN.nikolaus,
+      aktion: "nikolaus",
     }]);
 }
 
@@ -127,6 +139,7 @@ const FARBEN: Record<SteinArt, { main: string; edge: string; glow: string }> = {
   horror: { main: "#2b1a26", edge: "#ff6a3c", glow: "rgba(255,98,52,.26)" },
   weihnacht: { main: "#7a242c", edge: "#f5d36c", glow: "rgba(255,210,110,.26)" },
   bote: { main: "#2c5674", edge: "#9fe0a8", glow: "rgba(150,230,170,.22)" },
+  nikolaus: { main: "#805046", edge: "#f3d59a", glow: "rgba(244,202,125,.28)" },
 };
 
 /** Halb eingegrabener Stein; Symbol und Farbe zeigen eindeutig, wohin er führt. */
@@ -164,7 +177,21 @@ export function drawStein(c: C, kind: SteinArt, t = 0, px: number = STEIN.x, py:
   c.lineTo(x + 4, y + 10);
   c.stroke();
   c.fillStyle = edge;
-  if (kind === "bote") {
+  if (kind === "nikolaus") {
+    // Kleine Emaille-Mitra mit Perlenrand und der goldenen Schnecke seines Stabs.
+    poly(c, [[x - 9, y - 10], [x - 3, y - 19], [x + 3.8, y - 10.5], [x + 3, y - 2.1], [x - 8.1, y - 2.2]], "#efcc82");
+    poly(c, [[x - 7.7, y - 9.7], [x - 3, y - 16.9], [x + 2.6, y - 10], [x + 1.9, y - 5.4], [x - 7.2, y - 5.5]], "#a93849");
+    c.strokeStyle = "#fff0bf"; c.lineWidth = 1.15; c.lineCap = "round";
+    c.beginPath(); c.moveTo(x - 2.9, y - 13.6); c.lineTo(x - 2.9, y - 6.3);
+    c.moveTo(x - 5.2, y - 10.7); c.lineTo(x - .3, y - 10.7); c.stroke();
+    c.strokeStyle = "#f0cb81"; c.lineWidth = 1.35;
+    c.beginPath(); c.moveTo(x + 6.1, y + .5); c.lineTo(x + 7.3, y - 12.3);
+    c.bezierCurveTo(x + 7.3, y - 17.5, x + 13.4, y - 16.3, x + 12, y - 12.5);
+    c.quadraticCurveTo(x + 10.2, y - 9.8, x + 9.4, y - 12.5); c.stroke();
+    for (const dx of [-6.2, -3, .5]) {
+      c.fillStyle = "#fff3ce"; c.beginPath(); c.arc(x + dx, y - 3.8, .65, 0, Math.PI * 2); c.fill();
+    }
+  } else if (kind === "bote") {
     // Briefumschlag mit Klappe und grünem Froschsiegel (Frog Company)
     c.fillStyle = "#eef3e6";
     c.fillRect(x - 6.5, y - 13.5, 13, 8.6);
