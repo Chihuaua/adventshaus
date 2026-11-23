@@ -96,6 +96,9 @@ import {
 import { drawWetter, ladeWetter, tickWetter, waehleJahreszeit, waehleWetter, schalteZusatz, echtwetter, type WetterState } from "./wetter";
 import { drawWetterStation, wetterStationHit, wetterStationLayout, type WetterBefehl, type WetterTreffer } from "./wetterstation";
 import { drawStein, steinAn, steinSlots, type SteinSlot } from "./steine";
+import { Postfrosch, POST_FENSTER } from "./postfrosch";
+import { drawGeschenkPaket } from "./lieferfrosch";
+import { loadJson, saveJson } from "./storage";
 import { ladeSnapshot, speichereSnapshot, type HausSnapshot, type WeltId } from "./welten";
 import { GRUSELRAEUME, RaumstationFx, type GruselRaeume } from "./gruselhaus";
 import {
@@ -226,6 +229,15 @@ const KOFFER_Y = 522;
 const KOFFER_W = 34;
 const KOFFER_H = 26;
 const LUNI_SCALE = 1.08;
+
+/** Gläserner Couchtisch vor dem Sofa (Platz für das Paket und einen Adventskranz). */
+const COUCHTISCH = { x: 322, w: 70, h: 15 } as const;
+/** Luni stellt das Paket auf den Couchtisch (kein Klickziel, nur Laufziel). */
+const PAKET_TISCH_STATION: Station = {
+  id: "paket_tisch", label: "Couchtisch", floor: 1, x: COUCHTISCH.x + 2, face: 1,
+  state: "act", expr: "happy", hits: [],
+};
+
 const BETT_STAND_X = 337;
 /** Adventskalender: Zurück-Knopf im Vollbild (Fernseh-tauglich, ≥ 24 hoch). */
 const ADVENT_ZURUECK = { x: 836, y: 30, w: 100, h: 28 };
@@ -1194,6 +1206,81 @@ function sofa(c: C, x: number, F: number, weihnacht = false) {
     line(c, x + 10, F - 19, x + 42, F - 19, "rgba(90,61,44,.27)", 0.8);
     line(c, x + 48, F - 19, x + 80, F - 19, "rgba(90,61,44,.27)", 0.8);
   }
+}
+
+/** Gläserner Couchtisch: Glasplatte in leichter Aufsicht, Chromgestell, untere Glasablage. */
+function couchtisch(c: C, x: number, F: number) {
+  const w = COUCHTISCH.w;
+  const top = F - COUCHTISCH.h;
+  // weicher Schatten auf dem Teppich
+  c.fillStyle = "rgba(20,24,30,.22)";
+  c.beginPath();
+  c.ellipse(x + w / 2, F + 1.5, w * 0.52, 3, 0, 0, Math.PI * 2);
+  c.fill();
+  // hintere Beine (kürzer, etwas versetzt: Tiefe)
+  c.strokeStyle = "#8f989f";
+  c.lineWidth = 1.6;
+  c.lineCap = "round";
+  for (const bx of [x + 6, x + w - 6]) {
+    c.beginPath();
+    c.moveTo(bx + 3, top - 1.6);
+    c.lineTo(bx + 3, F - 3);
+    c.stroke();
+  }
+  // untere Glasablage
+  c.fillStyle = "rgba(190,225,235,.28)";
+  c.beginPath();
+  c.moveTo(x + 5, F - 5);
+  c.lineTo(x + w - 5, F - 5);
+  c.lineTo(x + w - 2, F - 3.4);
+  c.lineTo(x + 2, F - 3.4);
+  c.closePath();
+  c.fill();
+  c.strokeStyle = "rgba(235,248,252,.55)";
+  c.lineWidth = 0.6;
+  c.stroke();
+  // vordere Beine (Chrom mit Lichtkante und Füßen)
+  for (const bx of [x + 4, x + w - 4]) {
+    c.strokeStyle = "#a9b2b8";
+    c.lineWidth = 2;
+    c.beginPath();
+    c.moveTo(bx, top + 1);
+    c.lineTo(bx, F - 0.6);
+    c.stroke();
+    c.strokeStyle = "rgba(255,255,255,.7)";
+    c.lineWidth = 0.6;
+    c.beginPath();
+    c.moveTo(bx - 0.4, top + 1.5);
+    c.lineTo(bx - 0.4, F - 1.2);
+    c.stroke();
+    c.fillStyle = "#5d666d";
+    c.fillRect(bx - 1.6, F - 1, 3.2, 1);
+  }
+  // Glasplatte: Oberseite leicht von oben gesehen, dicke Glaskante vorn
+  c.fillStyle = "rgba(200,232,240,.32)";
+  c.beginPath();
+  c.moveTo(x + 4, top - 2.6);
+  c.lineTo(x + w - 2, top - 2.6);
+  c.lineTo(x + w, top);
+  c.lineTo(x, top);
+  c.closePath();
+  c.fill();
+  c.strokeStyle = "rgba(240,252,255,.7)";
+  c.lineWidth = 0.6;
+  c.stroke();
+  c.fillStyle = "rgba(120,190,200,.55)";
+  c.fillRect(x, top, w, 1.8);
+  c.fillStyle = "rgba(255,255,255,.55)";
+  c.fillRect(x, top, w, 0.5);
+  // Spiegelungen auf dem Glas
+  c.strokeStyle = "rgba(255,255,255,.45)";
+  c.lineWidth = 0.7;
+  c.beginPath();
+  c.moveTo(x + 12, top - 0.4);
+  c.lineTo(x + 17, top - 2.3);
+  c.moveTo(x + 20, top - 0.4);
+  c.lineTo(x + 23, top - 2.3);
+  c.stroke();
 }
 
 function floorLamp(c: C, x: number, F: number) {
@@ -3207,6 +3294,7 @@ function drawHouse(
   c.fillStyle = festlich ? farben.teppich[2] : "#d9a86a";
   c.fill();
   sofa(c, WEIHNACHTS_ORTE.sofa, FE, festlich);
+  if (!gr) couchtisch(c, COUCHTISCH.x, FE);
   if (festlich) {
     const links = WEIHNACHTS_ORTE.wohnzimmerLinks;
     const wand = [links, FO + SLAB, 560 - links, FE + 5 - FO - SLAB] as const;
@@ -3577,6 +3665,17 @@ export class House {
   }
   private onWelt: ((ziel: WeltId) => void) | null = null;
   private steine: SteinSlot[] = [];
+  /** Postfrosch-Zustellung (Poststein); nur im normalen Haus und im Weihnachtshaus */
+  private post = new Postfrosch();
+  /** Luni trägt das Paket von der Haustür zum Couchtisch */
+  private luniTraegtPaket = false;
+  /** Paket steht auf dem Couchtisch (gespeichert) */
+  private tischPaket = false;
+  private ablegeT = 0;
+  /** Knie an den Glastisch gestoßen: kurzes Innehalten */
+  private stossT = 0;
+  private stossPause = 0;
+  private stossLx = 0;
   private steinStationen: Station[] = [];
   private saveT = 0;
   /** Gruselhaus, Raum 01: seltene Effekte (Notfallschalter, Funken) */
@@ -4079,6 +4178,12 @@ export class House {
     this.onUpdate = opts.onUpdate ?? null;
     this.onUfo = opts.onUfo ?? null;
     this.steine = steinSlots(this.welt);
+    if (this.postWelt) {
+      this.post.paketVorTuer = loadJson<boolean>(this.postSchluessel) ?? false;
+      this.tischPaket = loadJson<boolean>(`lcp1.welt.${this.welt}.tischpaket`) ?? false;
+      // eigene Kopie der Haustür-Station: die Beschriftung wechselt nur in dieser Welt
+      this.stations = this.stations.map((st) => (st.id === "haustuer" ? { ...st, hits: [...st.hits] } : st));
+    }
     this.steinStationen = this.steine.map((sl) => ({
       id: `stein_${sl.art}`,
       label: sl.label,
@@ -4306,9 +4411,99 @@ export class House {
   private steinWechsel(st: Station) {
     const sl = this.steine[this.steinStationen.indexOf(st)];
     if (!sl) return;
+    if (sl.aktion === "post") {
+      // Poststein: Zustellung starten (läuft sie schon, wird nichts getan)
+      if (!this.post.aktiv) {
+        sfx.ui();
+        this.post.start();
+      }
+      return;
+    }
     sfx.ui();
     this.speichern();
     this.onWelt?.(sl.ziel);
+  }
+
+  /** Postzustellung gibt es nur im normalen Haus und im Weihnachtshaus. */
+  private get postWelt() {
+    return this.welt === "normal" || this.welt === "weihnacht";
+  }
+
+  private get postSchluessel() {
+    return `lcp1.welt.${this.welt}.postpaket`;
+  }
+
+  /** Zustellung weiterzählen; Luni an der Haustür öffnet bzw. holt das Paket. */
+  private updatePost(dt: number) {
+    if (!this.postWelt) return;
+    const tuerSt = this.stations.find((s) => s.id === "haustuer");
+    if (tuerSt) tuerSt.label = this.post.tuerLabel;
+    const anTuer = this.activity?.id === "haustuer";
+    const ev = this.post.update(dt, anTuer);
+    if (ev.paketAbgelegt) saveJson(this.postSchluessel, true);
+    if (ev.paketWeg) {
+      saveJson(this.postSchluessel, false);
+      // Luni nimmt das Paket an der Tür in die Hand
+      if (anTuer) this.luniTraegtPaket = true;
+    }
+    if (ev.luniFrei && this.activity?.id === "haustuer") {
+      this.activity = null;
+      this.target = null;
+      if (this.luniTraegtPaket) this.goTo(PAKET_TISCH_STATION);
+    }
+    if (this.luniTraegtPaket) {
+      if (this.activity?.id === "paket_tisch") {
+        // am Tisch: kurz vorbeugen und das Paket abstellen
+        this.ablegeT += dt;
+        if (this.ablegeT >= 0.9) {
+          this.luniTraegtPaket = false;
+          this.tischPaket = true;
+          this.ablegeT = 0;
+          saveJson(`lcp1.welt.${this.welt}.tischpaket`, true);
+          sfx.holzDumpf();
+          this.activity = null;
+          this.target = null;
+        }
+      } else if (!this.target && !this.activity && !this.cur && !this.path.length && !this.pending) {
+        // nichts anderes zu tun: weiter zum Couchtisch
+        this.goTo(PAKET_TISCH_STATION);
+      }
+    }
+    // Ab und zu stößt Luni beim Vorbeigehen mit dem Knie an den Glastisch
+    this.stossPause = Math.max(0, this.stossPause - dt);
+    const mitte = COUCHTISCH.x + COUCHTISCH.w / 2;
+    if (this.lf === 1 && this.cur?.step.k === "walk" && this.stossT <= 0 && this.stossPause <= 0) {
+      const vorher = this.stossLx;
+      // beim Vorbeigehen an der Tischmitte – in beide Richtungen
+      const quert = (vorher - mitte) * (this.lx - mitte) < 0;
+      if (quert && Math.random() < 0.3) {
+        this.stossT = 1.0;
+        this.stossPause = 45;
+        sfx.glasStoss();
+      }
+    }
+    this.stossLx = this.lx;
+  }
+
+  /** Postwagen, Frosch, offene Haustür und Fensterblick (vor der Lichtschicht). */
+  private zeichnePost(ctx: CanvasRenderingContext2D) {
+    if (!this.postWelt) return;
+    this.post.draw(ctx, { sky: this.sky, elapsed: this.elapsed, festlich: this.welt === "weihnacht" });
+  }
+
+  /** Offene Haustür und Blick durchs Türfenster – direkt nach dem Hintergrund, vor Luni. */
+  private zeichnePostTuer(ctx: CanvasRenderingContext2D) {
+    if (!this.postWelt) return;
+    // Paket auf dem gläsernen Couchtisch (Platz rechts daneben bleibt für einen Adventskranz)
+    if (this.tischPaket) drawGeschenkPaket(ctx, [COUCHTISCH.x + 17, FLOOR_Y[1] - COUCHTISCH.h - 7.2], 0.92);
+    const festlich = this.welt === "weihnacht";
+    this.post.drawTuer(ctx, { sky: this.sky, elapsed: this.elapsed, festlich });
+    // Im Weihnachtshaus liegt der Fensterkranz wieder über dem Fensterblick
+    if (festlich && this.post.fensterBelegt) {
+      const { x, y, w, h } = POST_FENSTER;
+      goldstangeMitSamt(ctx, x, y, w, h);
+      fensterKranz(ctx, x, y, w, h);
+    }
   }
 
   private pick(x: number, y: number): Station | null {
@@ -5273,6 +5468,7 @@ export class House {
 
   private update(dt: number, roomDt = dt, live = false) {
     this.elapsed += dt;
+    this.updatePost(dt);
     this.updateTVAudio();
     this.updateHarvest(dt);
     if (this.istNormalHaus) updateLavaLampe(this.lavaLampe, dt);
@@ -6393,6 +6589,10 @@ export class House {
   }
 
   private updateLuni(dt: number) {
+    if (this.stossT > 0) {
+      this.stossT -= dt;
+      return;
+    }
     if (this.pending && (!this.cur || this.cur.step.k === "walk")) {
       const st = this.pending;
       this.pending = null;
@@ -6804,6 +7004,7 @@ export class House {
     ctx.setTransform(s, 0, 0, s, 0, 0);
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(this.bg, 0, 0, W, H);
+    this.zeichnePostTuer(ctx);
 
     // Wetter früh, damit Innenraum-Deko (Lichtbogen auf der Fensterbank), Truhe und Luni sauber davor liegen.
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) {
@@ -6925,6 +7126,8 @@ export class House {
     // Odin & Apollo: nach den Möbeln der Ebene – sie laufen davor und dürfen
     // nicht hinter Bettpfosten, Decke oder Vorderkante verschwinden.
     if (this.istNormalHaus) this.hunde.draw(ctx);
+    // Postzustellung (vor der Lichtschicht – nachts abgedunkelt)
+    this.zeichnePost(ctx);
     if (this.gruselBad) {
       drawBioBadAfter(ctx, this.bioFx(), () => drawLuni(ctx,
         BIO_BAD.kapsel.x + BIO_BAD.kapsel.w / 2, FLOOR_Y[2], {
@@ -6987,6 +7190,8 @@ export class House {
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) this.drawKesselEffekte(ctx);
 
 
+    // Klingel-Sprechblase und Scheinwerfer liegen über der Lichtschicht
+    if (this.postWelt) this.post.drawOverlay(ctx, this.night);
     drawWetterStation(ctx, this.wetter, this.wetterAdd, this.wetterHover, this.wetterOffen, this.istNormalHaus);
     if (this.welt === "weihnacht") {
       drawWeihnachtsschlitten(ctx, this.elapsed, this.ufoOffen, this.ufoOffen ? this.ufoZeile : -1, PATCH_EINTRAEGE, this.ufoHover);
@@ -11328,6 +11533,25 @@ export class House {
       saxHand = aschziel;
       handElbow = 1;
     }
+    // Paket tragen: beide Hände halten es vor dem Bauch
+    const traegt = this.luniTraegtPaket;
+    if (traegt) {
+      const vorbeugen = this.activity?.id === "paket_tisch" ? Math.min(1, this.ablegeT / 0.6) * 6 : 0;
+      const mx = x + face * 6 * LUNI_SCALE;
+      const my = y + yOff - 21 * LUNI_SCALE + vorbeugen;
+      saxHand = [mx - face * 5, my];
+      saxHand2 = [mx + face * 5, my];
+      handElbow = 1;
+      handElbow2 = 1;
+    }
+    // Knie an den Glastisch gestoßen: genervt, Hand ans Knie
+    if (this.stossT > 0) {
+      expr = "annoyed";
+      if (!traegt) {
+        saxHand = [x + face * 3 * LUNI_SCALE, y + yOff - 10 * LUNI_SCALE];
+        handElbow = -1;
+      }
+    }
     // Wird von drawLuni gefüllt: beide Handpositionen in Weltkoordinaten.
     const saxHands = { front: [0, 0] as [number, number], rear: [0, 0] as [number, number] };
     const kleidung = this.bedKleidung();
@@ -11368,7 +11592,7 @@ export class House {
       sitzgriffLinks: handy ? handyGriff(handy) : null,
       handKontakt: !!this.saxPhase || !!tee || st?.id === "eimer" || !!aschziel,
       handVorRumpf: !!handy,
-      armeVorne: !!tee,
+      armeVorne: !!tee || traegt,
       rauchzeit: this.smokeIdleT,
       handOut: saxHands,
       betweenBodyAndArms: this.saxPhase ? () => this.drawSaxCarried(c) : null,
@@ -11386,6 +11610,11 @@ export class House {
     this.hand[1] = hand[1];
     this.luniHaende = { front: [saxHands.front[0], saxHands.front[1]], rear: [saxHands.rear[0], saxHands.rear[1]] };
     this.luniKopf = { x, y: y + yOff, face, sichtbar: !hiddenInWc && this.alpha > 0.5 };
+    if (traegt) {
+      const px = (saxHands.front[0] + saxHands.rear[0]) / 2;
+      const py = (saxHands.front[1] + saxHands.rear[1]) / 2 - 4.2;
+      drawGeschenkPaket(c, [px, py], 0.86);
+    }
     // Hustenstöße: kleine Wolken vor dem Mund
     if (hustet) {
       const burst = coughPulse(this.elapsed) * clamp((this.sick - 0.3) / 0.4, 0, 1);

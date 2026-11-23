@@ -19,7 +19,7 @@ export const METHAN_MASSE = {
   hoehe: 56,
   huefte: -19,
   schulter: -36,
-  kopf: -47.5,
+  kopf: -46.0,
   kopfR: 8.7,
   oberarm: 8.2,
   unterarm: 8.4,
@@ -417,7 +417,7 @@ function drawHandVorn(c: C, hand: V, seite: 1 | -1, haltung: MethanHand) {
   c.quadraticCurveTo(2.5, 0.4, 1.8, -1.2);
   c.quadraticCurveTo(0.6, -2.0, -2.0, -1.4);
   c.closePath(); c.fill();
-  c.strokeStyle = K.hautTief; c.lineWidth = 0.32; c.stroke();
+  c.strokeStyle = K.hautDunkel; c.lineWidth = 0.3; c.stroke();
   const fingerX = [-1.4, -0.5, 0.4, 1.3];
   const fingerL = haltung === "offen" ? [2.6, 3.0, 2.8, 2.2] : haltung === "locker" ? [2.0, 2.3, 2.1, 1.7] : [1.0, 1.1, 1.0, 0.8];
   const kruemm = haltung === "locker" ? 0.35 : haltung === "offen" ? 0.1 : 0;
@@ -452,129 +452,136 @@ function drawHandVorn(c: C, hand: V, seite: 1 | -1, haltung: MethanHand) {
     Finger hängen nach unten und sind leicht gebogen. Die Konturen sind in
     dunklem Grün gezogen (keine schwarzen Linien), damit die Finger sichtbar
     bleiben und natürlich wirken. */
+/** Hängende Hand mit der Innenfläche zum Körper. Von vorn sieht man den
+    Handrücken: vier getrennte, leicht gebogene Finger mit Nägeln und
+    Knöchel-Falten, der Daumen liegt an der Innenseite (zur Körpermitte).
+    Alle Konturen sind in Grün gezogen, damit die Finger sichtbar bleiben
+    und natürlich wirken. */
 function drawHandLocker(c: C, hand: V, elbow: V, seite: 1 | -1, rueck: boolean) {
   c.save();
   c.translate(hand[0], hand[1]);
   // Handachse: vom Ellbogen zur Hand, "unten" = Fingerrichtung
   c.rotate(Math.atan2(hand[1] - elbow[1], hand[0] - elbow[0]) - Math.PI / 2);
-  // +x zeigt nach außen (vom Körper weg); die Innenfläche liegt zum Körper
+  // +x zeigt nach außen (vom Körper weg), -x zur Körpermitte
   c.scale(seite * 1.25, 1.25);
   c.lineCap = "round";
   c.lineJoin = "round";
   const haut = rueck ? K.hautDunkel : K.haut;
   const hell = rueck ? K.haut : K.hautHell;
-  const linie = K.hautTief;
-  // Vier Finger: getrennte Umrisse, innen heller, Spitzen leicht gebogen
+  const linie = K.hautDunkel; // grüne Kontur statt Schwarz
+
+  // --- Finger (zuerst, damit die Handfläche ihre Wurzeln bedeckt) ---
+  // von innen (-x) nach außen (+x): Zeige-, Mittel-, Ring-, kleiner Finger
   const finger = [
-    { x: -1.52, len: 2.15, kurve: -0.34, breite: 0.4 },
-    { x: -0.5, len: 2.62, kurve: -0.4, breite: 0.42 },
-    { x: 0.52, len: 2.45, kurve: -0.36, breite: 0.4 },
-    { x: 1.5, len: 1.9, kurve: -0.28, breite: 0.38 },
+    { x: -1.15, len: 2.05, breite: 0.42 },
+    { x: -0.38, len: 2.5, breite: 0.44 },
+    { x: 0.38, len: 2.35, breite: 0.42 },
+    { x: 1.12, len: 1.8, breite: 0.38 },
   ];
   for (const fg of finger) {
     const x = fg.x;
-    const y0 = 0.55;
-    const spitzeX = x + fg.kurve;
-    const spitzeY = y0 + fg.len;
-    // Grundglied: vom Handrücken bis zum Mittelglied
     const b = fg.breite;
+    const y0 = 0.3;
+    const y1 = y0 + fg.len;
+    const kurve = -0.18; // leichte Krümmung zum Körper hin
     c.beginPath();
-    c.moveTo(x - b, y0 - 0.45);
-    c.quadraticCurveTo(x - b - 0.06, y0 + fg.len * 0.5, spitzeX - b * 0.82, spitzeY - 0.28);
-    c.quadraticCurveTo(spitzeX, spitzeY + 0.26, spitzeX + b * 0.82, spitzeY - 0.32);
-    c.quadraticCurveTo(x + b + 0.04, y0 + fg.len * 0.45, x + b, y0 - 0.45);
+    c.moveTo(x - b, y0);
+    c.quadraticCurveTo(x - b - 0.04, y0 + fg.len * 0.55, x + kurve - b * 0.75, y1 - 0.25);
+    c.quadraticCurveTo(x + kurve, y1 + 0.22, x + kurve + b * 0.75, y1 - 0.25);
+    c.quadraticCurveTo(x + b + 0.04, y0 + fg.len * 0.5, x + b, y0);
     c.closePath();
     c.fillStyle = haut;
     c.fill();
     c.strokeStyle = linie;
-    c.lineWidth = 0.22;
+    c.lineWidth = 0.2;
     c.stroke();
-    // helleres Innenlicht auf dem Finger
-    c.save();
-    c.clip();
-    c.fillStyle = "rgba(255,255,255,.14)";
+    // Nagel (Handrücken)
+    if (!rueck) {
+      c.fillStyle = "rgba(246,240,224,.55)";
+      c.beginPath();
+      c.ellipse(x + kurve, y1 - 0.3, 0.16, 0.2, 0.3, 0, Math.PI * 2);
+      c.fill();
+    }
+    // Knöchel-Falte
+    c.strokeStyle = "rgba(52,96,58,.5)";
+    c.lineWidth = 0.14;
     c.beginPath();
-    c.ellipse(x + 0.02, y0 + fg.len * 0.55, 0.26, fg.len * 0.4, 0, 0, Math.PI * 2);
-    c.fill();
-    c.restore();
-    // Nagel
-    c.fillStyle = "rgba(246,240,224,.55)";
-    c.beginPath();
-    c.ellipse(spitzeX - 0.04, spitzeY - 0.3, 0.16, 0.2, 0.35, 0, Math.PI * 2);
-    c.fill();
-    // Mittelglied-Falte in Grün
-    c.strokeStyle = "rgba(58,106,63,.55)";
-    c.lineWidth = 0.15;
-    c.beginPath();
-    c.moveTo(x - 0.26, y0 + fg.len * 0.5);
-    c.quadraticCurveTo(x, y0 + fg.len * 0.6, x + 0.28, y0 + fg.len * 0.48);
+    c.moveTo(x - b * 0.7, y0 + fg.len * 0.45);
+    c.quadraticCurveTo(x, y0 + fg.len * 0.55, x + b * 0.7, y0 + fg.len * 0.45);
     c.stroke();
   }
-  // Handfläche (Innenseite zum Körper): schmaler und höher, damit die Finger
-  // daneben frei sichtbar bleiben
+
+  // --- Handfläche ---
   c.beginPath();
-  c.moveTo(-1.42, -1.75);
-  c.lineTo(1.42, -1.75);
-  c.quadraticCurveTo(1.62, -0.6, 1.42, 0.1);
-  c.quadraticCurveTo(1.2, 0.42, 0.85, 0.34);
-  c.quadraticCurveTo(0.3, 0.5, -0.3, 0.36);
-  c.quadraticCurveTo(-0.95, 0.46, -1.45, 0.12);
-  c.quadraticCurveTo(-1.66, -0.6, -1.42, -1.75);
+  c.moveTo(-1.25, -1.7);
+  c.lineTo(1.25, -1.7);
+  c.quadraticCurveTo(1.55, -0.6, 1.42, 0.3);
+  c.quadraticCurveTo(1.3, 0.75, 0.85, 0.68);
+  c.quadraticCurveTo(0.3, 0.82, -0.3, 0.7);
+  c.quadraticCurveTo(-0.9, 0.78, -1.3, 0.4);
+  c.quadraticCurveTo(-1.55, -0.6, -1.25, -1.7);
   c.closePath();
   c.fillStyle = hell;
   c.fill();
   c.strokeStyle = linie;
-  c.lineWidth = 0.3;
+  c.lineWidth = 0.26;
   c.stroke();
-  c.strokeStyle = linie;
-  c.lineWidth = 0.3;
-  c.stroke();
-  // weiche Wölbung der Handfläche (Licht zur Mitte, Schatten zum Körper)
+  // Licht auf dem Handrücken
   c.save();
   c.clip();
-  c.fillStyle = "rgba(255,255,255,.18)";
+  c.fillStyle = "rgba(255,255,255,.16)";
   c.beginPath();
-  c.ellipse(0.05, -0.75, 0.95, 0.62, 0, 0, Math.PI * 2);
-  c.fill();
-  c.fillStyle = "rgba(52,96,58,.2)";
-  c.beginPath();
-  c.ellipse(-1.05, -0.4, 0.5, 0.9, 0, 0, Math.PI * 2);
+  c.ellipse(0.15, -0.6, 0.95, 0.85, 0, 0, Math.PI * 2);
   c.fill();
   c.restore();
-  // Faltenspalten an den Handwurzeln (grün)
-  c.strokeStyle = "rgba(52,96,58,.6)";
-  c.lineWidth = 0.16;
-  for (const wx of [-0.78, -0.06, 0.66]) {
+  // Handwurzel-Falten
+  c.strokeStyle = "rgba(52,96,58,.55)";
+  c.lineWidth = 0.15;
+  for (const wy of [-1.25, -0.95]) {
     c.beginPath();
-    c.moveTo(wx - 0.18, 0.2);
-    c.quadraticCurveTo(wx, 0.4, wx + 0.2, 0.22);
+    c.moveTo(-0.9, wy);
+    c.quadraticCurveTo(0, wy + 0.18, 0.9, wy);
     c.stroke();
   }
-  // Daumen: zeigt zur Körpermitte, liegt auf der Handfläche
+  // Handlinien (nur sichtbar, wenn die Handfläche zeigt)
+  if (rueck) {
+    c.strokeStyle = "rgba(52,96,58,.45)";
+    c.lineWidth = 0.14;
+    c.beginPath();
+    c.moveTo(-1.1, -0.3);
+    c.quadraticCurveTo(0, -0.7, 1.1, -0.35);
+    c.stroke();
+    c.beginPath();
+    c.moveTo(-1.0, 0.1);
+    c.quadraticCurveTo(0, -0.15, 1.0, 0.15);
+    c.stroke();
+  }
+
+  // --- Daumen: an der Innenseite (-x), schräg über dem Handballen ---
   c.beginPath();
-  c.moveTo(-1.05, -1.35);
-  c.quadraticCurveTo(-1.72, -0.6, -1.78, 0.35);
-  c.quadraticCurveTo(-1.8, 1.1, -1.42, 1.25);
-  c.quadraticCurveTo(-1.12, 1.34, -1.2, 0.85);
-  c.quadraticCurveTo(-1.28, 0.0, -1.06, -0.7);
-  c.quadraticCurveTo(-0.92, -1.12, -0.72, -1.5);
+  c.moveTo(-1.05, -1.0);
+  c.quadraticCurveTo(-1.8, -0.55, -1.95, 0.35);
+  c.quadraticCurveTo(-2.02, 1.1, -1.55, 1.25);
+  c.quadraticCurveTo(-1.2, 1.3, -1.25, 0.7);
+  c.quadraticCurveTo(-1.3, -0.1, -0.9, -0.55);
   c.closePath();
   c.fillStyle = hell;
   c.fill();
   c.strokeStyle = linie;
-  c.lineWidth = 0.24;
+  c.lineWidth = 0.22;
   c.stroke();
-  // Daumen-Nagel
-  c.fillStyle = "rgba(246,240,224,.55)";
+  if (!rueck) {
+    c.fillStyle = "rgba(246,240,224,.55)";
+    c.beginPath();
+    c.ellipse(-1.78, 0.85, 0.16, 0.2, -0.4, 0, Math.PI * 2);
+    c.fill();
+  }
+  // Daumen-Grundglied-Falte
+  c.strokeStyle = "rgba(52,96,58,.5)";
+  c.lineWidth = 0.14;
   c.beginPath();
-  c.ellipse(-1.54, 0.78, 0.16, 0.19, -0.4, 0, Math.PI * 2);
-  c.fill();
-  // Grundglied-Falte des Daumens
-  c.strokeStyle = "rgba(52,96,58,.55)";
-  c.lineWidth = 0.15;
-  c.beginPath();
-  c.moveTo(-1.28, 0.28);
-  c.quadraticCurveTo(-1.5, 0.42, -1.72, 0.24);
+  c.moveTo(-1.5, 0.15);
+  c.quadraticCurveTo(-1.72, 0.32, -1.88, 0.18);
   c.stroke();
   c.restore();
 }
@@ -595,7 +602,7 @@ function drawHandFlach(c: C, hand: V, seite: 1 | -1) {
   c.closePath();
   c.fillStyle = K.haut;
   c.fill();
-  c.strokeStyle = K.hautTief;
+  c.strokeStyle = K.hautDunkel;
   c.lineWidth = 0.3;
   c.stroke();
   // Handballen-Wölbung
@@ -630,7 +637,7 @@ function drawFingerGriff(c: C, hand: V, seite: 1 | -1) {
     rr(c, fx - 0.42, kante - 0.55, 0.84, 1.75, 0.42);
     c.fillStyle = i === 3 ? K.hautHell : K.haut;
     c.fill();
-    c.strokeStyle = K.hautTief;
+    c.strokeStyle = K.hautDunkel;
     c.lineWidth = 0.22;
     c.stroke();
     // Nagel
@@ -655,7 +662,7 @@ function drawFingerGriff(c: C, hand: V, seite: 1 | -1) {
   c.closePath();
   c.fillStyle = K.hautHell;
   c.fill();
-  c.strokeStyle = K.hautTief;
+  c.strokeStyle = K.hautDunkel;
   c.lineWidth = 0.22;
   c.stroke();
   c.fillStyle = "rgba(246,240,224,.5)";
@@ -704,8 +711,12 @@ function drawBootHinten(c: C, fuss: V, ang: number, vorne: boolean) {
   c.save();
   c.translate(fuss[0], fuss[1]); c.rotate(ang);
   const leder = vorne ? K.schuhHell : K.schuh;
-  c.fillStyle = leder; rr(c, -2.6, -6.2, 5.2, 3.8, 1.1); c.fill();
-  c.fillStyle = vorne ? "#5a5148" : "#3b352d"; rr(c, -2.2, -1.4, 4.4, 1.6, 0.8); c.fill();
+  // Schaft bis zur Ferse durchgehend und breiter als das Hosenbein – die Hose
+  // endet sichtbar im Stiefel, es bleibt keine Lücke über der Ferse
+  c.fillStyle = leder; rr(c, -2.9, -6.4, 5.8, 6.0, 1.2); c.fill();
+  c.strokeStyle = K.kontur; c.lineWidth = 0.32; c.stroke();
+  c.fillStyle = "rgba(255,255,255,.08)"; rr(c, -2.5, -6.2, 5.0, 0.9, 0.45); c.fill();
+  c.fillStyle = vorne ? "#5a5148" : "#3b352d"; rr(c, -2.4, -1.5, 4.8, 1.7, 0.8); c.fill();
   c.fillStyle = K.sohle; rr(c, -3.2, -0.5, 6.4, 0.7, 0.3); c.fill();
   c.strokeStyle = "rgba(0,0,0,.25)"; c.lineWidth = 0.4;
   c.beginPath(); c.moveTo(0, -5.8); c.lineTo(0, -1.6); c.stroke();
@@ -751,11 +762,6 @@ function drawTorsoVorn(c: C, r: MethanRig) {
   c.strokeStyle = K.kontur; c.lineWidth = 0.35; c.stroke();
   c.strokeStyle = K.uniformDunkel; c.lineWidth = 0.4; c.strokeRect(-2.2, topY + 7.8, 4.4, 0.7);
   c.fillStyle = K.knopf; c.fillRect(1.0, topY + 6.4, 0.5, 2.4);
-  // Namensschild
-  c.fillStyle = K.namensschild; rr(c, -3.8, topY + 4.0, 3.4, 2.0, 0.4); c.fill();
-  c.strokeStyle = K.kontur; c.lineWidth = 0.28; c.stroke();
-  c.fillStyle = K.namensschrift; c.fillRect(-3.5, topY + 4.75, 2.7, 0.42);
-  c.fillStyle = K.uniform; c.fillRect(-3.5, topY + 5.4, 1.6, 0.3);
   // Träger, Knöpfe, Schulterklappen
   for (const sx of [-1, 1]) {
     c.strokeStyle = K.uniformDunkel; c.lineWidth = 2.0; c.lineCap = "round";
@@ -977,6 +983,11 @@ function drawPaketSchattenVorlage(c: C, mitte: V) {
   c.fill();
 }
 
+/** Weihnachtliches Geschenkpaket (auch für Postwagen und Haustür). */
+export function drawGeschenkPaket(c: C, mitte: [number, number], sk = 1) {
+  drawPaket(c, mitte, sk);
+}
+
 function drawPaket(c: C, mitte: V, sk = 1) {
   const [mx, my] = mitte;
   const W = 12.4;
@@ -1180,8 +1191,8 @@ function hemdPfad(c: C, r: MethanRig, rueck: boolean) {
 function drawHals(c: C, r: MethanRig, kopf: V, rueck: boolean) {
   const R = HEAD_R;
   const x0 = kopf[0] + Math.sin(r.headTilt) * R * 0.5;
-  const y0 = kopf[1] + R * 0.4;
-  const y1 = r.shoulderY + 4.2;
+  const y0 = kopf[1] + R * 0.45;
+  const y1 = r.shoulderY + 3.0;
   const ym = (y0 + y1) / 2;
   c.beginPath();
   c.moveTo(x0 - 2.5, y0);
@@ -1293,15 +1304,15 @@ function drawKragen(c: C, r: MethanRig) {
   const topY = r.shoulderY;
   c.lineCap = "round";
   c.beginPath();
-  c.moveTo(-7.6, topY + 0.6);
-  c.quadraticCurveTo(-6.8, topY - 1.9, -5.1, topY - 2.0);
-  c.quadraticCurveTo(-2.4, topY + 1.8, 0, topY + 3.6);
-  c.quadraticCurveTo(2.4, topY + 1.8, 5.1, topY - 2.0);
-  c.quadraticCurveTo(6.8, topY - 1.9, 7.6, topY + 0.6);
-  c.quadraticCurveTo(6.1, topY + 1.7, 5.4, topY + 0.9);
-  c.quadraticCurveTo(2.4, topY + 4.3, 0, topY + 5.9);
-  c.quadraticCurveTo(-2.4, topY + 4.3, -5.4, topY + 0.9);
-  c.quadraticCurveTo(-6.1, topY + 1.7, -7.6, topY + 0.6);
+  c.moveTo(-9.0, topY + 2.2);
+  c.quadraticCurveTo(-8.8, topY - 1.8, -6.6, topY - 2.2);
+  c.quadraticCurveTo(-2.4, topY + 0.8, 0, topY + 2.4);
+  c.quadraticCurveTo(2.4, topY + 0.8, 6.6, topY - 2.2);
+  c.quadraticCurveTo(8.8, topY - 1.8, 9.0, topY + 2.2);
+  c.quadraticCurveTo(7.8, topY + 2.8, 7.0, topY + 2.2);
+  c.quadraticCurveTo(2.4, topY + 3.2, 0, topY + 4.6);
+  c.quadraticCurveTo(-2.4, topY + 3.2, -7.0, topY + 2.2);
+  c.quadraticCurveTo(-7.8, topY + 2.8, -9.0, topY + 2.2);
   c.closePath();
   c.fillStyle = K.tee;
   c.fill();
@@ -1418,6 +1429,6 @@ export const METHAN_INFO = {
   firma: "Frog Company Lieferservice",
   dienst: "Post- und Paketzusteller",
   groesse: "56 Einheiten (wie Luni)",
-  uniform: "Blaue Latzhose, Mütze mit Schirm, gelbe Knöpfe, Namensschild",
+  uniform: "Blaue Latzhose, Mütze mit Schirm, gelbe Knöpfe",
   besonderheiten: "Front- und Rückansicht, Kulleraugen, breiter Froschmund, Paket",
 } as const;

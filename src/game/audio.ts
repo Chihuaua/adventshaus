@@ -205,6 +205,71 @@ export class Sfx {
     this.tone({ f: 660, dur: 0.05, type: "square", gain: 0.1 });
   }
 
+  /** Türklingel: klassisches zweitöniges Ding-Dong (E5, dann C5, mit Oberton). */
+  dingDong() {
+    this.tone({ f: 659, dur: 1.3, type: "sine", gain: 0.2, attack: 0.004 });
+    this.tone({ f: 1318, dur: 0.55, type: "sine", gain: 0.045, attack: 0.004 });
+    this.tone({ f: 523, dur: 1.7, type: "sine", gain: 0.2, attack: 0.004, delay: 0.6 });
+    this.tone({ f: 1046, dur: 0.6, type: "sine", gain: 0.045, attack: 0.004, delay: 0.6 });
+  }
+
+  /** Knie stößt an den Glastisch: dumpfer Stoß und kurzes Glasklirren. */
+  glasStoss() {
+    this.tone({ f: 140, f2: 80, dur: 0.14, type: "sine", gain: 0.16 });
+    this.tone({ f: 2350, dur: 0.22, type: "sine", gain: 0.035, delay: 0.02 });
+    this.tone({ f: 3120, dur: 0.16, type: "sine", gain: 0.02, delay: 0.03 });
+  }
+
+  /** Autotür fällt ins Schloss: dumpfer Schlag mit kurzem Blechklang. */
+  autotuer() {
+    this.tone({ f: 118, f2: 64, dur: 0.2, type: "sine", gain: 0.2 });
+    this.noise(0.09, 0.09, 520, 1.1);
+  }
+
+  /** Schiebetür des Postwagens: Rollgeräusch und Einrasten am Ende. */
+  schiebetuer(auf = true) {
+    this.noise(0.62, 0.05, auf ? 760 : 640, 1.6);
+    this.tone({ f: 96, f2: 58, dur: 0.18, type: "sine", gain: 0.16, delay: 0.58 });
+    this.noise(0.07, 0.09, 320, 1, 0.58);
+  }
+
+  private motorKnoten: { osc: OscillatorNode; osc2: OscillatorNode; g: GainNode } | null = null;
+
+  /** Motor des Postwagens als leises, tiefes Brummen (an/aus). */
+  motor(an: boolean) {
+    const ctx = this.ctx;
+    const master = this.master;
+    if (!ctx || !master) return;
+    const jetzt = ctx.currentTime;
+    if (an && !this.motorKnoten) {
+      const osc = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const filter = ctx.createBiquadFilter();
+      const g = ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.value = 46;
+      osc2.type = "square";
+      osc2.frequency.value = 92.5;
+      filter.type = "lowpass";
+      filter.frequency.value = 260;
+      g.gain.setValueAtTime(0.0001, jetzt);
+      g.gain.exponentialRampToValueAtTime(0.05, jetzt + 0.4);
+      osc.connect(filter);
+      osc2.connect(filter);
+      filter.connect(g);
+      g.connect(master);
+      osc.start(jetzt);
+      osc2.start(jetzt);
+      this.motorKnoten = { osc, osc2, g };
+    } else if (!an && this.motorKnoten) {
+      const { osc, osc2, g } = this.motorKnoten;
+      g.gain.setTargetAtTime(0.0001, jetzt, 0.15);
+      osc.stop(jetzt + 0.8);
+      osc2.stop(jetzt + 0.8);
+      this.motorKnoten = null;
+    }
+  }
+
   pause() {
     this.tone({ f: 480, f2: 240, dur: 0.12, type: "square", gain: 0.11 });
   }
