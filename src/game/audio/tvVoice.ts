@@ -1,4 +1,5 @@
 import type { TVKanal } from "../tv";
+import { NmsMusik } from "./nmsMusik";
 
 /** Eigener, leiser TV-Tonkanal. Die TV-Lautstaerke beeinflusst keine Instrumente. */
 export class TVKlang {
@@ -9,6 +10,8 @@ export class TVKlang {
   private schritt = 0;
   private anker = 0;
   private lautstaerke = -1;
+  private nms: NmsMusik | null = null;
+  private pausenPosition = 0;
 
   constructor(private ctx: AudioContext, master: AudioNode) {
     this.output = ctx.createGain();
@@ -21,10 +24,16 @@ export class TVKlang {
       this.lautstaerke = lautstaerke;
       this.output.gain.setTargetAtTime(Math.pow(Math.max(0, Math.min(100, lautstaerke)) / 100, 2) * 0.6, this.ctx.currentTime, 0.025);
     }
+    const einstieg = this.pausenPosition;
+    this.pausenPosition = 0;
     if (programm === this.programm) return;
     this.stop();
     this.programm = programm;
     if (!programm) return;
+    if (programm === "sterne") {
+      this.nms = NmsMusik.empfangen(this.ctx, this.output, einstieg);
+      return;
+    }
     this.anker = this.ctx.currentTime - zeit;
     this.schritt = Math.ceil(zeit / 0.25);
     this.planen();
@@ -65,7 +74,16 @@ export class TVKlang {
     }
   }
 
+  pause() {
+    if (!this.programm) return;
+    const position = this.nms?.position ?? 0;
+    this.stop();
+    this.pausenPosition = position;
+  }
+
   stop() {
+    this.nms?.trennen(this.output);
+    this.nms = null; this.pausenPosition = 0;
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null; this.programm = null;
     for (const [osc, gain] of this.stimmen) {
