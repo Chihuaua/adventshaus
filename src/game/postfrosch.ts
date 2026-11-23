@@ -46,20 +46,33 @@ const TUER_MITTE = POST_TUER.x + POST_TUER.w / 2;
 
 /** Postwagen: Länge, Parkposition (Heck), Boden links und rechts. */
 const WAGEN_L = 94;
-const PARK_X = 2;
+/** Heck ragt etwas aus dem Bild, damit vor dem Wagen Platz zum Herumgehen bleibt. */
+const PARK_X = -14;
 const BODEN_L = FE + 4;
 const BODEN_R = FK + 11;
 /** Frosch läuft vor dem Wagen (näher am Betrachter). */
 const FROSCH_Y = FE + 9;
 /** Halteplätze des Froschs am Wagen. */
 const AN_FAHRERTUER = PARK_X + 74;
-/** neben der Schiebetür (rechts der Öffnung), damit das Paket im Laderaum sichtbar bleibt */
-const AN_SCHIEBETUER = PARK_X + 66;
-/** Heckecke: hier geht er von der Fahrerseite (hinter dem Wagen) nach vorn. */
-const AN_HECK = PARK_X + 3;
+/** Frosch steht rechts neben dem Türgriff; mit der Hand am Griff geht er mit der Tür mit. */
+const GRIFF_ZU = PARK_X + 53;
+const GRIFF_AUF = PARK_X + 29;
+const GRIFF_ABSTAND = 7;
+const AN_SCHIEBETUER = GRIFF_ZU + GRIFF_ABSTAND;
+const AN_SCHIEBETUER_OFFEN = GRIFF_AUF + GRIFF_ABSTAND;
+/** Paket mitten im Laderaum */
+const AM_PAKET = PARK_X + 45;
+/** Vor der Motorhaube: hier kommt er von der Fahrerseite nach vorn. */
+const AN_FRONT = PARK_X + 102;
 /** Gehgeschwindigkeit (Einheiten pro Sekunde). */
 const TEMPO = 18;
 
+/** Nach dem dritten Klingeln: kurze Pause, dann dreimal klopfen. */
+const PAUSE_VOR_KLOPFEN = 3;
+const KLOPF_ZEITEN = [0.3, 0.85, 1.4] as const;
+const KLOPF_DAUER = 2.2;
+/** Blinzeln: 5 s nach dem Klingeln zweimal kurz. */
+const BLINZELN = [[5.0, 5.12], [5.3, 5.42]] as const;
 /** Klingeln: höchstens drei Mal, Abstand 32 s, danach noch 23 s Wartezeit. */
 const KLINGEL_ABSTAND = 32;
 const LETZTE_WARTEZEIT = 23;
@@ -69,13 +82,14 @@ const DING_BEI = 0.35;
 type Phase =
   | "anfahrt"
   | "aussteigen"
-  | "umsHeck"
+  | "umFront"
   | "zurSchiebetuer"
   | "schiebetuerAuf"
   | "paketNehmen"
   | "zumHaus"
   | "klingeln"
   | "warten"
+  | "klopfen"
   | "tuerAuf"
   | "uebergabe"
   | "gruss"
@@ -130,6 +144,9 @@ export class Postfrosch {
   private klingelZahl = 0;
   private dingGespielt = false;
   private blaseT = -1;
+  private klopfT = -1;
+  private geklopft = false;
+  private nachKlingeln = false;
   private motorAn = false;
   private abholung: Abholung | null = null;
   private abT = 0;
@@ -141,7 +158,7 @@ export class Postfrosch {
 
   /** Steht der Frosch klingelnd vor der Tür? (Luni kann dann öffnen) */
   get anDerTuer() {
-    return this.phase === "klingeln" || this.phase === "warten";
+    return this.phase === "klingeln" || this.phase === "warten" || this.phase === "klopfen";
   }
 
   /** Ist die Haustür gerade ein sinnvolles Ziel für Luni? */
@@ -175,6 +192,8 @@ export class Postfrosch {
     this.paketBeiFrosch = false;
     this.klingelZahl = 0;
     this.blaseT = -1;
+    this.klopfT = -1;
+    this.geklopft = false;
     this.auspuff = [];
     this.motor(true);
   }
@@ -222,6 +241,10 @@ export class Postfrosch {
       this.blaseT += dt;
       if (this.blaseT > 2.6) this.blaseT = -1;
     }
+    if (this.klopfT >= 0) {
+      this.klopfT += dt;
+      if (this.klopfT > 3.4) this.klopfT = -1;
+    }
     for (const p of this.auspuff) p.t += dt;
     this.auspuff = this.auspuff.filter((p) => p.t < 1.6);
 
@@ -254,11 +277,12 @@ export class Postfrosch {
         this.fx = AN_FAHRERTUER;
         if (this.pt >= 1.0) {
           sfx.autotuer();
-          this.wechsel("umsHeck");
+          this.wechsel("umFront");
         }
         break;
-      case "umsHeck":
-        if (this.gehe(AN_HECK, dt)) this.wechsel("zurSchiebetuer");
+      case "umFront":
+        // hinter dem Wagen nach vorn und um die Motorhaube herum
+        if (this.gehe(AN_FRONT, dt)) this.wechsel("zurSchiebetuer");
         break;
       case "zurSchiebetuer":
         if (this.gehe(AN_SCHIEBETUER, dt)) {
@@ -266,16 +290,22 @@ export class Postfrosch {
           this.wechsel("schiebetuerAuf");
         }
         break;
-      case "schiebetuerAuf":
-        this.schiebe = sanft(this.pt / 0.9);
-        if (this.pt >= 1.0) this.wechsel("paketNehmen");
+      case "schiebetuerAuf": {
+        // Griff fassen (0,3 s), dann mit der Tür zur Seite gehen
+        const k = sanft((this.pt - 0.3) / 1.2);
+        if (this.pt > 0.3) this.walk += dt * 5;
+        this.schiebe = k;
+        this.fx = AN_SCHIEBETUER + (AN_SCHIEBETUER_OFFEN - AN_SCHIEBETUER) * k;
+        if (this.pt >= 1.6) this.wechsel("paketNehmen");
         break;
+      }
       case "paketNehmen":
-        if (this.pt > 0.6 && this.paketImWagen) {
+        if (this.pt < 0.8) this.gehe(AM_PAKET, dt);
+        if (this.pt > 1.0 && this.paketImWagen) {
           this.paketImWagen = false;
           this.paketBeiFrosch = true;
         }
-        if (this.pt >= 1.2) this.wechsel("zumHaus");
+        if (this.pt >= 1.6) this.wechsel("zumHaus");
         break;
       case "zumHaus":
         if (this.gehe(TUER_MITTE, dt)) this.wechsel("klingeln");
@@ -291,17 +321,37 @@ export class Postfrosch {
           this.blaseT = 0;
           sfx.dingDong();
         }
-        if (this.pt >= KLINGEL_DAUER) this.wechsel("warten");
+        if (this.pt >= KLINGEL_DAUER) {
+          this.wechsel("warten");
+          this.nachKlingeln = true;
+        }
         break;
       case "warten": {
         if (luniAnTuer) {
           this.wechsel("tuerAuf");
           break;
         }
+        if (this.klingelZahl >= 3 && !this.geklopft) {
+          if (this.pt >= PAUSE_VOR_KLOPFEN) this.wechsel("klopfen");
+          break;
+        }
         const warte = this.klingelZahl >= 3 ? LETZTE_WARTEZEIT : KLINGEL_ABSTAND - KLINGEL_DAUER;
         if (this.pt >= warte) this.wechsel(this.klingelZahl >= 3 ? "ablegen" : "klingeln");
         break;
       }
+      case "klopfen":
+        if (luniAnTuer) {
+          this.wechsel("tuerAuf");
+          break;
+        }
+        if (this.pt - dt < KLOPF_ZEITEN[0] && this.pt >= KLOPF_ZEITEN[0]) this.klopfT = 0;
+        for (const kz of KLOPF_ZEITEN) if (this.pt - dt < kz && this.pt >= kz) sfx.klopfen();
+        if (this.pt >= KLOPF_DAUER) {
+          this.geklopft = true;
+          this.wechsel("warten");
+          this.nachKlingeln = false;
+        }
+        break;
       case "tuerAuf":
         this.tuer = sanft(this.pt / 0.9);
         if (this.pt >= 0.95) this.wechsel("uebergabe");
@@ -334,20 +384,26 @@ export class Postfrosch {
         if (this.pt >= 2.2) this.wechsel("zurueck");
         break;
       case "zurueck":
-        if (this.gehe(AN_SCHIEBETUER, dt)) {
+        if (this.gehe(AN_SCHIEBETUER_OFFEN, dt)) {
           sfx.schiebetuer(false);
           this.wechsel("schiebetuerZu");
         }
         break;
-      case "schiebetuerZu":
-        this.schiebe = 1 - sanft(this.pt / 0.9);
-        if (this.pt >= 1.0) {
+      case "schiebetuerZu": {
+        // Griff fassen, dann mit der Tür zurück, bis sie geschlossen ist
+        const k = sanft((this.pt - 0.3) / 1.2);
+        if (this.pt > 0.3) this.walk += dt * 5;
+        this.schiebe = 1 - k;
+        this.fx = AN_SCHIEBETUER_OFFEN + (AN_SCHIEBETUER - AN_SCHIEBETUER_OFFEN) * k;
+        if (this.pt >= 1.6) {
           this.schiebe = 0;
           this.wechsel("zurFahrertuer");
         }
         break;
+      }
       case "zurFahrertuer":
-        if (this.gehe(AN_HECK, dt)) this.wechsel("hintenRum");
+        // vorne um die Motorhaube herum zur Fahrerseite
+        if (this.gehe(AN_FRONT, dt)) this.wechsel("hintenRum");
         break;
       case "hintenRum":
         if (this.gehe(AN_FAHRERTUER, dt)) this.wechsel("einsteigen");
@@ -531,6 +587,7 @@ export class Postfrosch {
   /** Nach der Lichtschicht: Klingel-Sprechblase und Scheinwerferlicht. */
   drawOverlay(c: C, night: number) {
     if (this.blaseT >= 0) zeichneDingDong(c, this.blaseT);
+    if (this.klopfT >= 0) zeichneKlopfen(c, this.klopfT);
     const p = this.phase;
     if (night > 0.25 && this.motorAn && p && p !== "hinterHaus") {
       const rechts = p === "rechtsRaus";
@@ -561,7 +618,7 @@ export class Postfrosch {
     const p = this.phase;
     if (p === "aussteigen") return this.pt > 0.3;
     if (p === "einsteigen") return this.pt < 0.8;
-    return p === "umsHeck" || p === "hintenRum";
+    return p === "umFront" || p === "hintenRum";
   }
 
   private zeichneFroschHinterWagen(c: C, elapsed: number) {
@@ -569,11 +626,11 @@ export class Postfrosch {
     let alpha = 1;
     if (p === "aussteigen") alpha = sanft((this.pt - 0.3) / 0.4);
     else if (p === "einsteigen") alpha = 1 - sanft((this.pt - 0.4) / 0.4);
-    const geht = p === "umsHeck" || p === "hintenRum";
+    const geht = p === "umFront" || p === "hintenRum";
     c.save();
     c.globalAlpha = alpha;
     drawMethanFrog(c, this.fx, FE + 1, {
-      t: elapsed, pose: geht ? "walk" : "stand", rueck: p === "hintenRum", walk: this.walk,
+      t: elapsed, pose: geht ? "walk" : "stand", rueck: p === "umFront", walk: this.walk,
       scale: SKALA, expr: "friendly", shadow: false,
     });
     c.restore();
@@ -594,10 +651,17 @@ export class Postfrosch {
     if (p === "zurSchiebetuer" || p === "zurFahrertuer") pose = "walk";
     else if (p === "zumHaus") pose = "walkCarry";
     else if (p === "zurueck") pose = "walk";
-    else if (p === "paketNehmen") pose = this.paketBeiFrosch ? "carry" : "stand";
+    else if (p === "paketNehmen") pose = this.paketBeiFrosch ? "carry" : this.pt < 0.8 ? "walk" : "stand";
+    // Hand am Türgriff der Schiebetür (linke Hand nach oben zum Griff)
+    const amGriff = (p === "schiebetuerAuf" || p === "schiebetuerZu") ? Math.min(1, this.pt / 0.3) : 0;
+    if (amGriff > 0) pose = this.pt > 0.3 && this.pt < 1.5 ? "walk" : "stand";
+    const edit = amGriff > 0 ? {
+      handFar: [1.5 * amGriff, -11.5 * amGriff] as [number, number],
+      elbowFar: [-1.0 * amGriff, -5.5 * amGriff] as [number, number],
+    } : undefined;
     c.save();
     c.globalAlpha = alpha;
-    drawMethanFrog(c, this.fx, FROSCH_Y, { t: elapsed, pose, walk: this.walk, scale: SKALA, expr: "friendly" });
+    drawMethanFrog(c, this.fx, FROSCH_Y, { t: elapsed, pose, walk: this.walk, scale: SKALA, expr: "friendly", edit });
     c.restore();
   }
 
@@ -611,7 +675,7 @@ export class Postfrosch {
     else if (p === "zurueck") {
       pose = "walk";
       rueck = true;
-    } else if (p === "klingeln") pose = "knock";
+    } else if (p === "klingeln" || p === "klopfen") pose = "knock";
     else if (p === "uebergabe") pose = this.paketBeiFrosch ? "handover" : "stand";
     else if (p === "gruss") pose = "salute";
     else if (p === "tuerZu") {
@@ -621,10 +685,12 @@ export class Postfrosch {
       // Paket abstellen: kurz in die Knie – durchs Fenster sieht man nur den Kopf sinken
       sink = 10 * Math.sin(Math.min(1, this.pt / 2.0) * Math.PI);
     }
+    // 5 s nach dem Klingeln zweimal kurz blinzeln
+    const blink = p === "warten" && this.nachKlingeln && BLINZELN.some(([a, b]) => this.pt >= a && this.pt < b) ? 1 : 0;
     // In der offenen Tür steht er etwas seitlich, damit Luni ihn nicht ganz verdeckt
     const x = this.fx + 10 * this.tuer;
     drawMethanFrog(c, x, FE + sink, {
-      t: elapsed, pose, rueck, walk: this.walk, scale: SKALA, expr: "friendly",
+      t: elapsed, pose, rueck, walk: this.walk, scale: SKALA, expr: "friendly", blink,
     });
   }
 
@@ -1182,6 +1248,9 @@ const GLYPHEN: Record<string, number[][]> = {
   R: [[0, 6, 0, 0, 3, 0, 4, 1, 4, 2, 3, 3, 0, 3], [2, 3, 4, 6]],
   C: [[4, 1, 3, 0, 1, 0, 0, 1, 0, 5, 1, 6, 3, 6, 4, 5]],
   "!": [[2, 0, 2, 4.2], [2, 5.6, 2, 6]],
+  K: [[0, 0, 0, 6], [4, 0, 0, 3.4, 4, 6]],
+  L: [[0, 0, 0, 6, 4, 6]],
+  P: [[0, 6, 0, 0, 3, 0, 4, 1, 4, 2, 3, 3, 0, 3]],
 };
 
 /** Text aus Linienzügen zeichnen; Höhe in Einheiten (mindestens 10 für Lesbarkeit). */
@@ -1235,4 +1304,24 @@ function zeichneDingDong(c: C, t: number) {
   };
   wort("DING", 0, 214, 346, "#ffd75a");
   wort("DONG!", 0.6, 236, 361, "#ffe58f");
+}
+
+/** „KLOPF KLOPF KLOPF“ ohne Blase und Umriss: jedes Wort ploppt synchron zum Klopfen auf. */
+function zeichneKlopfen(c: C, t: number) {
+  const orte: [number, number, number][] = [[206, 344, -0.12], [230, 356, 0.06], [212, 369, -0.04]];
+  KLOPF_ZEITEN.forEach((kz, i) => {
+    const u = t - (kz - KLOPF_ZEITEN[0]);
+    if (u < 0) return;
+    const pop = u < 0.14 ? 0.4 + 0.9 * Math.sin((u / 0.14) * Math.PI * 0.5) : 1 + 0.25 * Math.max(0, 1 - (u - 0.14) / 0.1);
+    const puls = 1 + 0.06 * Math.sin(u * 16) * Math.exp(-u * 2);
+    const raus = t > 2.6 ? 1 - Math.min(1, (t - 2.6) / 0.6) : 1;
+    const [x, y, rot] = orte[i];
+    c.save();
+    c.globalAlpha = raus;
+    c.translate(x, y);
+    c.scale(Math.min(pop, 1.25) * puls, Math.min(pop, 1.25) * puls);
+    c.rotate(rot);
+    schrift(c, "KLOPF", -12, -6, 11, "#f2c27a", 2.4, 4.9);
+    c.restore();
+  });
 }
