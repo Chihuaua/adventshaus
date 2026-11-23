@@ -77,6 +77,7 @@ import { SAX_DURATION_SECONDS } from "./audio/saxophonNotes";
 import { PlattenMusic, plattenBassPulse } from "./audio/plattenVoice";
 import { KlavierMusik, klavierHaendeAt } from "./audio/klavierVoice";
 import { TVKlang } from "./audio/tvVoice";
+import { drawSternennacht } from "./sternennacht";
 import {
   drawFernbedienung, leseTVStand, neuerTVStand, tvFernTreffer, tvKanaele, tvNaechsterKanal, TV_FERN_STATIONS,
   type TVBefehl, type TVId, type TVInhalt, type TVKanal, type TVStand,
@@ -8746,7 +8747,10 @@ export class House {
     const cozy = mode === "cozy" || mode === "garten" || mode === "musik";
     const t = cozy ? this.harvestClock : this.elapsed;
 
-    if (cozy) {
+    if (mode === "sterne") {
+      // Ruhiges Bild ohne eigenen Ton; eine spätere Musikuntermalung kann hier ansetzen.
+      drawSternennacht(c, x, y, w, h, this.elapsed);
+    } else if (cozy) {
       // Wohnzimmer-Kanäle: Harvest-Spiel und Musikvideo im Wechsel,
       // dazwischen kurz Umschalt-Statik wie bei einem echten Röhren-TV.
       const tt = mode === "garten" ? 1 : mode === "musik" ? TV_RICK_AT + 1 : t % TV_CYCLE;
@@ -8915,7 +8919,7 @@ export class House {
       c.fillText("LV 3", x + 2.5, y + h * 0.14);
     }
     const musikvideo = mode === "musik" || (mode === "cozy" && t % TV_CYCLE >= TV_RICK_AT);
-    if (!musikvideo) this.drawTVScanlines(c, x, y, w, h);
+    if (mode !== "sterne" && !musikvideo) this.drawTVScanlines(c, x, y, w, h);
   }
 
   private onKey = (e: KeyboardEvent) => {

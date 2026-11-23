@@ -5,7 +5,7 @@ import { build } from "esbuild";
 
 const source = readFileSync("src/game/house.ts", "utf8");
 const b = await build({
-  stdin: { contents: source + '\nexport { drawHouse, micStand };\nexport * from "./tv";\nexport { TVKlang } from "./audio/tvVoice";\nexport { createState as neuesGOL } from "./gol";',
+  stdin: { contents: source + '\nexport { drawHouse, micStand };\nexport * from "./tv";\nexport { drawSternennacht, STERNENNACHT_STERNE, sternenLicht } from "./sternennacht";\nexport { TVKlang } from "./audio/tvVoice";\nexport { createState as neuesGOL } from "./gol";',
     resolveDir: path.resolve("src/game"), loader: "ts" },
   bundle: true, write: false, platform: "node", format: "esm",
 });
@@ -84,10 +84,11 @@ test("TV: Kanaltasten schalten wirklich um, unabhaengig je Geraet", () => {
   const h = haus();
   h.tvBefehl("kanal_hoch"); assert.equal(h.tvContent("tv_e"), "musik");
   assert.equal(h.tvContent("tv_d"), "cozy");
+  h.tvBefehl("kanal_hoch"); assert.equal(h.tvContent("tv_e"), "sterne");
   h.tvBefehl("kanal_hoch"); assert.equal(h.tvContent("tv_e"), "garten");
-  h.tvBefehl("kanal_runter"); assert.equal(h.tvContent("tv_e"), "musik");
+  h.tvBefehl("kanal_runter"); assert.equal(h.tvContent("tv_e"), "sterne");
   h.tvZoom = "tv_d";
-  h.tvBefehl("kanal_hoch"); h.tvBefehl("kanal_hoch");
+  h.tvBefehl("kanal_hoch"); h.tvBefehl("kanal_hoch"); h.tvBefehl("kanal_hoch");
   assert.equal(h.tvContent("tv_d"), "konsole");
   h.tvBefehl("kanal_hoch"); assert.equal(h.tvContent("tv_d"), "garten", "ohne Modul kein GOL");
   h.golInserted = true; h.golState = G.neuesGOL(0);
@@ -100,6 +101,28 @@ test("TV: Kanaltasten schalten wirklich um, unabhaengig je Geraet", () => {
   assert.ok(c.ops.some(o => o.text === "FERNBEDIENUNG"), "auch beim Spiel des Lebens");
   for (const o of c.ops.filter(o => o.art === "text" && o.x === 120 && o.y >= 480)) {
     assert.ok(o.x + c.ctx.measureText(o.text).width < 636 && o.y <= 566, "Regeln bleiben neben der Fernbedienung lesbar");
+  }
+});
+
+test("Sternennacht: ruhiges Bild in mehreren TV-Formaten und sehr langsames Sternenlicht", () => {
+  assert.ok(G.STERNENNACHT_STERNE.length >= 160);
+  assert.ok(G.STERNENNACHT_STERNE.every(s => s.periode >= 28 && s.periode <= 66));
+  assert.deepEqual(G.tvKanaele("tv_e", false), ["garten", "musik", "sterne"]);
+  assert.equal(G.TV_KANAL_NAMEN.sterne, "NMS", "die Szene erscheint auf Kanal NMS");
+  assert.ok(G.tvKanaele("tv_d", false).includes("sterne"));
+  const gespeichert = G.leseTVStand({ tv_e: { kanal: "sterne", lautstaerke: 40 } });
+  assert.equal(gespeichert.tv_e.kanal, "sterne", "der neue Kanal bleibt im Speicherstand erhalten");
+  for (const s of G.STERNENNACHT_STERNE) {
+    const a = G.sternenLicht(s, 12);
+    assert.ok(a > 0 && a <= 1);
+    assert.ok(Math.abs(G.sternenLicht(s, 12.05) - a) < 0.02, "kein schnelles Flackern");
+    assert.ok(Math.abs(G.sternenLicht(s, 12 + s.periode) - a) < 1e-10, "sanfter, reproduzierbarer Zyklus");
+  }
+  for (const [w, h] of [[160, 90], [120, 90], [216, 90]]) {
+    const c = canvas();
+    G.drawSternennacht(c.ctx, 0, 0, w, h, 12);
+    assert.ok(c.ops.length > 450, `${w}x${h}: vollständige Szene statt Platzhalter`);
+    assert.ok(!c.ops.some(o => o.farbe === "rgba(0,0,0,.12)"), "keine Scanlines über dem ruhigen Bild");
   }
 });
 
