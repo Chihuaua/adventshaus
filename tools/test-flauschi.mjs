@@ -238,8 +238,8 @@ test("Türchen 6 bringt Flauschi, davor bleiben die Geschenke ohne Spielhinweis"
 });
 
 test("Der Programmplatz erscheint nur mit eingestecktem Modul", () => {
-  assert.deepEqual(G.tvKanaele("tv_d", false), ["garten", "musik", "konsole"]);
-  assert.deepEqual(G.tvKanaele("tv_d", true), ["garten", "musik", "konsole", "gol"]);
+  assert.deepEqual(G.tvKanaele("tv_d", false), ["garten", "musik", "sterne", "konsole"]);
+  assert.deepEqual(G.tvKanaele("tv_d", true), ["garten", "musik", "sterne", "konsole", "gol"]);
   assert.ok(G.tvKanaele("tv_d", false, true).includes("flauschi"));
   assert.ok(!G.tvKanaele("tv_e", false, true).includes("flauschi"), "Wohnzimmer-TV bleibt ohne");
   assert.equal(G.tvNaechsterKanal("tv_d", "konsole", 1, false, true), "flauschi");

@@ -1,13 +1,13 @@
 /** Gemeinsame, rein datenbasierte TV-Bedienung fuer Zeiger und Steuerkreuz. */
 export type TVId = "tv_e" | "tv_d";
-export type TVKanal = "garten" | "musik" | "konsole" | "gol" | "flauschi";
+export type TVKanal = "garten" | "musik" | "sterne" | "konsole" | "gol" | "flauschi";
 export type TVInhalt = TVKanal | "cozy" | "console" | "off";
 export interface TVGeraet { kanal: TVKanal | null; lautstaerke: number }
 export type TVStand = Record<TVId, TVGeraet>;
 export type TVBefehl = "kanal_runter" | "kanal_hoch" | "leiser" | "lauter" | "power";
 
 export const TV_KANAL_NAMEN: Record<TVKanal, string> = {
-  garten: "Garten", musik: "Musikvideo", konsole: "Konsole", gol: "Spiel des Lebens",
+  garten: "Garten", musik: "Musikvideo", sterne: "NMS", konsole: "Konsole", gol: "Spiel des Lebens",
   flauschi: "Teleflauschi",
 };
 
@@ -17,8 +17,8 @@ export function neuerTVStand(): TVStand {
 
 /** Das Teleflauschi-Modul hat einen eigenen Programmplatz auf dem Dachgeschoss-TV. */
 export function tvKanaele(id: TVId, spielEingelegt: boolean, flauschiEingelegt = false): TVKanal[] {
-  if (id === "tv_e") return ["garten", "musik"];
-  const liste: TVKanal[] = ["garten", "musik", "konsole"];
+  if (id === "tv_e") return ["garten", "musik", "sterne"];
+  const liste: TVKanal[] = ["garten", "musik", "sterne", "konsole"];
   if (spielEingelegt) liste.push("gol");
   if (flauschiEingelegt) liste.push("flauschi");
   return liste;
