@@ -100,6 +100,13 @@ export interface HausSnapshot {
   flauschi?: FlauschiStand | null;
   flauschiEingelegt?: boolean;
   flauschiOnShelf?: boolean;
+  /** Tagesablauf: Weste über dem Schlafanzug, Näpfe, erledigte Termine. */
+  westeAn?: boolean;
+  /** Senseo: vergessene Tassen im Keller, Tassen neben der Spüle, Wasser im Tank. */
+  kaffee?: { unten?: number; spuele?: number; tank?: number };
+  napfFutter?: { odin?: number; apollo?: number };
+  tagErledigt?: { weste?: number; essen?: number; fuettern?: number; auslass?: number; aufwachen?: number };
+  einschlafSek?: number;
   /** Positionen von Odin und Apollo im normalen Haus. */
   hunde?: {
     odin?: { x: number; floor: 0 | 1 | 2; face: 1 | -1 };

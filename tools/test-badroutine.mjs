@@ -61,26 +61,61 @@ test("Zähne putzen: links und rechts, kreisen, hinten, zwischendurch ausspucken
   assert.ok(Math.max(...by) - Math.min(...by) > 1.1 && Math.max(...bx) - Math.min(...bx) > 1.5, "beim Kreisen bewegt sich die Hand rund");
 });
 
-test("Duschen: zehn verschiedene Bewegungen, keine bleibt allein", () => {
+test("Duschen: von oben nach unten, alle Bewegungen, Wasser aus zum Einseifen", () => {
   const w = G.ABEND_RICHTWERTE, takte = G.abendTakte(w), gesehen = new Set();
   for (const ph of ["nasswerden", "washHair", "washBody", "rinse"]) {
-    for (let t = 0; t < takte[ph]; t += .5) gesehen.add(G.duschBild(ph, t, takte[ph]).tat);
+    let vorher = null, folge = 0;
+    for (let t = 0; t < takte[ph]; t += .1) {
+      const b = G.duschBild(ph, t, takte[ph]);
+      gesehen.add(b.tat);
+      // Einseifen nur bei abgedrehtem Wasser, Abspülen nur bei laufendem
+      if (["haare", "haareHinten", "haareSeiten", "koerper", "armLinks", "armRechts", "armLinksHoch", "armRechtsHoch", "knieNah", "knieFern", "greifen", "auftragen", "abstellen"].includes(b.tat))
+        assert.equal(b.wasser, false, `${ph}/${b.tat}: Wasser aus zum Einseifen`);
+      if (["kopfAbspuelen", "abspuelen", "armeHoch"].includes(b.tat))
+        assert.equal(b.wasser, true, `${ph}/${b.tat}: Wasser an zum Abspülen`);
+      if (b.tat === "auftragen") assert.ok(b.flascheInHand && b.flasche, "Flasche in der Hand beim Auftragen");
+      if (b.tat !== vorher) { folge = 0; vorher = b.tat; }
+    }
   }
   assert.deepEqual([...gesehen].sort(), Object.keys(G.DUSCH_CODES).sort(), "alle Bewegungen kommen vor");
+  // Haare zuerst mit Shampoo, dann der Körper mit Duschgel
+  assert.equal(G.duschBild("washHair", 3, takte.washHair).flasche, "shampoo");
+  assert.equal(G.duschBild("washBody", 3, takte.washBody).flasche, "gel");
+  // Kurze Probe: ein Durchgang, trotzdem jede wichtige Bewegung
   const kurz = new Set();
-  for (const [ph, d] of [["nasswerden", 1.2], ["washHair", 3.4], ["washBody", 3.4], ["rinse", 2.8]])
+  for (const ph of ["nasswerden", "washHair", "washBody", "rinse"]) {
+    const d = G.duschProbeDauer(ph);
+    assert.ok(d > 4 && d < 30, `${ph}: Probe dauert ${d} s`);
     for (let t = 0; t < d; t += .05) kurz.add(G.duschBild(ph, t, d).tat);
-  for (const tat of ["haare", "nacken", "gesicht", "streifen", "armLinks", "armRechts", "koerper", "beine", "abspuelen"])
+  }
+  for (const tat of ["haare", "nacken", "gesicht", "streifen", "armLinks", "armRechts", "koerper", "knieNah", "knieFern", "abspuelen", "greifen", "auftragen", "abstellen", "hahn", "kopfAbspuelen", "armeHoch", "beine"])
     assert.ok(kurz.has(tat), `auch in der kurzen Probe: ${tat}`);
+});
+
+test("Duschen: nie dieselbe Bewegung zweimal hintereinander, je Baustein höchstens vier Striche", () => {
+  const takte = G.abendTakte(G.abendWerte(() => 1));
+  for (const ph of ["nasswerden", "washHair", "washBody", "rinse"]) {
+    const bloecke = [];
+    for (let t = 0; t < takte[ph]; t += .05) {
+      const tat = G.duschBild(ph, t, takte[ph]).tat;
+      if (bloecke.at(-1)?.tat === tat) bloecke.at(-1).dauer += .05; else bloecke.push({ tat, dauer: .05 });
+    }
+    // Ein Block = ein Baustein (sonst wären zwei gleiche direkt hintereinander)
+    for (const b of bloecke) assert.ok(b.dauer < 6, `${ph}/${b.tat}: ${b.dauer.toFixed(1)} s am Stück – zu oft wiederholt`);
+  }
 });
 
 test("Duschen: jede Bewegung hat eine eigene Haltung und geht weich in die nächste über", () => {
   const haende = new Set();
   for (const code of Object.values(G.DUSCH_CODES)) {
-    const r = G.luniRigBauen(0, 0, { state: "wash", phase: code, t: 1.3 });
-    haende.add([...r.armNear.hand, ...r.armFar.hand].map((v) => v.toFixed(1)).join());
+    const r = G.luniRigBauen(0, 0, { state: "wash", phase: code + .3, t: 1.3 });
+    haende.add([...r.armNear.hand, ...r.armFar.hand, ...r.legNear.hand].map((v) => v.toFixed(1)).join());
+    // Kopf bleibt in der Dusche: kein Schritt weiter als bis zur Ablage bzw. zurück
+    assert.ok(r.rootX >= -8 && r.rootX <= 10, `Code ${code}: Schritt ${r.rootX}`);
+    assert.ok((r.bend ?? 0) <= .52, `Code ${code}: nicht zu weit vorgebeugt`);
   }
-  assert.equal(haende.size, 10, "zehn verschiedene Handhaltungen");
+  // Greifen und Zurückstellen sind derselbe Weg (einmal mit, einmal ohne Flasche)
+  assert.ok(haende.size >= Object.keys(G.DUSCH_CODES).length - 1, `${haende.size} verschiedene Haltungen`);
   const d = G.abendTakte(G.ABEND_RICHTWERTE).washBody;
   let vorher = null;
   for (let t = 0; t < d; t += 1 / 60) {
@@ -115,7 +150,7 @@ test("Bett-Stein = kurze Probe, EZ-Bett-Stein = voller Echtzeitablauf", () => {
   for (const welt of ["normal", "weihnacht"]) {
     const probe = haus(welt); probe.command("stein_bett");
     assert.ok(probe.abendAktiv && probe.abendProbe, `${welt}: Bett-Stein startet die Probe`);
-    assert.equal(probe.shDauer("washHair"), 3.4); assert.equal(probe.shDauer("zPutzen"), G.ZAHN_PROBE.zPutzen);
+    assert.equal(probe.shDauer("washHair"), G.duschProbeDauer("washHair")); assert.equal(probe.shDauer("zPutzen"), G.ZAHN_PROBE.zPutzen);
     assert.equal(probe.bettTakte().umschlagen, 2.2);
     assert.equal(probe.abendMerken(), undefined, "eine Probe wird nicht als Abend gespeichert");
     const echt = haus(welt); echt.command("stein_ezbett");

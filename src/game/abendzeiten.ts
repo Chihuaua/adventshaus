@@ -54,8 +54,8 @@ export const ABEND_BETT = {
 export function abendTakte(w: AbendWerte) {
   const waschen = w.dusche - 4.5;
   return {
-    // Vorbereitung am Schrank und Brille ablegen: 60 s.
-    openWardrobe: 2, waescheRichten: 34, undress: 8.5, wrap: 9.5, closeWardrobe: 2, glassesOff: 2.8, tossGlasses: 1.2,
+    // Vorbereitung am Schrank und Brille ablegen: 26 s (Umziehen zügig, nicht trödelnd).
+    openWardrobe: 2, waescheRichten: 8, undress: 5, wrap: 5, closeWardrobe: 2, glassesOff: 2.8, tossGlasses: 1.2,
     closeCurtain: 1.3, towelOff: 1.1, throwTowel: .9, waterOn: 1.2,
     nasswerden: waschen / 8, washHair: waschen / 3, washBody: waschen * 7 / 24, rinse: waschen / 4,
     waterOff: 1, takeTowel: 2, abtrocknen: 27, wrapOn: 4, openCurtain: 2, gPick: 4,

@@ -290,3 +290,26 @@ apollo-originalfell | src/game/atelier/stafford.ts | APOLLOS_FELL
 schwebetransporter | src/game/atelier/schwebetransporter.ts | zeichneSchwebetransporter
 kurier-fahrertuer | src/game/atelier/kurierhof.ts | fahrerWechsel
 kurier-fahrprobe | src/components/FigurenAtelier.tsx | FAHRPROBEN
+tagesablauf | src/game/tagesroutine.ts | tageswerte
+aufsteh-routine | src/game/house.ts | aufstehStart
+weste-schlafanzug | src/game/luni.ts | westeOben
+hundenaepfe | src/game/tagesroutine.ts | drawNapfPaar
+tuerregel-vergessen | src/game/house.ts | TUER_VERGESSEN
+rauch-lueften | src/game/house.ts | lueftT
+kellerrauch-eben | src/game/house.ts | drawKellerVorRauch
+tagesroutine-tests | tools/test-tagesroutine.mjs | 8 Gruppen
+dusch-ablage | src/game/shower.ts | drawDuschAblage
+dusch-wasser-aus-einseifen | src/game/duschprogramm.ts | flascheInHand
+dusch-studio | src/StudioApp.tsx | DUSCHE · BEWEGUNGEN EINZELN
+dusch-vorhang-kopf | src/game/house.ts | Kopf oder Haare schauen nie seitlich
+ezbett-umziehen-kurz | src/game/abendzeiten.ts | waescheRichten: 8
+senseo-violett | src/game/kaffee.ts | drawSenseo
+senseo-ablauf | src/game/house.ts | kaffeeRunde
+senseo-zeiten-anleitung | src/game/kaffee.ts | aufheizen: 90
+kuechenschrank-kaffee-tee | src/game/kaffee.ts | drawSchrankRechts
+muell-unter-spuele | src/game/kaffee.ts | drawMuell
+kuehlschrank-offen | src/game/kaffee.ts | drawKuehlOffen
+tee-kanne-schrank | src/game/house.ts | teeMitSchrank
+kaffee-steine | src/game/steine.ts | EZ_KAFFEE_STEIN
+tassen-keller-vergessen | src/game/kaffee.ts | TASSE_VERGESSEN
+kaffee-tests | tools/test-kaffee.mjs | Kaffee-Tests bestanden

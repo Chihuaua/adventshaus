@@ -1213,7 +1213,9 @@ test("Weihnachtshaus & Weihnachtsstein: vierte Hauswelt, drei überlappungsfreie
     assert.equal(wechsel.length, 3, `${w}: drei Steine der anderen Welten`);
     assert.equal(wechsel.some(s => s.ziel === w), false, `${w}: eigener Wechselstein fehlt`);
     assert.deepEqual(slots.filter(s => s.aktion).map(s => s.aktion),
-      w === "normal" || w === "weihnacht" ? ["post", "nikolaus", "abend", "abendEZ"] : [], `${w}: passende Rufsteine`);
+      w === "normal" || w === "weihnacht"
+        ? ["post", "nikolaus", "abend", "abendEZ", "aufsteh", "aufstehEZ", "kaffee", "kaffeeEZ"]
+        : [], `${w}: passende Rufsteine`);
     for (let i = 0; i < slots.length; i++) {
       const [hx, hy, hw, hh] = slots[i].hit;
       assert.ok(hw >= 24 && hh >= 24, `${slots[i].label}: mindestens 24×24`);

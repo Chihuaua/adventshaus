@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { drawLuni, drawZzz, type LuniExpr, type LuniState } from "@/game/luni";
 import { drawOriginal, type OrigState } from "@/game/original";
+import { augenZu } from "@/game/duschprogramm";
 
 interface Props {
   state: LuniState;
@@ -12,6 +13,8 @@ interface Props {
   speed: number;
   variant?: "luni" | "original";
   origState?: OrigState;
+  /** Duschbewegung (Code aus duschprogramm.ts), läuft als Schleife: drei Striche je Durchgang. */
+  duschCode?: number | null;
 }
 
 /** Große, animierte Bühne mit Bodenlinie und Maßraster. */
@@ -25,10 +28,11 @@ export function LuniStage({
   speed,
   variant = "luni",
   origState = "idle",
+  duschCode = null,
 }: Props) {
   const ref = useRef<HTMLCanvasElement | null>(null);
-  const p = useRef({ state, expr, face, zoom, grid, paused, speed, variant, origState });
-  p.current = { state, expr, face, zoom, grid, paused, speed, variant, origState };
+  const p = useRef({ state, expr, face, zoom, grid, paused, speed, variant, origState, duschCode });
+  p.current = { state, expr, face, zoom, grid, paused, speed, variant, origState, duschCode };
 
   useEffect(() => {
     const cv = ref.current;
@@ -146,13 +150,16 @@ export function LuniStage({
           drawZzz(ctx, w / 2 + 30 * sc, groundY - 36 * sc, t, sc);
         }
       } else {
+        // Duschbewegung: ein Durchgang dauert 3,6 s, danach beginnt er von vorn.
+        const dusche = o.duschCode !== null && o.duschCode !== undefined;
+        const duschPhase = dusche ? (o.duschCode as number) + Math.min(0.999, (t % 3.6) / 3.6) : 0;
         drawLuni(ctx, w / 2, groundY, {
           t,
           face: o.face,
-          state: o.state,
-          expr: o.expr,
+          state: dusche ? "wash" : o.state,
+          expr: dusche ? (augenZu(duschPhase) ? "sleep" : "happy") : o.expr,
           walk,
-          phase,
+          phase: dusche ? duschPhase : phase,
           blink: blink > 0 ? 1 : 0,
           scale: sc,
         });
