@@ -20,6 +20,7 @@ import { loadJson, saveJson } from "./storage";
 import type { TVStand } from "./tv";
 import type { FlauschiStand } from "./flauschi";
 import type { LavaSnapshot } from "./lavalampe";
+import type { AbendFortschritt } from "./abendzeiten";
 
 export type WeltId = "normal" | "traum" | "gruesel" | "weihnacht";
 
@@ -71,6 +72,10 @@ export interface HausSnapshot {
   glassesOn: boolean;
   glassesInSink: boolean;
   brushInCab: boolean;
+  /** Handy unter dem Kopf: verstrichene Anrufsekunden, danach der ruhende Endzustand. */
+  handyNacht?: number | "schlaf";
+  abendBegonnenAm?: number;
+  abendFortschritt?: AbendFortschritt;
   gardenDoor: number;
   cellarDoorV: number;
   golOnShelf: boolean;

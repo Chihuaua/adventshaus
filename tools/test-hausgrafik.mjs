@@ -625,14 +625,18 @@ test("Beide Bett-Zeichnungen setzen bedCover; die Decke behält ihre eigene Form
 });
 
 test("Umziehen: ganze Arme in der richtigen Ebene, der Schrankgriff liegt hinter dem Ruecken", () => {
-  for (const schrankRuecken of [false, true]) for (const state of ["undress", "wrap"]) {
+  for (const schrankRuecken of [false, true]) for (const state of ["undress", "wrap"]) for (const phase of [.12, .39, .5, .73, .92]) {
     const c = canvas();
-    G.drawLuni(c.ctx, 0, 0, { state, phase: .5, back: true, schrankRuecken, shadow: false, t: 0 });
+    G.drawLuni(c.ctx, 0, 0, { state, phase, back: true, schrankRuecken, shadow: false, t: 0 });
     const arme = c.shapes.filter(z => z.kind === "stroke" && ["#dcc9a5", "#c4ad84"].includes(z.color));
     assert.equal(arme.length, 2); assert.ok(arme.every(z => z.points.length >= 3), "zwei ungeteilte Arme");
     const ruecken = c.shapes.findIndex(z => z.kind === "path" && z.color === "#dcc9a5" && z.right-z.left > 13);
     assert.ok(ruecken >= 0);
     assert.ok(arme.every(a => schrankRuecken ? c.shapes.indexOf(a) < ruecken : c.shapes.indexOf(a) > ruecken));
+    if (schrankRuecken) {
+      const ersterHaarfall = c.shapes.findIndex(z => z.kind === "path" && z.color === "#191920" && z.bottom - z.top > 18);
+      assert.ok(ersterHaarfall > 0 && arme.every(a => c.shapes.indexOf(a) < ersterHaarfall), "auch die seitlichen Haarstraehnen verdecken die Aermel");
+    }
   }
 });
 
