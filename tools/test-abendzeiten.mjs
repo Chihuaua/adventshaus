@@ -19,7 +19,7 @@ const nah = (a,b,eps=.00001) => assert.ok(Math.abs(a-b)<=eps,`${a} statt ${b} (T
 for (const w of [min,mitte,max]) {
   const d = G.abendTakte(w), sum = keys => keys.split(" ").reduce((v,k) => v+d[k],0);
   for (const [phasen,sek] of [
-    ["openWardrobe waescheRichten undress wrap closeWardrobe glassesOff tossGlasses",60],
+    ["openWardrobe waescheRichten undress wrap closeWardrobe glassesOff tossGlasses",26],
     ["closeCurtain towelOff throwTowel waterOn nasswerden washHair washBody rinse",w.dusche],
     ["waterOff takeTowel abtrocknen wrapOn openCurtain gPick",40],
     ["cOpen zNehmen zTube zPaste zTubeZurueck",20],["zPutzen",w.zaehne],["zGurgeln zSpucken",10],

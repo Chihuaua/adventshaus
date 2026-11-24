@@ -73,22 +73,14 @@ export function showerStatic(c: C, F: number) {
   c.fillStyle = "#8fa8ae";
   for (let i = 0; i < 4; i++) c.fillRect(x + w - 25 + i * 1.6, F - h + 9.4, 0.7, 0.7);
 
-  // Armatur links, Ablage mit Flaschen rechts
+  // Armatur links. Shampoo und Duschgel stehen auf der Wandablage neben der
+  // Dusche (drawDuschAblage), damit Luni sie sichtbar greifen kann.
   c.fillStyle = "#d5dee2";
   c.beginPath();
   c.arc(x + 10, F - 52, 2.4, 0, Math.PI * 2);
   c.fill();
   c.fillStyle = "#8fb8c4";
   c.fillRect(x + 7, F - 52.5, 6, 1);
-  c.fillStyle = "#c9d8d2";
-  c.fillRect(x + w - 16, F - 46, 11, 1.8);
-  c.fillStyle = "#7ec4dc";
-  c.fillRect(x + w - 14, F - 55, 3, 9);
-  c.fillStyle = "#f0e2a8";
-  c.fillRect(x + w - 10, F - 53, 3, 7);
-  c.fillStyle = "#e6ecee";
-  c.fillRect(x + w - 14, F - 57, 3, 2);
-  c.fillRect(x + w - 10, F - 55, 3, 2);
 
   // Vorhangstange quer über die ganze Breite
   c.strokeStyle = "#b9c6c9";
@@ -245,4 +237,41 @@ export function drawWardrobeOpen(c: C, x: number, F: number, open: number, towel
   c.fillStyle = "rgba(0,0,0,.22)";
   c.fillRect(x + 3 - (18 - dw) * 0.55 * e - dw * e, F - 80, 1.2, 76);
   c.fillRect(x + 45 + (18 - dw) * 0.55 * e - dw * (1 - e) + dw - 1.2, F - 80, 1.2, 76);
+}
+
+/* ------------------------------------------------------------------------
+   Wandablage zwischen Dusche und WC-Tür (x 548–563): Shampoo und Duschgel.
+   Steht eine Flasche gerade in Lunis Hand, bleibt ihr Platz leer.
+   ------------------------------------------------------------------------ */
+export const ABLAGE = { x: SHOWER_X + SHOWER_W + 2, w: 15, boden: 58 } as const;
+export const FLASCHE_FARBE = { shampoo: "#7ec4dc", gel: "#f0e2a8" } as const;
+
+/** Eine kleine Flasche; (x, y) = Mitte des Bodens, `winkel` kippt sie. */
+export function drawFlasche(c: C, x: number, y: number, welche: "shampoo" | "gel", winkel = 0) {
+  const hoch = welche === "shampoo" ? 9 : 7.5;
+  c.save();
+  c.translate(x, y);
+  c.rotate(winkel);
+  c.fillStyle = FLASCHE_FARBE[welche];
+  c.fillRect(-1.6, -hoch, 3.2, hoch);
+  c.fillStyle = "rgba(255,255,255,.35)";
+  c.fillRect(-1.1, -hoch + 1, 0.8, hoch - 2);
+  c.fillStyle = "#e6ecee";
+  c.fillRect(-1.3, -hoch - 2, 2.6, 2);
+  c.restore();
+}
+
+export function drawDuschAblage(c: C, F: number, shampoo: boolean, gel: boolean) {
+  const { x, w, boden } = ABLAGE;
+  const y = F - boden;
+  // Brett mit zwei Wandhaltern
+  c.fillStyle = "#c9d8d2";
+  c.fillRect(x, y, w, 1.8);
+  c.fillStyle = "#9fb0aa";
+  c.fillRect(x + 1.5, y + 1.8, 1.2, 3);
+  c.fillRect(x + w - 2.7, y + 1.8, 1.2, 3);
+  c.fillStyle = "rgba(0,0,0,.12)";
+  c.fillRect(x, y + 1.8, w, 0.8);
+  if (shampoo) drawFlasche(c, x + 4.5, y, "shampoo");
+  if (gel) drawFlasche(c, x + 10.5, y, "gel");
 }

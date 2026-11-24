@@ -4,6 +4,7 @@ import { ExprSheet, PoseSheet, WalkStrip, ScaleCheck } from "@/components/LuniSh
 import { LUNI_COLORS, type LuniExpr, type LuniState } from "@/game/luni";
 import { Compare, OrigPoseSheet } from "@/components/Compare";
 import { ORIG_COLORS, type OrigState } from "@/game/original";
+import { DUSCH_CODES, DUSCH_TATEN, type DuschTat } from "@/game/duschprogramm";
 
 const GROUPS: { title: string; items: { k: LuniState; label: string }[] }[] = [
   {
@@ -157,6 +158,8 @@ export default function StudioApp() {
   const [speed, setSpeed] = useState(1);
   const [view, setView] = useState<"luni" | "original" | "compare">("compare");
   const [origState, setOrigState] = useState<OrigState>("idle");
+  // Einzelne Duschbewegung auf der Bühne (null = normale Haltung).
+  const [duschTat, setDuschTat] = useState<DuschTat | null>(null);
 
   return (
     <div className="bg-room grid-floor min-h-[100dvh] w-full overflow-x-hidden p-3 sm:p-5">
@@ -291,6 +294,7 @@ export default function StudioApp() {
                   speed={speed}
                   variant={view === "original" ? "original" : "luni"}
                   origState={origState}
+                  duschCode={view === "luni" && duschTat ? DUSCH_CODES[duschTat] : null}
                 />
               )}
               <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-black/45 px-2 py-1 font-display text-[9px] tracking-[0.18em] text-mint-200">
@@ -392,13 +396,23 @@ export default function StudioApp() {
                   <Panel key={g.title} title={g.title}>
                     <div className="flex flex-wrap gap-1.5">
                       {g.items.map((s) => (
-                        <Chip key={s.k} active={state === s.k} onClick={() => setState(s.k)}>
+                        <Chip key={s.k} active={state === s.k && !duschTat} onClick={() => { setState(s.k); setDuschTat(null); }}>
                           {s.label}
                         </Chip>
                       ))}
                     </div>
                   </Panel>
                 ))}
+
+                <Panel title="DUSCHE · BEWEGUNGEN EINZELN" hint="je drei Striche, dann von vorn">
+                  <div className="flex flex-wrap gap-1.5">
+                    {DUSCH_TATEN.map((d) => (
+                      <Chip key={d.tat} active={duschTat === d.tat} onClick={() => setDuschTat(d.tat)}>
+                        {d.label}
+                      </Chip>
+                    ))}
+                  </div>
+                </Panel>
 
                 <Panel title="MIMIK" hint="nonverbale Kommunikation">
                   <div className="flex flex-wrap gap-1.5">

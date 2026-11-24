@@ -24,8 +24,13 @@ import { haarstrich } from "./haarstrich";
 import { abendWelt, ABEND_WURFHAND, BETT_HANDY, BettHandy, bettArm, bettHandgriff, handyAufDemKissen, pyjamaStoff, type BettBild, type Schlafanzug } from "./abendroutine";
 import { istZahnschritt, ZAHN_PROBE, ZAHN_STAND, ZAHN_WEG, ZAHN_TAKTE, zahnbild, zahnfach, zahnHandobjekte, zahnWasser, type Zahnbild } from "./zahnpflege";
 import { WaschbeckenKlang } from "./audio/waschbecken";
+import {
+  KAFFEE_PROBE, KAFFEE_ZEIT, KORT, KSTAND, MAX_TASSEN_UNTEN, PROBE_GRIFF, SenseoKlang, TASSE_VERGESSEN,
+  drawKanneKlein, drawKuehlOffen, drawMilch, drawMuell, drawPad, drawPadDose, drawSchrankRechts, drawSenseo,
+  drawTank, drawTasse, drawTassenSpuele, neuerKaffeeStand, type KaffeeStand,
+} from "./kaffee";
 import { DuschKlang } from "./audio/dusche";
-import { AUGEN_ZU, duschBild } from "./duschprogramm";
+import { augenZu, duschBild, duschProbeDauer, flascheAufAblage, type DuschBild } from "./duschprogramm";
 import {
   GOL_BTN,
   GOL_RULES,
@@ -103,7 +108,11 @@ import {
 } from "./gruselhaus/kueche";
 import { drawWetter, ladeWetter, tickWetter, waehleJahreszeit, waehleWetter, schalteZusatz, echtwetter, type WetterState } from "./wetter";
 import { drawWetterStation, wetterStationHit, wetterStationLayout, type WetterBefehl, type WetterTreffer } from "./wetterstation";
-import { drawStein, steinAn, steinSlots, BETT_STEIN, EZ_BETT_STEIN, NIKOLAUS_STEIN, type SteinSlot } from "./steine";
+import { drawStein, steinAn, steinSlots, BETT_STEIN, EZ_BETT_STEIN, AUFSTEH_STEIN, EZ_AUFSTEH_STEIN, KAFFEE_STEIN, EZ_KAFFEE_STEIN, NIKOLAUS_STEIN, type SteinSlot } from "./steine";
+import {
+  NAPF_ORTE, TAGES_DAUERN, TAGES_PROBE, TAGES_ZEITEN, aufwachSekunde, drawEssTeller, drawNapfPaar, tageswerte,
+  type NapfStand, type Tageswerte,
+} from "./tagesroutine";
 import { NikolausBesuch, zeichneNikolausSpur, type NikolausStand } from "./nikolaus-besuch";
 import { zeichneNikolaus, type NikolausBild } from "./nikolaus-figur";
 import { ruprechtBegleitung, zeichneRuprechtSpur } from "./ruprecht-begleitung";
@@ -170,8 +179,12 @@ import {
 } from "./gruselhaus/schlafzimmer";
 import {
   SHOWER_X,
+  SHOWER_W,
   curtainRect,
   drawCurtain,
+  drawDuschAblage,
+  drawFlasche,
+  ABLAGE,
   drawShowerWater,
   drawSteam,
   drawTowelOnRod,
@@ -557,6 +570,35 @@ export interface Station {
 type LuniCommand = string | Station;
 
 const [FK, FE, FO, FD] = FLOOR_Y;
+/** Kaffee-/Tee-Ablauf: Haltung und Hände in einem Augenblick. */
+type KPose = {
+  state?: LuniState; phase?: number; hand?: Pt | null; hand2?: Pt | null; face?: 1 | -1;
+  /** Hand vor dem Bauch, wie beim Tragen (relativ zum Körper, auch auf der Treppe). */
+  trag?: boolean;
+};
+interface KSchritt {
+  was: string;
+  /** Hingehen (Erdgeschoss = 1, Keller = 0). */
+  x?: number; floor?: 0 | 1; face?: 1 | -1; yOff?: number;
+  /** Feste Griffdauer (wird in der Probe verkürzt) oder eigene Zeit (Senseo, Wasser). */
+  dauer?: number | (() => number);
+  warten?: () => boolean;
+  wenn?: () => boolean;
+  pose?: (p: number) => KPose;
+  start?: () => void;
+  tick?: (p: number) => void;
+  ende?: () => void;
+}
+
+/** Termine, die die Uhr auslöst. */
+type TagTermin = "weste" | "essen" | "fuettern" | "spielen" | "auslass" | "rauch" | "aufstehen";
+/** Erledigte Termine im Kalender: aufwachen gehört dazu, ist aber kein Schritt der Folge. */
+type TagErledigtKey = TagTermin | "aufwachen" | "kaffee";
+/** Diese Tätigkeiten unterbricht der Tagesablauf nicht: die Pause wartet. */
+const TAG_GESCHUETZT = ["dusche", "herd", "esstisch", "bett", "tee", "kaffee", "wc"] as const;
+/** So oft vergisst Luni, eine Tür hinter sich zu schließen. */
+const TUER_VERGESSEN = 0.03;
+
 const BETTRUF: Station = {
   id: "stein_bett", label: "Bett-Stein", floor: 0, x: BETT_STEIN.x,
   face: 1, state: "idle", expr: "neutral", hits: [BETT_STEIN.hit],
@@ -565,6 +607,24 @@ const BETTRUF: Station = {
 const EZ_BETTRUF: Station = {
   id: "stein_ezbett", label: "EZ-Bett-Stein", floor: 0, x: EZ_BETT_STEIN.x,
   face: 1, state: "idle", expr: "neutral", hits: [EZ_BETT_STEIN.hit],
+};
+const AUFSTEHRUF: Station = {
+  id: "stein_aufsteh", label: "Aufsteh-Stein", floor: 0, x: AUFSTEH_STEIN.x,
+  face: 1, state: "idle", expr: "neutral", hits: [AUFSTEH_STEIN.hit],
+};
+/** EZ-Aufsteh-Stein: dieselbe Aufsteh-Routine mit ihren Echtzeit-Dauern. */
+const EZ_AUFSTEHRUF: Station = {
+  id: "stein_ezaufsteh", label: "EZ-Aufsteh-Stein", floor: 0, x: EZ_AUFSTEH_STEIN.x,
+  face: 1, state: "idle", expr: "neutral", hits: [EZ_AUFSTEH_STEIN.hit],
+};
+const KAFFEERUF: Station = {
+  id: "stein_kaffee", label: "Kaffee-Stein", floor: 0, x: KAFFEE_STEIN.x,
+  face: 1, state: "idle", expr: "neutral", hits: [KAFFEE_STEIN.hit],
+};
+/** EZ-Kaffee-Stein: die Morgenroutine mit der Senseo in Echtzeit. */
+const EZ_KAFFEERUF: Station = {
+  id: "stein_ezkaffee", label: "EZ-Kaffee-Stein", floor: 0, x: EZ_KAFFEE_STEIN.x,
+  face: 1, state: "idle", expr: "neutral", hits: [EZ_KAFFEE_STEIN.hit],
 };
 const NIKOLAUSRUF: Station = {
   id: "stein_nikolaus", label: "Nikolausstein", floor: 0, x: NIKOLAUS_STEIN.x,
@@ -601,6 +661,11 @@ export const STATIONS: Station[] = [
   {
     id: "tee", label: "Gesundheitstee", floor: 1, x: TEE_POSE_X, face: 1, state: "idle", expr: "happy",
     hits: [[628, 380, 30, 30]],
+  },
+  {
+    // Vier Näpfe am Küchenboden: Odin und Apollo bekommen je Futter und Wasser.
+    id: "naepfe", label: "Hundenäpfe", floor: 1, x: 653, face: 1, state: "act", expr: "happy",
+    hits: [[610, 432, 88, 26]],
   },
   {
     id: "herd", label: "Herd", floor: 1, x: 708, face: 1, state: "act", expr: "focus",
@@ -1472,23 +1537,25 @@ function kellerTuer(c: C, x: number, F: number) {
   disc(c, x + 38, F - 40, 2.2, "#e6c36a");
 }
 
-function fridge(c: C, x: number, F: number, weihnacht = false) {
+function fridge(c: C, x: number, F: number, weihnacht = false, griffRechts = false) {
   rrect(c, x, F - 78, 38, 78, 4, weihnacht ? WEIHNACHTS_FARBEN.moebel.kueche.kuehlschrank : "#e6ecec");
   rect(c, x, F - 50, 38, 3, "#c3d0cf");
-  rect(c, x + 5, F - 70, 3, 14, "#93a5a4");
-  rect(c, x + 5, F - 44, 3, 12, "#93a5a4");
+  const gx = griffRechts ? x + 30 : x + 5;
+  rect(c, gx, F - 70, 3, 14, "#93a5a4");
+  rect(c, gx, F - 44, 3, 12, "#93a5a4");
   rect(c, x + 16, F - 68, 8, 8, weihnacht ? WEIHNACHTS_FARBEN.rot : "#ff6f61");
   rect(c, x + 26, F - 62, 8, 10, weihnacht ? WEIHNACHTS_FARBEN.gold : "#ffd166");
 }
 
-function kitchenCounter(c: C, x: number, F: number, w: number, weihnacht = false) {
+function kitchenCounter(c: C, x: number, F: number, w: number, weihnacht = false, ohneMaschine = false) {
   rect(c, x, F - 36, w, 36, weihnacht ? WEIHNACHTS_FARBEN.moebel.kueche.front : "#3f5a6b");
   for (const dx of [0, w * 0.34, w * 0.67, w - 1.5]) rect(c, x + dx, F - 36, 1.5, 36, "rgba(0,0,0,.28)");
   rect(c, x - 1, F - 40, w + 2, 4, weihnacht ? WEIHNACHTS_FARBEN.moebel.kueche.platte : "#efe8d8");
   rrect(c, x + 6, F - 41, 24, 4, 2, "#aeb8bb");
   line(c, x + 22, F - 41, x + 22, F - 52, "#8fa6b2", 2);
   line(c, x + 22, F - 52, x + 28, F - 52, "#8fa6b2", 2);
-  // Kaffeemaschine
+  // Kaffeemaschine (im normalen Haus und Weihnachtshaus steht die Senseo, dynamisch gezeichnet)
+  if (ohneMaschine) return;
   rrect(c, x + 50, F - 58, 17, 18, 3, "#2a2f35");
   rect(c, x + 53, F - 46, 11, 6, "#4a2a1a");
   disc(c, x + 62, F - 54, 1.4, "#ff9f43");
@@ -3368,8 +3435,11 @@ function drawHouse(
     hexenofenOhneRohr(c, (c) => drawOfen(c, FE, 0, 0));
     drawKessel(c, FE, 0);
   } else {
-    fridge(c, 574, FE, festlich);
-    kitchenCounter(c, 614, FE, 76, festlich);
+    // Normales Haus und Weihnachtshaus: violette Senseo (dynamisch), Griff rechts
+    // (die Tür öffnet an der rechten Angel), Teekanne im rechten Unterschrank.
+    const senseo = weihnachtsdeko;
+    fridge(c, 574, FE, festlich, senseo);
+    kitchenCounter(c, 614, FE, 76, festlich, senseo);
     if (festlich) festzweig(c, 619, FE - 40.9, 9.3);
     teaPot(c, tee.kanne, tee.tasse, tee.fill);
     stove(c, 690, FE);
@@ -3537,13 +3607,13 @@ const GLASSES_FLIGHT = 1.35;
 /** Dauer in Sekunden; Laufschritte haben keine Dauer, sie enden mit der Ankunft. */
 const SH_DUR: Partial<Record<ShPhase, number>> = {
   ...ZAHN_PROBE,
-  waescheRichten: 1.4, nasswerden: 1.2, abtrocknen: 1.8,
+  waescheRichten: 1.4, nasswerden: duschProbeDauer("nasswerden"), abtrocknen: 1.8,
   glassesOff: 1.3, tossGlasses: 0.9,
   openWardrobe: 0.7, undress: 1.6, wrap: 1.5, closeWardrobe: 0.6,
   pressPanel: 0.8, capsuleOpen: 1.1, turnFront: 0.8, capsuleClose: 1.1,
   capsuleExitOpen: 1.1, capsuleExitClose: 1.1,
   closeCurtain: 1.3, towelOff: 1.1, throwTowel: 0.9, waterOn: 0.8,
-  washHair: 3.4, washBody: 3.4, rinse: 2.8, waterOff: 0.8,
+  washHair: duschProbeDauer("washHair"), washBody: duschProbeDauer("washBody"), rinse: duschProbeDauer("rinse"), waterOff: 0.8,
   takeTowel: 0.9, wrapOn: 1.5, openCurtain: 1.3,
   dOpen: 0.7, dDress: 1.8, dClose: 0.6,
   gPick: 2.3, cOpen: 1.2, kClose: 1.2,
@@ -3999,6 +4069,54 @@ export class House {
   private tossLand = 1;
   private tossLanded = false;
   private asleep = false;
+  /* -------------------- Kaffee (Senseo) und Tee-Schrank ------------------ */
+  private kaffee: KaffeeStand = neuerKaffeeStand();
+  private kAblauf: { schritte: KSchritt[]; i: number; t: number; geht: boolean; angekommen: boolean; gestartet: boolean; probe: boolean } | null = null;
+  private kPose: KPose | null = null;
+  /** Eigener Befehl aus dem Ablauf (darf ihn nicht abbrechen). */
+  private kIntern = false;
+  /** Kommt der Befehl gerade vom Spieler (Klick, Taste)? */
+  private nutzerEingabe = false;
+  private kRauchBegonnen = false;
+  private kSchluckT = 0;
+  private kSchluckWarte = 0;
+  private kAusT = 0;
+  private kuechenHahn = new WaschbeckenKlang();
+  private senseoKlang = new SenseoKlang();
+  /* ------------------------- Tagesablauf (Uhrzeit) ----------------------- */
+  /** Termine des heutigen Tages; null, bis der erste Blick auf die Uhr fällt. */
+  private tagPlan: Tageswerte | null = null;
+  private tagTag = 0;
+  /** Kurze Probe über den Tag-Stein (alles in wenigen Sekunden). */
+  private tagProbe = false;
+  /** Läuft der Tagesablauf gerade (Probe oder Echtzeit)? */
+  private tagAktiv = false;
+  private tagWas: TagTermin | null = null;
+  private tagT = 0;
+  private tagDauer = 0;
+  /** Aufsteh-Routine: liegt sie noch (false) oder ist sie schon wach? */
+  private tagWach = false;
+  /** Sekunden ohne Ziel und Tätigkeit – Übergangsmomente bleiben erlaubt. */
+  private tagFremdT = 0;
+  /** Erledigte Termine des heutigen Tages: Termin -> Kalendertag. */
+  private tagErledigt: Partial<Record<TagErledigtKey, number>> = {};
+  /** Weste aus dem Kleiderschrank, über den Schlafanzug gezogen. */
+  private westeAn = false;
+  private westeT = 0;
+  /** Essen vor dem Fernseher: Rest auf dem Teller (1 = voll, 0 = leer). */
+  private tagEssen = false;
+  private essenT = 0;
+  /** Füllstand Futter je Hund; Wasser bleibt immer voll. */
+  private napfFutter: NapfStand = { odin: 0, apollo: 0 };
+  private napfT = 0;
+  /** Tagessekunde, zu der sie eingeschlafen ist. */
+  private einschlafSek = 0;
+  /** Tagessekunde der nächsten eigenen Rauchpause. */
+  private rauchNaechste = -1;
+  /** Lüften nach Rauch im Krempelraum: Restzeit der offenen Gartentür. */
+  private lueftT = 0;
+  /** Tür, die Luni hinter sich schließt (oder in 3 % der Fälle offen lässt). */
+  private tuerHinter: { x: number; dir: 1 | -1; knob: () => Pt; close: () => void } | null = null;
   private sleepT = 0;
   private revealT = 0;
   private bedTimePending = false;
@@ -4268,7 +4386,8 @@ export class House {
     this.onUfo = opts.onUfo ?? null;
     this.steine = steinSlots(this.welt);
     // Rufsteine gehören nur einmal in den Fokusumlauf, zusammen mit den Wechselsteinen.
-    this.stations = this.stations.filter((st) => st.id !== NIKOLAUSRUF.id && st.id !== BETTRUF.id && st.id !== EZ_BETTRUF.id);
+    this.stations = this.stations.filter((st) => st.id !== NIKOLAUSRUF.id && st.id !== BETTRUF.id && st.id !== EZ_BETTRUF.id
+      && st.id !== AUFSTEHRUF.id && st.id !== EZ_AUFSTEHRUF.id && st.id !== KAFFEERUF.id && st.id !== EZ_KAFFEERUF.id);
     if (this.postWelt) {
       this.nikolaus.laden(loadJson<NikolausStand>(this.nikolausSchluessel));
       this.nikolausEinladen = this.nikolaus.phase === "warten";
@@ -4279,7 +4398,9 @@ export class House {
       // eigene Kopie der Haustür-Station: die Beschriftung wechselt nur in dieser Welt
       this.stations = this.stations.map((st) => (st.id === "haustuer" ? { ...st, hits: [...st.hits] } : st));
     }
-    this.steinStationen = this.steine.map((sl) => sl.aktion === "nikolaus" ? NIKOLAUSRUF : sl.aktion === "abend" ? BETTRUF : sl.aktion === "abendEZ" ? EZ_BETTRUF : ({
+    this.steinStationen = this.steine.map((sl) => sl.aktion === "nikolaus" ? NIKOLAUSRUF : sl.aktion === "abend" ? BETTRUF : sl.aktion === "abendEZ" ? EZ_BETTRUF
+      : sl.aktion === "aufsteh" ? AUFSTEHRUF : sl.aktion === "aufstehEZ" ? EZ_AUFSTEHRUF
+      : sl.aktion === "kaffee" ? KAFFEERUF : sl.aktion === "kaffeeEZ" ? EZ_KAFFEERUF : ({
       id: `stein_${sl.art}`,
       label: sl.label,
       floor: 0,
@@ -4328,6 +4449,8 @@ export class House {
 
   destroy() {
     this.hahnKlang.stop();
+    this.kuechenHahn.stop();
+    this.senseoKlang.stop();
     this.duschKlang.stop();
     this.speichern();
     window.removeEventListener("pagehide", this.onPageHide);
@@ -4448,6 +4571,11 @@ export class House {
       flauschiEingelegt: this.flauschiInserted,
       flauschiOnShelf: this.flauschiOnShelf,
       hunde: this.istNormalHaus ? this.hunde.snapshot() : undefined,
+      westeAn: this.westeAn,
+      kaffee: { unten: this.kaffee.tassenUnten, spuele: this.kaffee.tassenSpuele, tank: this.kaffee.tankWasser },
+      napfFutter: { ...this.napfFutter },
+      tagErledigt: { ...this.tagErledigt },
+      einschlafSek: this.einschlafSek,
     };
   }
 
@@ -4469,6 +4597,18 @@ export class House {
     this.cigs = clamp(Math.round(s.cigs), 0, PILE_MAX);
     this.cigButt = !!s.cigButt;
     this.pyjama = s.pyjama ?? null;
+    this.westeAn = !!s.westeAn;
+    if (s.kaffee) {
+      this.kaffee.tassenUnten = clamp(Math.round(s.kaffee.unten ?? 0), 0, MAX_TASSEN_UNTEN);
+      this.kaffee.tassenSpuele = clamp(Math.round(s.kaffee.spuele ?? 0), 0, 3);
+      this.kaffee.tankWasser = clamp(s.kaffee.tank ?? 0.3, 0, 1);
+    }
+    this.napfFutter = {
+      odin: clamp(s.napfFutter?.odin ?? 0, 0, 1),
+      apollo: clamp(s.napfFutter?.apollo ?? 0, 0, 1),
+    };
+    this.tagErledigt = s.tagErledigt ?? {};
+    this.einschlafSek = Number.isFinite(s.einschlafSek) ? s.einschlafSek! : 0;
     this.glassesOn = s.glassesOn;
     this.glassesInSink = s.glassesInSink;
     this.abendBegonnenAm = Number.isInteger(s.abendBegonnenAm) ? s.abendBegonnenAm! : 0;
@@ -4537,6 +4677,10 @@ export class House {
     if (!sl) return;
     if (sl.aktion === "abend") { this.command(BETTRUF.id); return; }
     if (sl.aktion === "abendEZ") { this.command(EZ_BETTRUF.id); return; }
+    if (sl.aktion === "aufsteh") { this.command(AUFSTEHRUF.id); return; }
+    if (sl.aktion === "aufstehEZ") { this.command(EZ_AUFSTEHRUF.id); return; }
+    if (sl.aktion === "kaffee") { this.command(KAFFEERUF.id); return; }
+    if (sl.aktion === "kaffeeEZ") { this.command(EZ_KAFFEERUF.id); return; }
     if (sl.aktion === "nikolaus") {
       if (this.nikolaus.rufen(this.clock)) {
         sfx.ui();
@@ -4714,6 +4858,8 @@ export class House {
   }
 
   private onDown = (e: PointerEvent) => {
+    this.nutzerEingabe = true;
+    queueMicrotask(() => { this.nutzerEingabe = false; });
     this.stationFokus = null;
     sfx.ensure();
     const [x, y] = this.toWorld(e);
@@ -4856,6 +5002,14 @@ export class House {
    */
   command(request: LuniCommand) {
     const id = typeof request === "string" ? request : request.id;
+    // Ein Klick des Spielers beendet den Kaffee- bzw. Tee-Ablauf; alles kommt an seinen Platz.
+    if (this.kAblauf && this.nutzerEingabe && !this.kIntern) this.kaffeeAbbrechen();
+    if (this.senseoHaus && !this.kIntern) {
+      // Klick auf die Senseo: 1 Kaffee, 1 Zigarette. Steine: die Morgenroutine (2 Runden).
+      if (id === "kaffee") { this.kaffeeStart(1, false); return; }
+      if (id === KAFFEERUF.id || id === EZ_KAFFEERUF.id) { this.kaffeeStart(2, id === KAFFEERUF.id); return; }
+      if (id === "tee" && this.kaffee.kanne === "schrank" && !this.kAblauf) { this.teeMitSchrank(false); return; }
+    }
     if (id === EZ_BETTRUF.id) {
       // EZ-Bett-Stein: dieselbe Abendroutine, aber mit den Echtzeit-Dauern des heutigen Abends.
       if (this.abendAktiv) return;
@@ -4876,6 +5030,11 @@ export class House {
       }
       if (this.abendBeschaeftigt()) { this.abendWartet = true; return; }
       this.abendWartet = false;
+    }
+    if (id === AUFSTEHRUF.id || id === EZ_AUFSTEHRUF.id) {
+      if (this.tagAktiv || !abendWelt(this.welt)) return;
+      this.aufstehStart(id === AUFSTEHRUF.id);
+      return;
     }
     if (id === NIKOLAUSRUF.id) {
       if (this.postWelt) this.steinWechsel(NIKOLAUSRUF);
@@ -5741,6 +5900,7 @@ export class House {
       this.clockT = 0;
       this.clock = this.fixedClock ?? berlinNow();
       this.abendPruefen();
+      this.tagesPruefen();
       if (this.postWelt && !this.tvZoom && !this.adventFullscreen && this.nikolaus.kalender(this.clock)) {
         saveJson(this.nikolausSchluessel, this.nikolaus.stand());
       }
@@ -5997,6 +6157,97 @@ export class House {
       this.sitIdleT = 0;
     }
 
+    // --- Kaffee mit der Senseo / Tee aus dem Schrank ---
+    this.updateKaffee(dt);
+
+    // --- Aufsteh-Routine: kurzes Wachliegen, dann Aufwachen und Weste holen ---
+    if (this.tagAktiv && this.tagWas === "aufstehen") {
+      this.tagT += dt;
+      if (!this.tagWach && this.tagT >= this.tagDauer) {
+        this.tagWach = true;
+        this.aufwachen();
+        // Nach dem Aufstehen die Weste aus dem Kleiderschrank über den Schlafanzug.
+        this.tagStart("weste", this.tagProbe);
+      }
+      return;
+    }
+
+    // --- Tagesablauf: ein Termin läuft, seine Zeit wird hier gemessen ---
+    if (this.tagAktiv && this.tagWas) {
+      const erwartet = this.tagErwartet();
+      // Ein anderer Wunsch hat den Termin verdrängt: Ziel oder Tätigkeit gehoeren
+      // nicht mehr dazu. Der kurze Moment zwischen Ankunft und Aktivitaet zaehlt
+      // nicht als Abbruch.
+      const woanders = !!erwartet && (
+        (!!this.activity && this.activity.id !== erwartet) ||
+        (!!this.pending && this.pending.id !== erwartet) ||
+        this.asleep
+      );
+      const stehtHerum = !this.activity && !this.cur && !this.pending;
+      if (woanders) {
+        this.tagBeenden();
+      } else if (stehtHerum) {
+        // Steht sie laenger als drei Sekunden herum, endet der Termin still.
+        this.tagFremdT += dt;
+        if (this.tagFremdT >= 3) this.tagBeenden();
+      } else {
+        this.tagFremdT = 0;
+        // Am Schrank läuft die Zeit erst nach der Ankunft – die Weste zieht
+        // sie nicht schon auf dem Weg über den Schlafanzug.
+        const amOrt = !this.tagWas || this.activity?.id === erwartet || this.tagWas === "aufstehen";
+        if (amOrt) this.tagT += dt;
+        if (this.tagWas === "weste" && amOrt) {
+          this.westeT += dt;
+          if (!this.westeAn && this.westeT >= (this.tagProbe ? 2 : 9)) { this.westeAn = true; sfx.ui(); }
+        } else if (this.tagWas === "fuettern") {
+          this.napfT = clamp(this.tagT / Math.max(1, this.tagDauer * .6), 0, 1);
+        } else if (this.tagWas === "essen") {
+          this.essenT = this.tagT;
+        }
+        // Schrank bleibt offen, solange die Weste herausgenommen wird.
+        if (this.tagWas === "weste") {
+          const auf = clamp(this.westeT / 2, 0, 1);
+          const zu = clamp((this.tagDauer - this.tagT) / 2, 0, 1);
+          this.wardrobeOpen = this.westeAn ? Math.min(auf, zu) : auf;
+        }
+        if (this.tagT >= this.tagDauer) {
+          const fertig = this.tagWas;
+          if (fertig === "fuettern") { this.napfFutter = { odin: 1, apollo: 1 }; this.napfT = 0; this.speichern(); }
+          if (fertig === "auslass" && this.gardenDoor > .5 && Math.random() >= TUER_VERGESSEN) {
+            this.gardenWant = 0;
+            sfx.ui();
+          }
+          if (fertig === "essen") this.tagEssen = false;
+          if (fertig === "weste") this.wardrobeOpen = 0;
+          this.finishActivity();
+          // Nach dem Füttern spielt sie bis 18 Uhr weiter (17-Uhr-Pause).
+          if (fertig === "fuettern") this.tagStart("spielen", this.tagProbe);
+          else this.tagBeenden();
+        }
+      }
+    }
+
+    // --- Futter wird über den Tag leer gefressen; Wasser bleibt immer voll ---
+    if (this.istNormalHaus) {
+      for (const hid of ["odin", "apollo"] as const) {
+        if (this.napfFutter[hid] > 0) this.napfFutter[hid] = Math.max(0, this.napfFutter[hid] - dt / 14400);
+      }
+    }
+
+    // --- Rauch im Krempelraum bemerkt: Schleuse schließen, Gartentür lüften ---
+    if (this.lueftT > 0) {
+      this.lueftT -= dt;
+      if (this.lueftT <= 0) {
+        this.lueftT = 0;
+        if (this.gardenDoor > .5 && Math.random() >= TUER_VERGESSEN) { this.gardenWant = 0; sfx.ui(); }
+      }
+    } else if (!this.tagAktiv && this.lf === 0 && this.lx < 590 && this.smokeSpill > .5 && this.tagesFrei()) {
+      this.cellarDoorWant = 0;
+      this.gardenWant = 1;
+      this.lueftT = 45;
+      sfx.ui();
+    }
+
     // --- Datenkoffer (Osterei): Deckel auf, Antenne aus, dann melden ---
     if (this.kofferPhase) {
       this.kofferT += dt;
@@ -6189,6 +6440,8 @@ export class House {
         this.teaT = 0;
         this.teaSetzeZeile(false, false, 0);
         this.finishActivity();
+        // Senseo-Häuser: die Kanne wandert zurück in den rechten Unterschrank.
+        if (this.senseoHaus && this.kaffee.kanne === "theke" && !this.kAblauf) this.teeMitSchrank(true);
       }
       return;
     }
@@ -6785,7 +7038,7 @@ export class House {
   }
 
   /** Geschlossene Durchgangstuer, die dem aktuellen Gehschritt im Weg liegt. */
-  private barrierAhead(tx: number): { x: number; knob: () => Pt; openDoor: () => void } | null {
+  private barrierAhead(tx: number): { x: number; knob: () => Pt; openDoor: () => void; close: () => void; verfolgen: boolean } | null {
     // Schleusentuer im Keller
     if (this.lf === 0 && (this.lx < 590) !== (tx < 590) && this.cellarDoorV < 0.55) {
       return {
@@ -6797,6 +7050,13 @@ export class House {
             sfx.ui();
           }
         },
+        close: () => {
+          if (this.cellarDoorWant > 0.5) {
+            this.cellarDoorWant = 0;
+            sfx.ui();
+          }
+        },
+        verfolgen: true,
       };
     }
     // Blaue Verbindungstuer im Musikzimmer (nur Gruselhaus)
@@ -6810,6 +7070,10 @@ export class House {
             sfx.ui();
           }
         },
+        close: () => {
+          if (this.musikDoorWant > 0.5) this.musikDoorWant = 0;
+        },
+        verfolgen: false,
       };
     }
     return null;
@@ -6899,6 +7163,20 @@ export class House {
         }
         return;
       }
+      // Tuer hinter ihr schliessen – in drei von hundert Faellen vergisst sie es.
+      if (this.tuerHinter) {
+        const d = this.tuerHinter;
+        if ((this.lx - d.x) * d.dir >= 20) {
+          const vergisst = Math.random() < TUER_VERGESSEN;
+          this.tuerHinter = null;
+          if (!vergisst) {
+            this.lface = d.dir > 0 ? 1 : -1;
+            this.doorHand = d.knob();
+            this.doorHandT = 0;
+            this.doorHandOpen = d.close;
+          }
+        }
+      }
       // Geschlossene Tuer im Weg: davor stehen bleiben; nichts oeffnet sich von allein.
       const barrier = this.barrierAhead(a.step.x);
       if (barrier) {
@@ -6920,6 +7198,9 @@ export class House {
         this.doorHand = barrier.knob();
         this.doorHandT = 0;
         this.doorHandOpen = barrier.openDoor;
+        if (barrier.verfolgen) this.tuerHinter = {
+          x: barrier.x, dir: dir > 0 ? 1 : -1, knob: barrier.knob, close: barrier.close,
+        };
         return;
       }
       const move = SPEED * dt;
@@ -7050,7 +7331,7 @@ export class House {
       this.golOnShelf,
       this.welt === "gruesel" ? GRUSELRAEUME : null,
       this.bettRendered,
-      { kanne: !this.teaKanneWeg, tasse: !this.teaTasseWeg, fill: this.teaFuellung },
+      { kanne: !this.teaKanneWeg && !(this.senseoHaus && this.kaffee && this.kaffee.kanne !== "theke"), tasse: !this.teaTasseWeg, fill: this.teaFuellung },
       weihnacht,
       this.flauschiModulSichtbar,
       this.weihnachtsdeko,
@@ -7345,8 +7626,16 @@ export class House {
     // Auch der animierte Ofen steht hinter Luni, nicht vor ihrem Laufweg.
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) this.drawHexenofen(ctx);
     this.drawSargPass(ctx, false);
+  // Rauch im Keller: nur Wand und Boden verschwimmen – Regale, Lichterketten,
+  // Koffer und Luni bleiben davor sichtbar.
+  this.drawSmoke(ctx);
+  this.drawKellerVorRauch(ctx);
   // Osterei: der Datenkoffer steht hinter Luni, nicht vor ihrem Laufweg.
   this.drawKoffer(ctx);
+  // Hundenäpfe am Küchenboden und der Teller beim Essen vor dem Fernseher.
+  this.drawNaepfe(ctx);
+  // Senseo, offene Schranktüren, Kühlschrank, Tassen.
+  this.drawKueche(ctx);
   if (this.bettRendered) drawBedFront(ctx, 282, FO, weihnacht);
   if (this.handyAmKissen) handyAufDemKissen(ctx);
   this.drawLuniLayered(ctx);
@@ -7377,8 +7666,6 @@ export class House {
     this.drawGlassesMoving(ctx);
     this.drawGolInHand(ctx);
     this.drawFlauschiInHand(ctx);
-    // Rauch liegt über allem – Luni sieht erst wieder etwas, wenn die Tür auf ist
-    this.drawSmoke(ctx);
     // Abzug durch die Gartentür: Schwaden ziehen sichtbar nach draußen
     this.drawVentSmoke(ctx);
 
@@ -8485,6 +8772,45 @@ export class House {
   }
 
 
+  /** Kellermöbel und Lichterketten liegen über dem Rauch, Luni läuft davor. */
+  private drawKellerVorRauch(c: C) {
+    const festlich = this.welt === "weihnacht";
+    shelving(c, 354, FK, 56, 104, 1, festlich);
+    shelving(c, 528, FK, 60, 92, 3, festlich);
+    cardboard(c, 446, FK, 30, 24);
+    cardboard(c, 478, FK, 24, 18);
+    cardboard(c, 452, FK - 24, 22, 16);
+    if (this.weihnachtsdeko) xmasBox(c, 526, FK);
+    if (festlich) kellerWinterdeko(c, FK);
+  }
+
+  /** Hundenäpfe am Küchenboden; beim Essen steht der Teller auf dem Couchtisch. */
+  private drawNaepfe(c: C) {
+    if (!this.istNormalHaus) return;
+    for (const hid of ["odin", "apollo"] as const) {
+      drawNapfPaar(c, hid, this.napfFutter[hid]);
+    }
+    if (this.tagEssen) {
+      const rest = clamp(1 - this.essenT / Math.max(1, this.tagDauer), 0, 1);
+      drawEssTeller(c, COUCHTISCH.x + COUCHTISCH.w / 2, FE - COUCHTISCH.h - 1, rest);
+    }
+    // Beim Füllen rieselt das Futter von der Hand in die Näpfe.
+    if (this.napfT > 0.02 && this.napfT < 1) {
+      const hid: HundId = this.napfT < .5 ? "odin" : "apollo";
+      const ort = NAPF_ORTE[hid];
+      const p = (this.elapsed * 2.2) % 1;
+      const y = ort.y - 26 + p * 24;
+      for (let i = 0; i < 5; i++) {
+        const q = (i / 5 + p * .3) % 1;
+        c.fillStyle = i % 2 ? "#7a5230" : "#5d3c21";
+        c.beginPath();
+        c.arc(ort.futterX + Math.sin((q + i) * 9) * 5, ort.y - 26 + q * 22, 1.1, 0, Math.PI * 2);
+        c.fill();
+      }
+      void y;
+    }
+  }
+
   /** Rauch in der Raucherecke */
   private drawSmoke(c: C) {
     // Rauch im Krempelraum (durch die offene Schleusentür) zuerst zeichnen,
@@ -8495,7 +8821,8 @@ export class House {
     // nur die Raucherecke: rechts der Kellertrennwand, unter der EG-Decke
     const x0 = 594;
     const y0 = 462;
-    const w = 244;
+    // Rechteck der Raucherecke: bis zur rechten Kellerwand (HR), nicht ins Erdreich daneben.
+    const w = HR - x0;
     const h = 110;
     c.save();
     c.beginPath();
@@ -9067,6 +9394,8 @@ export class House {
   }
 
   private onKey = (e: KeyboardEvent) => {
+    this.nutzerEingabe = true;
+    queueMicrotask(() => { this.nutzerEingabe = false; });
     const ziel = e.target as HTMLElement | null;
     if (ziel !== this.canvas && ziel?.closest?.("input, textarea, select, button, a, [contenteditable='true']")) return;
     if (e.code === "KeyM") this.musikzimmer?.unlock();
@@ -9309,6 +9638,9 @@ export class House {
     if (!this.abendProbe && (this.abendAngefragtAm === plan.tag || tagessekunde(this.clock) >= this.abendBeginn(plan))) this.abendBegonnenAm = plan.tag;
     this.abendAktiv = true;
     this.abendUhrMs = Date.now();
+    // Mit der Abendkleidung kommt auch die Weste vom Schlafanzug weg.
+    this.westeAn = false;
+    this.tagBeenden();
   }
 
   private shDauer(ph: ShPhase): number | undefined {
@@ -9342,6 +9674,580 @@ export class House {
       }
     }
     return ABEND_ZIEL - sek - Math.abs(BETT_STAND_X - x) / SPEED;
+  }
+
+  /* ----------------------- Tagesablauf (Uhrzeit) ------------------------- */
+
+  /** Dauer eines Termins: Echtzeit oder die kurze Probe über den Tag-Stein. */
+  private tagDauerVon(was: TagTermin): number {
+    if (was === "aufstehen") return this.tagProbe ? 3 : 10;
+    if (was === "weste") return this.tagProbe ? TAGES_PROBE.weste : TAGES_DAUERN.weste;
+    if (was === "essen") return this.tagProbe ? TAGES_PROBE.essen : TAGES_DAUERN.essen;
+    if (was === "fuettern") return this.tagProbe ? TAGES_PROBE.fuettern : TAGES_DAUERN.fuettern;
+    if (was === "auslass" || was === "rauch") return this.tagProbe ? TAGES_PROBE.auslass : TAGES_DAUERN.auslass;
+    // Videospiel bis 18 Uhr, in der Probe nur ein Augenblick.
+    if (this.tagProbe) return 8;
+    const rest = TAGES_ZEITEN.spielenBis - tagessekunde(this.clock);
+    return Math.max(90, Math.min(rest, 3 * 3600));
+  }
+
+  /** Station, die zu einem Termin gehört. */
+  private tagErwartet(): string | null {
+    switch (this.tagWas) {
+      case "aufstehen": return null;
+      case "weste": return "kleiderschrank";
+      case "essen": return "sofa";
+      case "fuettern": return "naepfe";
+      case "spielen": return "gaming";
+      case "auslass":
+      case "rauch": return "raucherstuhl";
+      default: return null;
+    }
+  }
+
+  /** Startet einen Termin der Tagesroutine (Probe über den Aufsteh-Stein). */
+  private tagStart(was: TagTermin, probe: boolean) {
+    if (!abendWelt(this.welt)) return;
+    this.tagAktiv = true;
+    this.tagProbe = probe;
+    this.tagWas = was;
+    this.tagT = 0;
+    this.tagDauer = this.tagDauerVon(was);
+    this.chain = [];
+    this.smokeRequested = false;
+    if (was === "rauch") {
+      // Eigene Rauchpause: nur hinsetzen und rauchen.
+      this.command("raucherstuhl");
+      return;
+    }
+    if (this.asleep) this.aufwachen();
+    if (was === "weste") {
+      if (this.westeAn) { this.tagBeenden(); return; }
+      this.westeT = 0;
+      this.wardrobeOpen = 0;
+      this.command("kleiderschrank");
+      return;
+    }
+    if (was === "essen") { this.tagEssen = true; this.essenT = 0; this.command("sofa"); return; }
+    if (was === "fuettern") { this.command("naepfe"); return; }
+    if (was === "spielen") { this.command("gaming"); return; }
+    // Auslass: Tür zum Garten auf, die Hunde gehen von selbst hinaus,
+    // und sie raucht zugleich ihre Pause am Stuhl in der Raucherecke.
+    this.gardenWant = 1;
+    this.command("raucherstuhl");
+  }
+
+  /**
+   * Aufsteh-Routine zum Testen: Luni liegt im Schlafanzug im Bett und schläft;
+   * nach kurzer Zeit wacht sie auf, steht auf und holt die Weste aus dem
+   * Kleiderschrank. Die Probe verkürzt nur die Wartezeiten, nicht die Abläufe.
+   */
+  private aufstehStart(probe: boolean) {
+    // Mitten in Dusche oder Bett-Einstieg lässt sich der Test nicht ansetzen.
+    if (this.shPhase || this.bedEinstieg || this.sargPhase || this.sleepPhase || this.wcInside) return;
+    this.chain = [];
+    this.smokeRequested = false;
+    this.pending = null;
+    this.target = null;
+    this.activity = null;
+    this.path = [];
+    this.cur = null;
+    this.doorHand = null;
+    this.doorHandT = -1;
+    this.doorHandOpen = null;
+    this.petHund = null;
+    this.petT = 0;
+    this.westeAn = false;
+    // Schlafanzug: sie schläft im Bett, die Weste kommt später darüber.
+    if (!this.pyjama) this.makePajama();
+    this.outfit = "dressed";
+    this.bedKleidungAn = "dressed";
+    // Zustand „schlafend im Bett“, wie beim Wiederherstellen einer Nacht.
+    this.lf = 2;
+    this.lx = BETT_STAND_X;
+    this.lface = 1;
+    this.bedSitHair = 1;
+    this.handyAmKissen = true;
+    this.glassesOn = false;
+    this.glassesInSink = false;
+    const [gx, gy] = this.tossTarget();
+    this.glassesRest = { x: gx, y: gy, rot: .1, scale: .45 };
+    this.bedPyjama = pyjamaStoff(this.pyjama, this.fixedClock ?? this.clock ?? berlinNow(), this.welt);
+    this.asleep = true;
+    if (this.clock) this.einschlafSek = tagessekunde(this.clock);
+    // Routine starten: erst kurz liegen, dann aufwachen.
+    this.tagAktiv = true;
+    this.tagProbe = probe;
+    this.tagWas = "aufstehen";
+    this.tagT = 0;
+    this.tagWach = false;
+    this.tagDauer = this.tagDauerVon("aufstehen");
+    this.speichern();
+  }
+
+  private tagBeenden() {
+    this.tagAktiv = false;
+    this.tagWach = false;
+    this.tagWas = null;
+    this.tagT = 0;
+    this.tagEssen = false;
+    this.westeT = 0;
+    this.napfT = 0;
+    this.speichern();
+  }
+
+  /** Ist Luni frei für einen Termin? Dusche, Herd, Essen und Bett sind geschützt. */
+  private tagesFrei(): boolean {
+    if (this.kAblauf) return false;
+    if (this.asleep || this.sleepPhase || this.lieDown || this.sargPhase || this.wcInside) return false;
+    if (this.shPhase || this.abendAktiv || this.abendWartet) return false;
+    if (this.cur || this.pending || this.bedEinstieg) return false;
+    const act = this.activity;
+    if (!act) return true;
+    if (act.id === "sofa") return !this.tagEssen;
+    if (act.id === "gaming") return true;
+    return !(TAG_GESCHUETZT as readonly string[]).includes(act.id);
+  }
+
+  /** Termine, die die Uhr auslöst – einmal pro Kalendertag. */
+  private tagesPruefen() {
+    if (!abendWelt(this.welt)) return;
+    const tag = abendTag(this.clock);
+    if (this.tagTag !== tag || !this.tagPlan) {
+      this.tagTag = tag;
+      this.tagPlan = tageswerte(tag, this.welt);
+      this.tagErledigt = {};
+      this.rauchNaechste = -1;
+    }
+    const plan = this.tagPlan;
+    const sek = tagessekunde(this.clock);
+    if (this.asleep) {
+      // Aufwachen: sechs bis acht Stunden nach dem Einschlafen, meist 6:00 bis 7:30.
+      if (this.tagErledigt.aufwachen !== tag && sek >= aufwachSekunde(this.einschlafSek, plan)) {
+        this.tagErledigt.aufwachen = tag;
+        this.aufwachen();
+        this.tagStart("weste", false);
+      }
+      return;
+    }
+    if (this.tagAktiv) return;
+    // Ab hier gehört der Tag dem Abend: keine Tagestermine mehr, auch keine
+    // eigene Rauchpause (die letzte ist der Auslass um 18:30).
+    const abendNahe = this.abendAktiv || this.abendWartet || this.abendAngefragtAm === tag
+      || sek >= TAGES_ZEITEN.abendAb;
+    if (abendNahe) return;
+    // Morgens die Weste aus dem Kleiderschrank über den Schlafanzug.
+    if (!this.westeAn && this.pyjama && this.tagErledigt.weste !== tag && sek >= TAGES_ZEITEN.aufwach[0]
+      && sek < TAGES_ZEITEN.westeBis && this.tagesFrei()) {
+      this.tagErledigt.weste = tag;
+      this.tagErledigt.aufwachen ??= tag;
+      this.tagStart("weste", false);
+      return;
+    }
+    // Morgens: zweimal Kaffee → Zigarette, noch in Pyjama und Weste.
+    if (this.senseoHaus && this.westeAn && this.tagErledigt.kaffee !== tag && sek < TAGES_ZEITEN.westeBis && this.tagesFrei()) {
+      this.tagErledigt.kaffee = tag;
+      this.kaffeeStart(2, false);
+      return;
+    }
+    // Mittagessen vor dem Fernseher zwischen 12 und 13 Uhr.
+    if (this.tagErledigt.essen !== tag && sek >= plan.essenSek) {
+      if (!this.tagesFrei()) return;
+      this.tagErledigt.essen = tag;
+      this.tagStart("essen", false);
+      return;
+    }
+    // 17 Uhr: Videospiel pausieren, Hunde füttern, danach weiterspielen.
+    if (this.tagErledigt.fuettern !== tag && sek >= TAGES_ZEITEN.fuettern) {
+      if (!this.tagesFrei()) return;
+      this.tagErledigt.fuettern = tag;
+      this.tagStart("fuettern", false);
+      return;
+    }
+    // 18:30: Hundeauslass, zugleich Rauchpause.
+    if (this.tagErledigt.auslass !== tag && sek >= plan.auslassSek) {
+      if (!this.tagesFrei()) return;
+      this.tagErledigt.auslass = tag;
+      this.tagStart("auslass", false);
+      return;
+    }
+    // Weitere Rauchpausen: nur in der Wachzeit und mit Zigaretten im Haus.
+    if (this.rauchNaechste < 0) this.rauchNaechste = sek + plan.rauchAbstand;
+    else if (sek >= this.rauchNaechste && this.tagesFrei() && this.pack > 0 && this.cigs + this.pack > 0) {
+      this.rauchNaechste = sek + plan.rauchAbstand;
+      this.tagStart("rauch", false);
+    }
+  }
+
+  /* ======================= Kaffee mit der Senseo ========================= */
+
+  /** Senseo und Tee-Schrank gibt es im normalen Haus und im Weihnachtshaus (Traumhaus später). */
+  private get senseoHaus(): boolean {
+    return this.welt === "normal" || this.welt === "weihnacht";
+  }
+
+  private kZeit(k: keyof typeof KAFFEE_ZEIT): number {
+    return this.kAblauf?.probe ? KAFFEE_PROBE[k] : KAFFEE_ZEIT[k];
+  }
+
+  /** Startet Kaffee (runden = 2 morgens und über die Steine, 1 per Klick auf die Maschine). */
+  private kaffeeStart(runden: number, probe: boolean) {
+    if (!this.senseoHaus || this.kAblauf) return;
+    if (this.asleep) this.aufwachen();
+    const schritte: KSchritt[] = [];
+    // Keine Zigaretten mehr: erst zwei stopfen, damit der Kaffee nicht kalt wird.
+    if (this.pack <= 0 && this.cigs <= 0) schritte.push(...this.kStopfen());
+    for (let i = 0; i < runden; i++) schritte.push(...this.kaffeeRunde());
+    this.kAblaufStarten(schritte, probe);
+  }
+
+  private kAblaufStarten(schritte: KSchritt[], probe: boolean) {
+    this.chain = [];
+    this.smokeRequested = false;
+    this.pending = null;
+    this.kAblauf = { schritte, i: 0, t: 0, geht: false, angekommen: false, gestartet: false, probe };
+  }
+
+  /** Abbruch durch einen anderen Wunsch: alles kommt an seinen Platz zurück. */
+  private kaffeeAbbrechen() {
+    const k = this.kaffee;
+    if (k.tank === "hand") k.tank = "maschine";
+    k.deckel = 0; k.padHand = null; k.dose = "zuhause"; k.doseOffen = false;
+    if (k.tasse === "hand" || k.tasse === "theke" || k.tasse === "maschine") { k.tasse = "keine"; k.tassenSpuele = Math.min(3, k.tassenSpuele + 1); }
+    if (k.tragUnten > 0) { k.tassenSpuele = Math.min(3, k.tassenSpuele + k.tragUnten); k.tragUnten = 0; }
+    k.milch = "kuehl"; k.schrank = 0; k.muell = 0; k.kuehl = 0; k.hahnKueche = false; k.laeuft = false;
+    if (k.kanne === "hand") k.kanne = "schrank";
+    if (this.target?.id === "kweg") this.target = null;
+    if (this.activity?.id === "kweg") this.activity = null;
+    this.kAblauf = null;
+    this.kPose = null;
+    this.kSchluckT = 0;
+    this.dirty = true;
+  }
+
+  private kIntern_(f: () => void) {
+    this.kIntern = true;
+    try { f(); } finally { this.kIntern = false; }
+  }
+
+  private kWeiter() {
+    const a = this.kAblauf;
+    if (!a) return;
+    a.i++; a.t = 0; a.geht = false; a.angekommen = false; a.gestartet = false;
+  }
+
+  /** Läuft jede Bildfolge: Senseo heizt und brüht, der Ablauf schreitet voran. */
+  private updateKaffee(dt: number) {
+    const k = this.kaffee;
+    this.kPose = null;
+    // Senseo: aufheizen bis Klick und rote Lampe, brühen, nach 30 min von selbst aus.
+    if (k.an && !k.bereit) {
+      k.heiz = Math.min(1, k.heiz + dt / this.kZeit("aufheizen"));
+      if (k.heiz >= 1) { k.bereit = true; sfx.tick(); }
+    }
+    if (k.laeuft) {
+      const d = this.kZeit("bruehen");
+      k.tasseFuell = Math.min(1, k.tasseFuell + dt / d);
+      k.tankWasser = Math.max(0, k.tankWasser - dt / d * 0.09);
+      if (k.tasseFuell >= 1) { k.laeuft = false; k.padNeu = false; k.padAlt = true; }
+    }
+    if (k.an && !this.kAblauf) {
+      this.kAusT += dt;
+      if (this.kAusT > (this.kAblauf ? 1e9 : 1800)) { k.an = false; k.bereit = false; k.heiz = 0; }
+    } else this.kAusT = 0;
+    const sichtbar = typeof document === "undefined" || document.visibilityState !== "hidden";
+    this.senseoKlang.laufen(k.laeuft && sichtbar, sfx.peekSharedAudio());
+    this.kuechenHahn.fluss(k.hahnKueche && sichtbar ? 1 : 0, sfx.peekSharedAudio());
+
+    // Schlucke auf dem Raucherstuhl, solange die Tasse auf dem Tischchen steht.
+    if (k.tasse === "keller" && this.activity?.id === "raucherstuhl" && !this.handy && this.lightT === null) {
+      if (this.kSchluckT > 0) {
+        this.kSchluckT += dt;
+        if (this.kSchluckT > 2.6) { this.kSchluckT = 0; k.tasseFuell = Math.max(0.08, k.tasseFuell - 0.16); }
+      } else {
+        this.kSchluckWarte += dt;
+        if (this.kSchluckWarte >= this.kZeit("schluck") && k.tasseFuell > 0.1) { this.kSchluckWarte = 0; this.kSchluckT = 0.001; }
+      }
+    } else if (this.kSchluckT > 0 && this.activity?.id !== "raucherstuhl") this.kSchluckT = 0;
+
+    const a = this.kAblauf;
+    if (!a) return;
+    // Die kurze Probe raucht nur eine kurze Zigarette.
+    if (a.probe && this.holding && this.burnLeft > 14) { this.burnLeft = 14; this.burnTotal = 14; }
+    let s = a.schritte[a.i];
+    while (s && s.wenn && !a.gestartet && !a.geht && !a.angekommen && !s.wenn()) { this.kWeiter(); s = a.schritte[a.i]; }
+    if (!s) { this.kAblauf = null; this.speichern(); return; }
+    if (s.x !== undefined && !a.angekommen) {
+      if (!a.geht) {
+        a.geht = true;
+        this.goTo({ id: "kweg", label: "", floor: s.floor ?? 1, x: s.x, face: s.face ?? 1, state: "idle", expr: "happy", yOff: s.yOff, hits: [] });
+      } else if (this.activity?.id === "kweg" && !this.cur && this.path.length === 0) {
+        a.angekommen = true;
+        if (s.face) this.lface = s.face;
+      }
+      if (!a.angekommen) { this.kPose = { trag: this.kTraegt() }; return; }
+    }
+    if (s.warten) {
+      this.kPose = s.pose?.(0) ?? null;
+      if (!a.gestartet) { a.gestartet = true; s.start?.(); }
+      if (s.warten()) { s.ende?.(); this.kWeiter(); }
+      return;
+    }
+    if (!s.dauer) { if (!a.gestartet) s.start?.(); s.ende?.(); this.kWeiter(); return; }
+    if (!a.gestartet) { a.gestartet = true; s.start?.(); }
+    const d = typeof s.dauer === "function" ? s.dauer() : (a.probe ? Math.max(0.5, s.dauer * PROBE_GRIFF) : s.dauer);
+    a.t += dt;
+    const p = Math.min(1, a.t / d);
+    s.tick?.(p);
+    this.kPose = s.pose?.(p) ?? null;
+    if (p >= 1) { s.ende?.(); this.kWeiter(); }
+  }
+
+  /** Hält Luni gerade etwas in der Hand (Trage-Haltung beim Gehen)? */
+  private kTraegt(): boolean {
+    const k = this.kaffee;
+    if (!k) return false;
+    return k.tank === "hand" || k.padHand !== null || k.dose === "hand" || k.tasse === "hand" || k.milch === "hand" || k.kanne === "hand" || k.tragUnten > 0;
+  }
+
+  /** Zwei Zigaretten am Küchentisch stopfen. */
+  private kStopfen(): KSchritt[] {
+    return [
+      { was: "zumTisch", x: KSTAND.tisch, face: 1, yOff: -12 },
+      { was: "stopfen", dauer: () => 2 * this.kZeit("stopfen"), pose: () => ({ state: "roll" }),
+        ende: () => { this.pack = Math.min(PACK_MAX, this.pack + 2); sfx.ui(); } },
+    ];
+  }
+
+  /** Eine Runde: Senseo befüllen, Pad wechseln, brühen, Milch, mit der Tasse rauchen gehen. */
+  private kaffeeRunde(): KSchritt[] {
+    const F = FLOOR_Y[1], O = KORT(F), S = LUNI_SCALE, k = this.kaffee;
+    const weich = (v: number) => { const q = clamp(v, 0, 1); return q * q * (3 - 2 * q); };
+    const weg = (a: Pt, b: Pt, v: number): Pt => { const e = weich(v); return [lerp(a[0], b[0], e), lerp(a[1], b[1], e)]; };
+    const vorn = (x: number, face: 1 | -1 = 1): Pt => [x + face * 7 * S, F - 31 * S];
+    /** Hin, kurz halten, zurück (Mitte bei p = .5). */
+    const hinUndHer = (ruhe: Pt, ziel: Pt, p: number): Pt => (p < 0.5 ? weg(ruhe, ziel, p / 0.42) : weg(ziel, ruhe, (p - 0.58) / 0.42));
+    const stehen = (hand: Pt | null, face: 1 | -1 = 1, hand2: Pt | null = null): KPose => ({ state: "idle", hand, hand2, face });
+    const bueck = (b: number, hand: Pt | null, face: 1 | -1 = 1): KPose => ({ state: "bend", phase: b, hand, face });
+    const M = KSTAND.maschine, SR = KSTAND.schrank, H = KSTAND.hahn, MU = KSTAND.muell, KU = KSTAND.kuehl;
+    const tankHand: Pt = [O.tankUnterHahn[0], F - 51];
+    let tankStart = 0;
+    const tasseKeller: Pt = [SIDE_X + 6, SIDE_TOP];
+    return [
+      // 1) Wassertank holen, am Hahn mit 1,4 l füllen, zurück in die Senseo
+      { was: "zurMaschine", x: M, face: 1 },
+      { was: "tankNehmen", dauer: 1.8, pose: (p) => stehen(p < 0.5 ? weg(vorn(M), O.tankGriff, p / 0.45) : weg(O.tankGriff, [M + 9, F - 40], (p - 0.5) / 0.5)),
+        tick: (p) => { if (p >= 0.5 && k.tank === "maschine") { k.tank = "hand"; sfx.ui(); } } },
+      { was: "zumHahn", x: H, face: 1 },
+      { was: "hahnAuf", dauer: 1.1, pose: (p) => stehen(weg([H + 8, F - 40], tankHand, p / 0.5), 1, hinUndHer([H + 5, F - 30], [634, F - 47], p)),
+        tick: (p) => { if (p >= 0.6) k.hahnKueche = true; } },
+      { was: "fuellen", dauer: () => this.kZeit("fuellen"), pose: () => stehen(tankHand),
+        start: () => { tankStart = k.tankWasser; }, tick: (p) => { k.tankWasser = lerp(tankStart, 1, p); } },
+      { was: "hahnZu", dauer: 0.9, pose: (p) => stehen(tankHand, 1, hinUndHer([H + 5, F - 30], [634, F - 47], p)),
+        tick: (p) => { if (p >= 0.5) k.hahnKueche = false; } },
+      { was: "zurueckZurMaschine", x: M, face: 1 },
+      { was: "tankEinsetzen", dauer: 1.6, pose: (p) => stehen(p < 0.6 ? weg([M + 9, F - 40], O.tankGriff, p / 0.55) : weg(O.tankGriff, vorn(M), (p - 0.6) / 0.4)),
+        tick: (p) => { if (p >= 0.6 && k.tank === "hand") { k.tank = "maschine"; sfx.tick(); } } },
+      // 2) Rechten Unterschrank öffnen (Schritt zur Seite), Pad-Dose auf die Arbeitsfläche
+      { was: "zumSchrank", x: SR, face: 1 },
+      { was: "schrankAuf", dauer: 1.3, pose: (p) => bueck(0.42 * weich(p / 0.3), p < 0.3 ? weg(vorn(SR), O.schrankGriff, p / 0.3) : p < 0.85 ? weg(O.schrankGriff, [676, F - 24], (p - 0.3) / 0.55) : weg([676, F - 24], vorn(SR), (p - 0.85) / 0.15)),
+        tick: (p) => { k.schrank = weich((p - 0.3) / 0.55); } },
+      { was: "doseNehmen", dauer: 1.6, pose: (p) => bueck(p < 0.7 ? 0.48 : 0.48 * (1 - weich((p - 0.7) / 0.3)), p < 0.5 ? weg(vorn(SR), O.schrankDose, p / 0.45) : weg(O.schrankDose, [O.doseTheke[0], F - 50], (p - 0.5) / 0.5)),
+        tick: (p) => { if (p >= 0.5 && k.dose === "zuhause") k.dose = "hand"; } },
+      { was: "doseAbstellen", dauer: 0.9, pose: (p) => stehen(p < 0.6 ? [O.doseTheke[0], F - 49] : weg([O.doseTheke[0], F - 49], vorn(SR), (p - 0.6) / 0.4)),
+        tick: (p) => { if (p >= 0.5 && k.dose === "hand") { k.dose = "theke"; sfx.tick(); } } },
+      { was: "doseAuf", dauer: 0.9, pose: (p) => stehen(hinUndHer(vorn(SR), [O.doseTheke[0], F - 50], p)), tick: (p) => { if (p >= 0.5) k.doseOffen = true; } },
+      // 3) Deckel auf, altes Pad heraus und in den Mülleimer unter der Spüle
+      { was: "zurMaschine2", x: M, face: 1 },
+      { was: "deckelAuf", dauer: 1.2, pose: (p) => stehen(p < 0.35 ? weg(vorn(M), O.hebel, p / 0.35) : p < 0.8 ? weg(O.hebel, [O.hebel[0] - 3, F - 77], (p - 0.35) / 0.45) : weg([O.hebel[0] - 3, F - 77], vorn(M), (p - 0.8) / 0.2)),
+        tick: (p) => { k.deckel = weich((p - 0.35) / 0.45); } },
+      { was: "padRaus", dauer: 1.3, pose: (p) => stehen(hinUndHer(vorn(M), [O.padSchacht[0], F - 66], p)),
+        tick: (p) => { if (p >= 0.5 && k.padAlt) { k.padAlt = false; k.padHand = "alt"; } } },
+      { was: "zumMuell", x: MU, face: -1 },
+      { was: "muellAuf", dauer: 1.2, pose: (p) => bueck(0.42 * weich(p / 0.3), p < 0.3 ? weg(vorn(MU, -1), O.muellGriff, p / 0.3) : weg(O.muellGriff, [628, F - 24], (p - 0.3) / 0.6), -1),
+        tick: (p) => { k.muell = weich((p - 0.3) / 0.6); } },
+      { was: "padWeg", dauer: 1.0, pose: (p) => bueck(0.5, hinUndHer([630, F - 26], O.muellEimer, p), -1),
+        tick: (p) => { if (p >= 0.5 && k.padHand) { k.padHand = null; sfx.tick(); } } },
+      { was: "muellZu", dauer: 0.9, pose: (p) => bueck(0.42 * (1 - weich((p - 0.6) / 0.4)), weg([628, F - 24], O.muellGriff, p / 0.6), -1),
+        tick: (p) => { k.muell = 1 - weich(p / 0.6); } },
+      // 4) Neues Pad aus der Dose einlegen, Deckel zu (Klick), Dose zu und zurück
+      { was: "zurMaschine3", x: M, face: 1 },
+      { was: "padNehmen", dauer: 1.1, pose: (p) => stehen(hinUndHer(vorn(M), [O.doseTheke[0], F - 50], p)),
+        tick: (p) => { if (p >= 0.5 && !k.padHand) k.padHand = "neu"; } },
+      { was: "padEinlegen", dauer: 1.1, pose: (p) => stehen(hinUndHer(vorn(M), [O.padSchacht[0], F - 66], p)),
+        tick: (p) => { if (p >= 0.55 && k.padHand === "neu") { k.padHand = null; k.padNeu = true; } } },
+      { was: "deckelZu", dauer: 1.0, pose: (p) => stehen(p < 0.25 ? weg(vorn(M), [O.hebel[0] - 3, F - 77], p / 0.25) : p < 0.7 ? weg([O.hebel[0] - 3, F - 77], O.hebel, (p - 0.25) / 0.45) : weg(O.hebel, vorn(M), (p - 0.7) / 0.3)),
+        tick: (p) => { k.deckel = 1 - weich((p - 0.25) / 0.45); }, ende: () => sfx.tick() },
+      { was: "doseZu", dauer: 0.8, pose: (p) => stehen(hinUndHer(vorn(M), [O.doseTheke[0], F - 50], p)), tick: (p) => { if (p >= 0.5) k.doseOffen = false; } },
+      { was: "zumSchrank2", x: SR, face: 1 },
+      { was: "doseZurueck", dauer: 1.8, pose: (p) => bueck(0.48 * weich((p - 0.3) / 0.3) * (1 - weich((p - 0.85) / 0.15)), p < 0.3 ? weg(vorn(SR), [O.doseTheke[0], F - 50], p / 0.3) : p < 0.75 ? weg([O.doseTheke[0], F - 50], O.schrankDose, (p - 0.3) / 0.45) : weg(O.schrankDose, vorn(SR), (p - 0.75) / 0.25)),
+        tick: (p) => { if (p >= 0.3 && p < 0.75 && k.dose === "theke") k.dose = "hand"; if (p >= 0.75 && k.dose === "hand") k.dose = "zuhause"; } },
+      // 5) Tasse aus dem Schrank unter den Auslauf, Power drücken, Schrank zu während des Aufheizens
+      { was: "tasseHolen", dauer: 1.6, pose: (p) => bueck(p < 0.7 ? 0.5 : 0.5 * (1 - weich((p - 0.7) / 0.3)), p < 0.5 ? weg(vorn(SR), O.schrankTasse, p / 0.45) : weg(O.schrankTasse, vorn(SR), (p - 0.5) / 0.5)),
+        tick: (p) => { if (p >= 0.5 && k.tasse === "keine") { k.tasse = "hand"; k.tasseFuell = 0; k.tasseMilch = false; } } },
+      { was: "zurMaschine4", x: M, face: 1 },
+      { was: "tasseUnter", dauer: 1.2, pose: (p) => stehen(p < 0.6 ? weg(vorn(M), [O.tasseAuslauf[0], F - 47], p / 0.55) : weg([O.tasseAuslauf[0], F - 47], vorn(M), (p - 0.6) / 0.4)),
+        tick: (p) => { if (p >= 0.6 && k.tasse === "hand") { k.tasse = "maschine"; sfx.tick(); } } },
+      { was: "power", dauer: 0.9, pose: (p) => stehen(hinUndHer(vorn(M), O.knopfPower, p)),
+        tick: (p) => { if (p >= 0.5 && !k.an) { k.an = true; k.heiz = 0; k.bereit = false; sfx.ui(); } } },
+      { was: "zumSchrank3", x: SR, face: 1 },
+      { was: "schrankZu", dauer: 1.3, pose: (p) => bueck(0.42 * (1 - weich((p - 0.7) / 0.3)), p < 0.3 ? weg(vorn(SR), [676, F - 24], p / 0.3) : weg([676, F - 24], O.schrankGriff, (p - 0.3) / 0.45)),
+        tick: (p) => { k.schrank = 1 - weich((p - 0.3) / 0.45); } },
+      { was: "zurMaschine5", x: M, face: 1 },
+      { was: "aufheizen", warten: () => k.bereit, pose: () => stehen(null) },
+      // 6) Bei roter Lampe den linken Knopf (1 Tasse): der Kaffee läuft durch
+      { was: "knopfLinks", dauer: 0.9, pose: (p) => stehen(hinUndHer(vorn(M), O.knopfLinks, p)),
+        tick: (p) => { if (p >= 0.5 && !k.laeuft && k.tasseFuell < 0.05) { k.laeuft = true; sfx.ui(); } } },
+      { was: "durchlaufen", warten: () => !k.laeuft, pose: () => stehen(null) },
+      { was: "tasseRaus", dauer: 1.2, pose: (p) => stehen(hinUndHer(vorn(M), [O.tasseAuslauf[0], F - 47], p)),
+        tick: (p) => { if (p >= 0.5 && k.tasse === "maschine") k.tasse = "hand"; } },
+      { was: "tasseAbstellen", dauer: 1.0, pose: (p) => stehen(hinUndHer(vorn(M), [O.tasseTheke[0], F - 44], p)),
+        tick: (p) => { if (p >= 0.5 && k.tasse === "hand") { k.tasse = "theke"; sfx.tick(); } } },
+      // 7) Bio-Milch aus dem Kühlschrank, einen Schluck in den Kaffee, zurückstellen
+      { was: "zumKuehl", x: KU, face: -1 },
+      { was: "kuehlAuf", dauer: 1.3, pose: (p) => stehen(p < 0.3 ? weg(vorn(KU, -1), O.kuehlGriff, p / 0.3) : p < 0.85 ? weg(O.kuehlGriff, [617, F - 56], (p - 0.3) / 0.55) : weg([617, F - 56], vorn(KU, -1), (p - 0.85) / 0.15), -1),
+        tick: (p) => { k.kuehl = weich((p - 0.3) / 0.55); } },
+      { was: "milchNehmen", dauer: 1.2, pose: (p) => stehen(hinUndHer(vorn(KU, -1), O.milchTuer, p), -1),
+        tick: (p) => { if (p >= 0.5 && k.milch === "kuehl") k.milch = "hand"; } },
+      { was: "kuehlZu", dauer: 1.0, pose: (p) => stehen(null, -1, hinUndHer([KU - 5, F - 30], [614, F - 58], p)),
+        tick: (p) => { k.kuehl = 1 - weich(p / 0.5); }, ende: () => sfx.tick() },
+      { was: "zurTasse", x: M, face: 1 },
+      { was: "eingiessen", dauer: 2.4, pose: (p) => stehen(p < 0.25 ? weg(vorn(M), [O.tasseTheke[0] - 2, F - 52], p / 0.25) : p < 0.8 ? [O.tasseTheke[0] - 2, F - 52] : weg([O.tasseTheke[0] - 2, F - 52], vorn(M), (p - 0.8) / 0.2)),
+        tick: (p) => { if (p >= 0.55) k.tasseMilch = true; } },
+      { was: "zumKuehl2", x: KU, face: -1 },
+      { was: "kuehlAuf2", dauer: 1.1, pose: (p) => stehen(null, -1, p < 0.3 ? weg([KU - 5, F - 30], O.kuehlGriff, p / 0.3) : weg(O.kuehlGriff, [617, F - 56], (p - 0.3) / 0.55)),
+        tick: (p) => { k.kuehl = weich((p - 0.3) / 0.55); } },
+      { was: "milchZurueck", dauer: 1.0, pose: (p) => stehen(hinUndHer(vorn(KU, -1), O.milchTuer, p), -1),
+        tick: (p) => { if (p >= 0.5 && k.milch === "hand") { k.milch = "kuehl"; sfx.tick(); } } },
+      { was: "kuehlZu2", dauer: 1.0, pose: (p) => stehen(null, -1, hinUndHer([KU - 5, F - 30], [614, F - 58], p)),
+        tick: (p) => { k.kuehl = 1 - weich(p / 0.5); }, ende: () => sfx.tick() },
+      { was: "zurTasse2", x: M, face: 1 },
+      { was: "tasseNehmen", dauer: 1.0, pose: (p) => stehen(hinUndHer(vorn(M), [O.tasseTheke[0], F - 44], p)),
+        tick: (p) => { if (p >= 0.5 && k.tasse === "theke") k.tasse = "hand"; } },
+      // 8) Mit dem Kaffee in die Schleuse: Tasse aufs Tischchen, rauchen, schluckweise trinken
+      { was: "zumRaucherraum", x: ASH_STAND_X + 8, floor: 0, face: 1 },
+      { was: "tasseKeller", dauer: 1.0, pose: (p) => stehen(hinUndHer(vorn(ASH_STAND_X + 8), [tasseKeller[0], tasseKeller[1] - 4], p)),
+        tick: (p) => { if (p >= 0.5 && k.tasse === "hand") { k.tasse = "keller"; sfx.tick(); } } },
+      { was: "rauchen", warten: () => this.kRauchFertig(),
+        start: () => { this.kRauchBegonnen = false; this.kSchluckWarte = 0; this.kIntern_(() => this.command("aschenbecher")); } },
+      { was: "zumTischchen", x: ASH_STAND_X + 8, floor: 0, face: 1 },
+      { was: "tassenHolen", dauer: 1.2, pose: (p) => stehen(hinUndHer(vorn(ASH_STAND_X + 8), [tasseKeller[0], tasseKeller[1] - 4], p)),
+        tick: (p) => {
+          if (p < 0.5 || k.tasse !== "keller") return;
+          // In 23 % der Fälle bleibt die Tasse unten – nie mehr als drei.
+          if (Math.random() < TASSE_VERGESSEN && k.tassenUnten < MAX_TASSEN_UNTEN) {
+            k.tassenUnten += 1; k.tasse = "keine";
+          } else {
+            k.tasse = "hand";
+            if (k.tassenUnten > 0 && (k.tassenUnten >= MAX_TASSEN_UNTEN || Math.random() < 0.5)) { k.tragUnten = k.tassenUnten; k.tassenUnten = 0; }
+          }
+          // Spätestens bei drei vergessenen Tassen nimmt sie alle mit.
+          if (k.tassenUnten >= MAX_TASSEN_UNTEN && k.tasse === "keine") { k.tragUnten = k.tassenUnten; k.tassenUnten = 0; }
+          sfx.tick();
+        } },
+      // 9) Oben kurz ausspülen und neben die Spüle stellen
+      { was: "zurSpuele", x: H, floor: 1, face: 1, wenn: () => k.tasse === "hand" || k.tragUnten > 0 },
+      { was: "spuelHahnAuf", dauer: 0.9, wenn: () => k.tasse === "hand" || k.tragUnten > 0, pose: (p) => stehen([641, F - 47], 1, hinUndHer([H + 5, F - 30], [634, F - 47], p)), tick: (p) => { if (p >= 0.6) k.hahnKueche = true; } },
+      { was: "ausspuelen", dauer: () => this.kZeit("ausspuelen") * (1 + 0.5 * this.kaffee.tragUnten), wenn: () => k.tasse === "hand" || k.tragUnten > 0,
+        pose: (p) => stehen([641 + Math.sin(p * 18) * 1.2, F - 46]), start: () => { k.tasseFuell = 0; k.tasseMilch = false; } },
+      { was: "spuelHahnZu", dauer: 0.9, wenn: () => k.tasse === "hand" || k.tragUnten > 0, pose: (p) => stehen([641, F - 47], 1, hinUndHer([H + 5, F - 30], [634, F - 47], p)), tick: (p) => { if (p >= 0.5) k.hahnKueche = false; } },
+      { was: "nebenSpuele", dauer: 1.0, wenn: () => k.tasse === "hand" || k.tragUnten > 0, pose: (p) => stehen(hinUndHer(vorn(H), [O.spuelAblage[0], F - 45], p)),
+        tick: (p) => {
+          if (p < 0.5 || (k.tasse !== "hand" && k.tragUnten === 0)) return;
+          k.tassenSpuele = Math.min(3, k.tassenSpuele + (k.tasse === "hand" ? 1 : 0) + k.tragUnten);
+          k.tasse = "keine"; k.tragUnten = 0; sfx.tick();
+        } },
+    ];
+  }
+
+  /** Zigarette aufgeraucht? (erst angezündet, dann ausgedrückt) */
+  private kRauchFertig(): boolean {
+    if (this.holding && this.burnLeft > 0) this.kRauchBegonnen = true;
+    if (!this.kRauchBegonnen) {
+      // Keine Zigarette zu bekommen: nicht ewig warten.
+      return this.pack <= 0 && this.cigs <= 0 && !this.holding && this.activity?.id !== "tabak" && !this.pending && !this.cur;
+    }
+    return !this.holding && !this.ashMove && !this.cigButt;
+  }
+
+  /** Gesundheitstee: Kanne aus dem rechten Unterschrank holen, danach Tee wie gewohnt. */
+  private teeMitSchrank(zurueck: boolean) {
+    const F = FLOOR_Y[1], O = KORT(F), S = LUNI_SCALE, k = this.kaffee;
+    const weich = (v: number) => { const q = clamp(v, 0, 1); return q * q * (3 - 2 * q); };
+    const weg = (a: Pt, b: Pt, v: number): Pt => { const e = weich(v); return [lerp(a[0], b[0], e), lerp(a[1], b[1], e)]; };
+    const SR = KSTAND.schrank;
+    const vorn: Pt = [SR + 7 * S, F - 31 * S];
+    const bueck = (b: number, hand: Pt | null): KPose => ({ state: "bend", phase: b, hand, face: 1 });
+    const auf: KSchritt = { was: "schrankAuf", dauer: 1.3, pose: (p) => bueck(0.42 * weich(p / 0.3), p < 0.3 ? weg(vorn, O.schrankGriff, p / 0.3) : weg(O.schrankGriff, [676, F - 24], (p - 0.3) / 0.55)),
+      tick: (p) => { k.schrank = weich((p - 0.3) / 0.55); } };
+    const zu: KSchritt = { was: "schrankZu", dauer: 1.3, pose: (p) => bueck(0.42 * (1 - weich((p - 0.7) / 0.3)), p < 0.3 ? weg(vorn, [676, F - 24], p / 0.3) : weg([676, F - 24], O.schrankGriff, (p - 0.3) / 0.45)),
+      tick: (p) => { k.schrank = 1 - weich((p - 0.3) / 0.45); } };
+    const kanneSchrank: Pt = [O.schrankKanne[0], F - 14];
+    const kanneTheke: Pt = [O.kanneTheke[0], F - 49];
+    const schritte: KSchritt[] = zurueck ? [
+      { was: "zurKanne", x: SR, face: 1 },
+      { was: "kanneNehmen", dauer: 1.0, pose: (p) => ({ state: "idle", hand: p < 0.5 ? weg(vorn, kanneTheke, p / 0.45) : weg(kanneTheke, vorn, (p - 0.5) / 0.5), face: 1 }),
+        tick: (p) => { if (p >= 0.5 && k.kanne === "theke") { k.kanne = "hand"; this.dirty = true; } } },
+      auf,
+      { was: "kanneRein", dauer: 1.5, pose: (p) => bueck(p < 0.7 ? 0.55 : 0.55 * (1 - weich((p - 0.7) / 0.3)), p < 0.5 ? weg(vorn, kanneSchrank, p / 0.45) : weg(kanneSchrank, vorn, (p - 0.5) / 0.5)),
+        tick: (p) => { if (p >= 0.5 && k.kanne === "hand") { k.kanne = "schrank"; sfx.tick(); } } },
+      zu,
+    ] : [
+      { was: "zumSchrank", x: SR, face: 1 },
+      auf,
+      { was: "kanneHolen", dauer: 1.5, pose: (p) => bueck(p < 0.7 ? 0.55 : 0.55 * (1 - weich((p - 0.7) / 0.3)), p < 0.5 ? weg(vorn, kanneSchrank, p / 0.45) : weg(kanneSchrank, vorn, (p - 0.5) / 0.5)),
+        tick: (p) => { if (p >= 0.5 && k.kanne === "schrank") k.kanne = "hand"; } },
+      { was: "kanneAbstellen", dauer: 1.0, pose: (p) => ({ state: "idle", hand: p < 0.55 ? weg(vorn, kanneTheke, p / 0.5) : weg(kanneTheke, vorn, (p - 0.55) / 0.45), face: 1 }),
+        tick: (p) => { if (p >= 0.5 && k.kanne === "hand") { k.kanne = "theke"; this.dirty = true; sfx.tick(); } } },
+      zu,
+      { was: "tee", start: () => this.kIntern_(() => this.command("tee")) },
+    ];
+    this.kAblaufStarten(schritte, false);
+  }
+
+  /** Kaffee- und Küchendinge, die hinter Luni liegen (Senseo, Schranktüren, Tassen). */
+  private drawKueche(c: C) {
+    if (!this.senseoHaus || !this.kaffee) return;
+    const F = FLOOR_Y[1], k = this.kaffee, O = KORT(F);
+    drawKuehlOffen(c, F, k.kuehl, k.milch === "kuehl");
+    drawMuell(c, F, k.muell);
+    drawSchrankRechts(c, F, k.schrank, k);
+    drawSenseo(c, F, k, this.elapsed);
+    if (k.tasse === "maschine") drawTasse(c, O.tasseAuslauf[0], O.tasseAuslauf[1], k.tasseFuell, k.tasseMilch);
+    if (k.tasse === "theke") drawTasse(c, O.tasseTheke[0], O.tasseTheke[1], k.tasseFuell, k.tasseMilch);
+    if (k.dose === "theke") drawPadDose(c, O.doseTheke[0], O.doseTheke[1], k.doseOffen);
+    drawTassenSpuele(c, F, k.tassenSpuele);
+    if (k.hahnKueche) {
+      // Wasserstrahl aus dem Küchenhahn
+      c.fillStyle = "rgba(170,215,240,.8)";
+      c.fillRect(O.auslaufHahn[0] - 0.5, O.auslaufHahn[1], 1.2, 8 + Math.sin(this.elapsed * 30) * 0.4);
+    }
+    // Tassen auf dem Tischchen im Raucherraum (die aktuelle und vergessene)
+    const n = (k.tasse === "keller" && this.kSchluckT <= 0 ? 1 : 0) + k.tassenUnten;
+    for (let i = 0; i < n; i++) {
+      const aktuell = k.tasse === "keller" && this.kSchluckT <= 0 && i === 0;
+      drawTasse(c, SIDE_X + 6 + i * 4.5, SIDE_TOP, aktuell ? k.tasseFuell : 0, aktuell && k.tasseMilch);
+    }
+  }
+
+  /** Was Luni gerade in den Händen hält (nach drawLuni, an den echten Handpositionen). */
+  private drawKaffeeInHand(c: C, vorn: [number, number], hinten: [number, number], face: 1 | -1) {
+    const k = this.kaffee;
+    if (!this.senseoHaus || !k) return;
+    const [x, y] = vorn;
+    if (k.tank === "hand") drawTank(c, x, y - 1, k.tankWasser);
+    if (k.padHand) drawPad(c, x, y + 1, k.padHand === "alt");
+    if (k.dose === "hand") drawPadDose(c, x, y + 8, k.doseOffen);
+    if (k.tasse === "hand") drawTasse(c, x + face * 0.5, y + 4, k.tasseFuell, k.tasseMilch);
+    if (k.kanne === "hand") drawKanneKlein(c, x, y + 8);
+    if (k.milch === "hand") {
+      const giessen = this.kAblauf?.schritte[this.kAblauf.i]?.was === "eingiessen" && this.kAblauf.t > 0;
+      const kipp = giessen ? face * 1.9 : 0;
+      drawMilch(c, x, y + (kipp ? 2 : 9), kipp);
+      if (giessen) { c.fillStyle = "rgba(250,248,240,.9)"; c.fillRect(x + face * 3, y + 2, 0.9, 5); }
+    }
+    if (k.tragUnten > 0) for (let i = 0; i < k.tragUnten; i++) drawTasse(c, hinten[0], hinten[1] + 4 - i * 5.6, 0, false);
+    if (this.kSchluckT > 0) drawTasse(c, hinten[0], hinten[1] + 4, k.tasseFuell, k.tasseMilch);
   }
 
   private abendPruefen() {
@@ -9500,11 +10406,21 @@ export class House {
     if (phase === "stepOut") this.wet = 1;
   }
 
+  /** Was Luni unter der Dusche gerade tut (oder null außerhalb der Duschphasen). */
+  private duschBildJetzt(): DuschBild | null {
+    const ph = this.shPhase;
+    if (!ph || !["nasswerden", "washHair", "washBody", "rinse"].includes(ph)) return null;
+    return duschBild(ph, this.shT, this.shDauer(ph) ?? 1);
+  }
+
   private nextSh() {
     const p = this.shPhase;
     if (!p) return;
     const seq = (this.abendAktiv ? ABEND_SEQ : this.gruselBad && (DEKON_SEQ as readonly string[]).includes(p)
       ? DEKON_SEQ : ALL_SEQS.find((q) => q.includes(p)) ?? []) as readonly ShPhase[];
+    // Normale Dusche (ohne Abend): erst nass werden, dann Wasser aus fürs Shampoo.
+    if (!this.abendAktiv && !this.gruselBad && p === "waterOn") { this.startSh("nasswerden"); return; }
+    if (!this.abendAktiv && !this.gruselBad && p === "nasswerden") { this.startSh("washHair"); return; }
     const i = seq.indexOf(p);
     if (i < 0 || i === seq.length - 1) {
       this.shPhase = null;
@@ -9676,6 +10592,15 @@ export class House {
         break;
       case "waterOff":
         if (p >= 0.4) this.water = false;
+        break;
+      case "nasswerden":
+      case "washHair":
+      case "washBody":
+      case "rinse":
+        if (!this.gruselBad) {
+          const d = this.duschBildJetzt();
+          if (d && d.wasser !== this.water) { this.water = d.wasser; sfx.ui(); }
+        }
         break;
       case "takeTowel":
         if (p >= 0.45) this.towelOnRod = false;
@@ -9883,6 +10808,10 @@ export class House {
     }
     const F = FLOOR_Y[2];
     const t = this.elapsed;
+    if (this.istNormalHaus) {
+      const db = this.duschBildJetzt();
+      drawDuschAblage(c, F, flascheAufAblage(this.shPhase, db, "shampoo"), flascheAufAblage(this.shPhase, db, "gel"));
+    }
     if (this.water) drawShowerWater(c, F, t);
     const r = curtainRect(F, this.curtain);
     const inShower = !!this.shPhase && SH_INSIDE.includes(this.shPhase) && this.lf === 2;
@@ -9921,11 +10850,14 @@ export class House {
       sc.fillRect(0, 0, pw, phh);
       sc.globalCompositeOperation = "source-over";
 
-      // Was nicht vom Vorhang bedeckt ist, normal zeichnen
+      // Was nicht vom Vorhang bedeckt ist, normal zeichnen – aber nur innerhalb
+      // der Dusche (offener Teil, Füße unter dem Vorhang) und der Arm, der zur
+      // Ablage greift. Kopf oder Haare schauen nie seitlich am Vorhang vorbei.
       c.save();
       c.beginPath();
-      c.rect(0, 0, W, H);
+      c.rect(SHOWER_X - 1, 0, SHOWER_W + 2, H);
       c.rect(r.x, r.y, r.w, r.h);
+      c.rect(SHOWER_X + SHOWER_W + 1, F - 76, ABLAGE.w + 6, 34);
       c.clip("evenodd");
       c.setTransform(1, 0, 0, 1, 0, 0);
       c.drawImage(this.luniBuf, 0, 0);
@@ -10564,6 +11496,8 @@ export class House {
           this.sleepPhase = null;
           this.sleepPhaseT = 0;
           this.asleep = true;
+          // Uhrzeit des Einschlaferns merken (in Tests ohne Uhr bleibt der alte Wert).
+          if (this.clock) this.einschlafSek = tagessekunde(this.clock);
           this.abendAktiv = false;
           this.sleepT = 0;
           this.bedSitHair = 1;
@@ -11701,7 +12635,7 @@ export class House {
       posePhase = shp.phase;
       back = shp.back;
       expr = this.gruselBad && (state === "labBrush" || state === "labBend" || state === "act") ? "focus"
-        : state === "wash" && AUGEN_ZU.has(shp.phase) ? "sleep" : "happy";
+        : state === "wash" && augenZu(shp.phase) ? "sleep" : "happy";
     }
     if (this.golPhase === "rise") {
       const seat = STATIONS.find((stn) => stn.id === "gaming");
@@ -12054,6 +12988,32 @@ export class House {
         handElbow = -1;
       }
     }
+    // Kaffee-/Tee-Ablauf: Haltung und Hände an echten Griffen (Weltkoordinaten).
+    const kp = this.kPose;
+    if (kp && !onStair && !this.cur) {
+      if (kp.state) state = kp.state;
+      if (kp.phase !== undefined) posePhase = kp.phase;
+      if (kp.face) face = kp.face;
+      if (kp.hand) { saxHand = kp.hand; handElbow = -1; }
+      if (kp.hand2) { saxHand2 = kp.hand2; handElbow2 = 1; }
+    }
+    if (kp?.trag || (this.kAblauf && this.cur && this.kTraegt())) {
+      // Tragen: die Hand bleibt vor dem Bauch, auch beim Gehen und auf der Treppe.
+      saxHand = [x + face * 7 * LUNI_SCALE, y + yOff - 31 * LUNI_SCALE];
+      handElbow = -1;
+      if (this.kaffee?.tragUnten > 0) { saxHand2 = [x + face * 4 * LUNI_SCALE, y + yOff - 29 * LUNI_SCALE]; handElbow2 = 1; }
+    }
+    // Schluck Kaffee auf dem Raucherstuhl: Tasse vom Tischchen zum Mund und zurück.
+    const schluck = (this.kSchluckT ?? 0) > 0 && st?.id === "raucherstuhl";
+    if (schluck) {
+      const q = this.kSchluckT / 2.6;
+      const k2 = q < 0.35 ? q / 0.35 : q < 0.7 ? 1 : 1 - (q - 0.7) / 0.3;
+      const e = k2 * k2 * (3 - 2 * k2);
+      const tisch: Pt = [SIDE_X + 6, SIDE_TOP - 4];
+      const mund: Pt = [x + face * 6 * LUNI_SCALE, y + yOff - 40 * LUNI_SCALE];
+      saxHand2 = [lerp(tisch[0], mund[0], e), lerp(tisch[1], mund[1], e)];
+      handElbow2 = 1;
+    }
     // Wird von drawLuni gefüllt: beide Handpositionen in Weltkoordinaten.
     const saxHands = { front: [0, 0] as [number, number], rear: [0, 0] as [number, number] };
     const kleidung = this.bedKleidung();
@@ -12093,6 +13053,7 @@ export class House {
       back,
       wet: this.wet,
       glasses: this.glassesOn,
+      weste: this.westeAn,
       pajama: this.outfit === "dressed" || kleidung ? pyjamaStoff(this.pyjama, this.clock, this.welt) : null,
       vampir: this.outfit === "dressed" && this.vampirStil !== null ? VAMPIR_OUTFITS[this.vampirStil] : null,
       umhang,
@@ -12109,7 +13070,7 @@ export class House {
       handElbow2,
       sitzgriff: zuenden?.rechts ?? aschgriff,
       sitzgriffLinks: handy ? handyGriff(handy) : null,
-      handKontakt: !!zahn || !!this.saxPhase || !!tee || st?.id === "eimer" || !!aschziel,
+      handKontakt: !!zahn || !!this.saxPhase || !!tee || st?.id === "eimer" || !!aschziel || !!kp || schluck || !!(this.kAblauf && this.kTraegt()),
       handVorRumpf: !!handy,
       armeVorne: !!zahn?.frontal || !!tee || traegt,
       rauchzeit: this.smokeIdleT,
@@ -12149,6 +13110,18 @@ export class House {
           c.arc(mx + face * (3 + sp * 9), my + i * 1.6 - 2, 1.3 + sp * 2.4, 0, Math.PI * 2);
           c.fill();
         }
+      }
+    }
+    // Kaffee, Tank, Pad, Dose, Milch oder Teekanne in der Hand.
+    this.drawKaffeeInHand(c, saxHands.front, saxHands.rear, face);
+    // Unter der Dusche: Shampoo oder Duschgel in der Hand (greifen, auftragen, zurückstellen).
+    if (!this.gruselBad) {
+      const db = this.duschBildJetzt();
+      if (db?.flasche && db.flascheInHand) {
+        const [fx, fy] = saxHands.front;
+        // Beim Auftragen steht die Flasche kopfüber über der hohlen Hand.
+        const kipp = db.tat === "auftragen" ? face * 2.5 : 0;
+        drawFlasche(c, fx, fy + (kipp ? -2 : 3), db.flasche, kipp);
       }
     }
     // Die Zigarette, die sie gerade stopft, liegt sichtbar in ihren Händen

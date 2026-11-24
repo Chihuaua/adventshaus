@@ -17,7 +17,7 @@ import type { WeltId } from "./welten";
 type C = CanvasRenderingContext2D;
 type Rect4 = [number, number, number, number];
 
-export type SteinArt = "wach" | "traum" | "horror" | "weihnacht" | "bote" | "nikolaus" | "bett" | "ezbett";
+export type SteinArt = "wach" | "traum" | "horror" | "weihnacht" | "bote" | "nikolaus" | "bett" | "ezbett" | "aufsteh" | "ezaufsteh" | "kaffee" | "ezkaffee";
 
 /** Platz A: der ursprüngliche Steinplatz (unverändert). */
 export const STEIN: { x: number; y: number; hit: Rect4 } = {
@@ -61,6 +61,30 @@ export const EZ_BETT_STEIN: { x: number; y: number; hit: Rect4 } = {
   x: 268, y: 487, hit: [247, 461, 42, 43],
 };
 
+/**
+ * Aufsteh-Steine in der Reihe des Bett-Steins (Erdreich links vom Haus).
+ * Links vom Bett-Stein bleiben 23 Einheiten Luft, damit sich die Steine
+ * optisch nicht berühren; alles bleibt im sicheren Bildbereich (x >= 96).
+ */
+export const AUFSTEH_STEIN: { x: number; y: number; hit: Rect4 } = {
+  x: 114, y: 487, hit: [98, 461, 30, 43],
+};
+
+/** EZ-Aufsteh-Stein daneben: dieselbe Routine mit ihren Echtzeit-Dauern. */
+export const EZ_AUFSTEH_STEIN: { x: number; y: number; hit: Rect4 } = {
+  x: 146, y: 487, hit: [131, 461, 30, 43],
+};
+
+/** Kaffee-Stein: kurze Probe der Morgenroutine mit der Senseo (2 × Kaffee → Zigarette). */
+export const KAFFEE_STEIN: { x: number; y: number; hit: Rect4 } = {
+  x: 180, y: 487, hit: [164, 461, 32, 43],
+};
+
+/** EZ-Kaffee-Stein rechts neben dem EZ-Bett-Stein: dieselbe Routine in Echtzeit. */
+export const EZ_KAFFEE_STEIN: { x: number; y: number; hit: Rect4 } = {
+  x: 311, y: 487, hit: [294, 461, 34, 43],
+};
+
 const ZIEL_ART: Record<WeltId, SteinArt> = {
   normal: "wach",
   traum: "traum",
@@ -77,6 +101,10 @@ export const STEIN_NAMEN: Record<SteinArt, string> = {
   nikolaus: "Nikolausstein",
   bett: "Bett-Stein",
   ezbett: "EZ-Bett-Stein",
+  aufsteh: "Aufsteh-Stein",
+  kaffee: "Kaffee-Stein",
+  ezkaffee: "EZ-Kaffee-Stein",
+  ezaufsteh: "EZ-Aufsteh-Stein",
 };
 
 export interface SteinSlot {
@@ -88,7 +116,7 @@ export interface SteinSlot {
   hit: Rect4;
   label: string;
   /** Poststein: löst statt eines Weltwechsels die Postfrosch-Zustellung aus. */
-  aktion?: "post" | "nikolaus" | "abend" | "abendEZ";
+  aktion?: "post" | "nikolaus" | "abend" | "abendEZ" | "aufsteh" | "aufstehEZ" | "kaffee" | "kaffeeEZ";
 }
 
 /**
@@ -128,6 +156,14 @@ export function steinSlots(welt: WeltId): SteinSlot[] {
       ...BETT_STEIN, art: "bett", ziel: welt, label: STEIN_NAMEN.bett, aktion: "abend",
     }, {
       ...EZ_BETT_STEIN, art: "ezbett", ziel: welt, label: STEIN_NAMEN.ezbett, aktion: "abendEZ",
+    }, {
+      ...AUFSTEH_STEIN, art: "aufsteh", ziel: welt, label: STEIN_NAMEN.aufsteh, aktion: "aufsteh",
+    }, {
+      ...EZ_AUFSTEH_STEIN, art: "ezaufsteh", ziel: welt, label: STEIN_NAMEN.ezaufsteh, aktion: "aufstehEZ",
+    }, {
+      ...KAFFEE_STEIN, art: "kaffee", ziel: welt, label: STEIN_NAMEN.kaffee, aktion: "kaffee",
+    }, {
+      ...EZ_KAFFEE_STEIN, art: "ezkaffee", ziel: welt, label: STEIN_NAMEN.ezkaffee, aktion: "kaffeeEZ",
     }]);
 }
 
@@ -157,6 +193,10 @@ const FARBEN: Record<SteinArt, { main: string; edge: string; glow: string }> = {
   nikolaus: { main: "#805046", edge: "#f3d59a", glow: "rgba(244,202,125,.28)" },
   bett: { main: "#51465f", edge: "#dccde7", glow: "rgba(198,177,222,.18)" },
   ezbett: { main: "#33405f", edge: "#f0d68e", glow: "rgba(240,214,142,.2)" },
+  aufsteh: { main: "#6b5a49", edge: "#ffe6a8", glow: "rgba(255,230,168,.2)" },
+  kaffee: { main: "#5a3d6e", edge: "#e8d2ff", glow: "rgba(214,180,255,.2)" },
+  ezkaffee: { main: "#3e2a4e", edge: "#ffd98a", glow: "rgba(255,217,138,.22)" },
+  ezaufsteh: { main: "#4a4034", edge: "#ffd089", glow: "rgba(255,208,137,.22)" },
 };
 
 /** Halb eingegrabener Stein; Symbol und Farbe zeigen eindeutig, wohin er führt. */
@@ -208,6 +248,33 @@ export function drawStein(c: C, kind: SteinArt, t = 0, px: number = STEIN.x, py:
     c.fillStyle = "#acc8d3";
     c.beginPath(); c.roundRect(x - 2.5, y - 11.5, 12, 7.3, 2); c.fill();
     c.fillStyle = "#eae2ef"; c.fillRect(x, y - 11, 1.3, 5.5);
+  } else if (kind === "kaffee" || kind === "ezkaffee") {
+    // Kleine violette Senseo mit dampfender Tasse.
+    if (kind === "ezkaffee") {
+      c.fillStyle = "#fbf1d6"; c.beginPath(); c.arc(x + 6.4, y - 19, 4.2, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = "#7a5b2a"; c.lineWidth = .9; c.lineCap = "round"; c.stroke();
+      c.beginPath(); c.moveTo(x + 6.4, y - 19); c.lineTo(x + 6.4, y - 21.8); c.moveTo(x + 6.4, y - 19); c.lineTo(x + 8.4, y - 18); c.stroke();
+    }
+    c.fillStyle = "#8a5cc0";
+    c.fillRect(x - 9, y - 14, 10, 3); c.fillRect(x - 3, y - 14, 4, 12); c.fillRect(x - 9, y - 3, 10, 2);
+    c.fillStyle = "#f4efe6"; c.fillRect(x - 8, y - 8, 4, 5);
+    c.strokeStyle = edge; c.lineWidth = 0.8;
+    c.beginPath(); c.moveTo(x - 6.5, y - 9.5); c.quadraticCurveTo(x - 5, y - 12, x - 6.5, y - 13.5); c.stroke();
+  } else if (kind === "aufsteh" || kind === "ezaufsteh") {
+    // Aufwachpfeil über einem kleinen Bett: sie steht auf und nimmt die Weste.
+    if (kind === "ezaufsteh") {
+      c.fillStyle = "#fbf1d6"; c.beginPath(); c.arc(x + 6.4, y - 19, 4.2, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = "#7a5b2a"; c.lineWidth = .9; c.lineCap = "round"; c.stroke();
+      c.beginPath(); c.moveTo(x + 6.4, y - 19); c.lineTo(x + 6.4, y - 21.8); c.moveTo(x + 6.4, y - 19); c.lineTo(x + 8.4, y - 18); c.stroke();
+    }
+    c.fillStyle = "#f2ddc8";
+    c.fillRect(x - 11, y - 15, 2.5, 15); c.fillRect(x + 9, y - 9, 2, 9);
+    c.fillRect(x - 10, y - 4, 20, 2.2);
+    c.fillStyle = "#acc8d3";
+    c.beginPath(); c.roundRect(x - 8, y - 10.5, 15, 5.5, 2); c.fill();
+    c.strokeStyle = edge; c.lineWidth = 1.4; c.lineCap = "round";
+    c.beginPath(); c.moveTo(x - 1, y - 21); c.lineTo(x + 5, y - 21); c.stroke();
+    c.beginPath(); c.moveTo(x + 2.4, y - 24); c.lineTo(x + 5.2, y - 21); c.lineTo(x + 2.4, y - 18); c.stroke();
   } else if (kind === "nikolaus") {
     // Kleine Emaille-Mitra mit Perlenrand und der goldenen Schnecke seines Stabs.
     poly(c, [[x - 9, y - 10], [x - 3, y - 19], [x + 3.8, y - 10.5], [x + 3, y - 2.1], [x - 8.1, y - 2.2]], "#efcc82");
