@@ -4,13 +4,13 @@ import { build } from "esbuild";
 const b = await build({ stdin: { resolveDir: process.cwd(), contents: `
   export { House, berlinNow } from './src/game/house'; export * from './src/game/abendzeiten';
   export { BettHandy, videobild } from './src/game/abendroutine'; export { zahnbild } from './src/game/zahnpflege';
-  export { haarstrich } from './src/game/haarstrich'; export { luniRigBauen } from './src/game/luni';` },
+  export { haarstrich, buerstHaenger } from './src/game/haarstrich'; export { luniRigBauen } from './src/game/luni';` },
   bundle: true, write: false, format: "esm", platform: "node" });
 const G = await import(`data:text/javascript;base64,${Buffer.from(b.outputFiles[0].text).toString("base64")}`);
 const min = G.abendWerte(() => 0), mitte = G.abendWerte(() => .5), max = G.abendWerte(() => 1);
-assert.deepEqual(min, { dusche:300, zaehne:60, haare:90, video:300, anruf:1200 });
-assert.deepEqual(mitte, { dusche:360, zaehne:90, haare:120, video:480, anruf:3300 });
-assert.deepEqual(max, { dusche:480, zaehne:120, haare:120, video:720, anruf:7200 });
+assert.deepEqual(min, { dusche:300, zaehne:60, haare:60, video:300, anruf:1200 });
+assert.deepEqual(mitte, { dusche:360, zaehne:90, haare:80, video:480, anruf:3300 });
+assert.deepEqual(max, { dusche:480, zaehne:120, haare:80, video:720, anruf:7200 });
 assert.deepEqual(G.tageswerte(20261209,"normal"),G.tageswerte(20261209,"normal"));
 assert.notDeepEqual(G.tageswerte(20261209,"normal"),G.tageswerte(20261210,"normal"));
 assert.notDeepEqual(G.tageswerte(20261209,"normal"),G.tageswerte(20261209,"weihnacht"));
@@ -43,18 +43,29 @@ for (const w of [min,mitte,max]) {
 }
 console.log("OK  Alle Gruppenbudgets, 9 s Wasser, 1,5 s Handgriff, 3 s Ablegen/Rueckzug und 20/55/120 min Telefonat");
 
-const arten = new Map(); let vorher = null;
-for(let i=0;i<82*60;i++) {
-  const t=i/60,weg=G.haarstrich(t),opts={state:"brush",face:1,t,scale:1.08};
-  const alt=G.luniRigBauen(598,324,opts), neu=G.luniRigBauen(598,324,{...opts,buerstenzeit:t});
+const arten = new Map(); let vorher = null, haenger = 0, imHaenger = false, tempi = new Set();
+const saatMit = [...Array(40).keys()].find(s => G.buerstHaenger(72, s) !== null);
+for(let i=0;i<72*60;i++) {
+  const t=i/60,weg=G.haarstrich(t,72,saatMit),opts={state:"brush",face:1,t,scale:1.08};
+  const alt=G.luniRigBauen(598,324,opts), neu=G.luniRigBauen(598,324,{...opts,buerstenzeit:t,buerstendauer:72,buerstensaat:saatMit});
   for(const k of ["rootX","rootY","rootRot","bend","hipY","headY","headTilt","legNear","legFar","armNear"])
     assert.deepEqual(neu[k],alt[k],`${k}: nur die Buerstenhand wechselt ihren Weg`);
-  const h=neu.armFar.hand; if(vorher) assert.ok(Math.hypot(h[0]-vorher[0],h[1]-vorher[1])<1.15,"kein Sprung bei Strichwechsel");
+  const h=neu.armFar.hand; if(vorher) assert.ok(Math.hypot(h[0]-vorher[0],h[1]-vorher[1])<1.15,"kein Sprung bei Strich- oder Bereichswechsel");
   vorher=h; if(!arten.has(weg.art)) arten.set(weg.art,[]); arten.get(weg.art).push(weg.quer);
+  if (weg.haengt && !imHaenger) haenger++; imHaenger = weg.haengt; tempi.add(weg.zug);
 }
-assert.deepEqual([...arten.keys()],["Laengen","Spitzen","Seitenstraehne"]);
-assert.ok(Math.min(...arten.get("Seitenstraehne"))<Math.min(...arten.get("Laengen"))-2);
-console.log("OK  Drei unterschiedliche Buerstenwege, weich verbunden, Koerper und zweite Hand identisch");
+assert.deepEqual([...arten.keys()],["vorne","hinten","mitte"],"erst vorne, dann hinten, dann in der Mitte");
+const mittel = a => a.reduce((s,v)=>s+v,0)/a.length;
+assert.ok(mittel(arten.get("vorne")) < mittel(arten.get("mitte")) - 1.5 && mittel(arten.get("mitte")) < mittel(arten.get("hinten")) - 1.5);
+assert.ok(tempi.size >= 4, "verschiedene Geschwindigkeiten");
+assert.equal(haenger, 1, "genau einmal haengen bleiben");
+const saatOhne = [...Array(40).keys()].find(s => G.buerstHaenger(72, s) === null);
+assert.ok([...Array(72*10).keys()].every(i => !G.haarstrich(i/10,72,saatOhne).haengt), "in manchen Gaengen bleibt sie gar nicht haengen");
+const anteil = [...Array(200).keys()].filter(s => G.buerstHaenger(60, s) !== null).length / 200;
+assert.ok(anteil > .45 && anteil < .75, "Haengenbleiben ist nicht in jedem Gang");
+const kurz = new Set([...Array(70).keys()].map(i => G.haarstrich(i/10, 7, 1).art));
+assert.deepEqual([...kurz], ["vorne","hinten","mitte"], "auch in der kurzen Probe alle drei Bereiche");
+console.log("OK  Haare vorne, hinten und in der Mitte, wechselndes Tempo, hoechstens einmal haengen, Koerper und zweite Hand identisch");
 
 const RealDate=Date; let jetzt=Date.parse("2026-12-09T19:50:00Z");
 globalThis.Date=class extends RealDate {constructor(...args){super(...(args.length?args:[jetzt]));} static now(){return jetzt;}};
@@ -92,7 +103,7 @@ for(const welt of ["traum","gruesel"]) {const h=haus(welt);tick(h,.01);assert.ok
 const gespeichert=JSON.parse(speicher.get('lcp1.welt.weihnacht.v1'));assert.ok(gespeichert.abendBegonnenAm===20261209);
 console.log("OK  Spaeter Einstieg, stabile Tageswahl, reale Zeit bei gedrosseltem Bild und Schlaf nach Offline-Telefonat");
 
-speicher.clear();jetzt=RealDate.parse("2026-12-09T23:53:00+01:00");h=haus("normal");h.command("stein_bett");
+speicher.clear();jetzt=RealDate.parse("2026-12-09T23:53:00+01:00");h=haus("normal");h.command("stein_ezbett");
 const tagesplan={...h.abendPlan.werte};tick(h,26);h.speichern();jetzt+=65e3;h=haus("normal");tick(h,.02);
 assert.ok(h.abendAktiv&&["washHair","nasswerden","washBody"].includes(h.shPhase));
 document.visibilityState="hidden";tick(h,16*60);document.visibilityState="visible";
@@ -101,7 +112,7 @@ assert.equal(h.abendBegonnenAm,20261209);assert.equal(G.berlinNow().day,10);
 assert.ok(tagsek(G.berlinNow())<3600);
 console.log("OK  Unterbrechung vor dem Bett und Tageswechsel waehrend eines manuell gestarteten Abends");
 
-speicher.clear();jetzt=RealDate.parse("2026-07-18T10:00:00+02:00");h=haus("normal");h.command("stein_bett");tick(h,9200);
+speicher.clear();jetzt=RealDate.parse("2026-07-18T10:00:00+02:00");h=haus("normal");h.command("stein_ezbett");tick(h,9200);
 assert.ok(h.asleep&&h.abendBegonnenAm!==20260718);h.aufwachen();for(let i=0;i<40;i++)tick(h,.05);
 jetzt=RealDate.parse("2026-07-18T21:16:00+02:00");tick(h,2);assert.equal(h.abendBegonnenAm,20260718);assert.equal(h.bettHandy.phase,"video");
 tick(h,9200);assert.ok(h.asleep);h.aufwachen();for(let i=0;i<40;i++)tick(h,.05);

@@ -21,6 +21,8 @@ for (const w of ["normal", "weihnacht", "traum", "gruesel"]) {
   const h = haus(w), slots = G.steinSlots(w), erlaubt = ["normal", "weihnacht"].includes(w);
   const bett = slots.find(s => s.aktion === "abend");
   assert.equal(!!bett, erlaubt);
+  assert.equal(!!slots.find(s => s.aktion === "abendEZ"), erlaubt, "EZ-Bett-Stein nur in beiden Abendwelten");
+  assert.equal(h.steinStationen.filter(s => s.id === "stein_ezbett").length, Number(erlaubt));
   assert.equal(h.steinStationen.filter(s => s.id === "stein_bett").length, Number(erlaubt));
   if (bett) {
     const s = G.STATIONS.find(s => s.id === "stein_bett"); assert.deepEqual(s.hits, [bett.hit]);
@@ -48,21 +50,21 @@ for (const [d, saison] of [[datum(2026,9,30),false],[datum(2026,10,1),true],[dat
 }
 console.log("OK  Winterstoff: 1. Oktober bis Ostermontag, auch bei Monatswechsel");
 
-for (let t = 0; t < G.ZAHN_TAKTE.zPutzen; t += .025) {
-  const z = G.zahnbild("zPutzen", t, 632, 324);
+for (const dauer of [G.ZAHN_TAKTE.zPutzen, G.ZAHN_PROBE.zPutzen]) for (let t = 0; t < dauer; t += .025) {
+  const z = G.zahnbild("zPutzen", t, 632, 324, dauer);
   const r = G.luniRigBauen(636, 324, { state: "idle", t, face: 1, scale: 1.08, handKontakt: true,
-    handTarget: z.r, handElbow: z.ellbogen });
-  const e = r.armFar.elbow, h = r.armFar.hand;
-  assert.ok(z.frontal && e[0] < 0 && e[1] > -34 && e[1] > h[1] + 1, "Putzen: Ellbogen aussen, unter Schulter und Hand");
-  assert.ok(Math.abs(Math.hypot(e[0] + 3.4, e[1] + 34) - 8.2) < 1e-6);
+    handTarget2: z.r, handElbow2: z.ellbogen });
+  const e = r.armNear.elbow, h = r.armNear.hand;
+  assert.ok(z.frontal && e[0] > .5, "Putzarm: der Ellbogen knickt nie über die Körpermitte nach innen");
+  if (z.putzt) assert.ok(e[0] > 6 && e[1] > -38.5 && e[1] > h[1] + 3, "am Mund: Ellbogen aussen, etwa auf Schulterhoehe und deutlich unter der Hand");
+  assert.ok(Math.abs(Math.hypot(e[0] - 3.4, e[1] + 34) - 8.2) < 1e-6);
   assert.ok(Math.abs(Math.hypot(e[0] - h[0], e[1] - h[1]) - 8.4) < 1e-6);
-  if (z.p > .25 && z.p < .86) {
+  if (z.putzt) {
     const cs = Math.cos(z.winkel), sn = Math.sin(z.winkel);
-    assert.ok(Math.hypot(z.r[0] + cs * 7.5 + sn * 2.4 - 636.86,
-      z.r[1] + sn * 7.5 - cs * 2.4 - 279.9) < 1.5, "die Borsten bleiben an der Zahnreihe");
+    assert.ok(Math.hypot(z.r[0] + cs * 7.2 + sn * 2.1 - 636.86, z.r[1] + sn * 7.2 - cs * 2.1 - 279.9) < 3.4, "die Borsten bleiben an den Zaehnen, auch hinten im Mund");
   }
 }
-console.log("OK  Putzarm: korrekte Beugung, unveraenderte Armlaenge, Borsten am Mund");
+console.log("OK  Putzarm auf der Beckenseite: Ellbogen aussen und unten, unveraenderte Armlaenge, Borsten an den Zaehnen");
 
 // In langen Abschnitten nur die Testuhr weitersetzen; alle Objektübergaben laufen regulär.
 function testSchritt(h) {
@@ -118,7 +120,7 @@ function durchlauf(h, starten = true) {
   }
   assert.ok(mitTube && schaum && gewaschen && gesprochen);
   assert.ok(ton.filter(k => k === "putzen").length >= 10 && ton.filter(k => k === "gurgeln").length >= 4);
-  assert.equal(ton.filter(k => k === "spucken").length,1);
+  assert.equal(ton.filter(k => k === "spucken").length,2, "einmal zwischendurch und einmal nach dem Gurgeln");
   assert.ok(h.asleep && !h.abendAktiv && !h.bettHandy && !h.glassesOn && !h.glassesInHand);
   assert.deepEqual([h.glassesRest.x, h.glassesRest.y], [401,297]); assert.equal(h.shPhase,null);
   assert.ok(h.handyAmKissen); assert.equal(h.schnappschuss().handyNacht, "schlaf");

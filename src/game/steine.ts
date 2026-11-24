@@ -17,7 +17,7 @@ import type { WeltId } from "./welten";
 type C = CanvasRenderingContext2D;
 type Rect4 = [number, number, number, number];
 
-export type SteinArt = "wach" | "traum" | "horror" | "weihnacht" | "bote" | "nikolaus" | "bett";
+export type SteinArt = "wach" | "traum" | "horror" | "weihnacht" | "bote" | "nikolaus" | "bett" | "ezbett";
 
 /** Platz A: der ursprüngliche Steinplatz (unverändert). */
 export const STEIN: { x: number; y: number; hit: Rect4 } = {
@@ -56,6 +56,11 @@ export const BETT_STEIN: { x: number; y: number; hit: Rect4 } = {
   x: 222, y: 487, hit: [201, 461, 42, 43],
 };
 
+/** EZ-Bett-Stein rechts neben dem Bett-Stein: startet die Abendroutine mit ihren Echtzeit-Dauern. */
+export const EZ_BETT_STEIN: { x: number; y: number; hit: Rect4 } = {
+  x: 268, y: 487, hit: [247, 461, 42, 43],
+};
+
 const ZIEL_ART: Record<WeltId, SteinArt> = {
   normal: "wach",
   traum: "traum",
@@ -71,6 +76,7 @@ export const STEIN_NAMEN: Record<SteinArt, string> = {
   bote: "Poststein",
   nikolaus: "Nikolausstein",
   bett: "Bett-Stein",
+  ezbett: "EZ-Bett-Stein",
 };
 
 export interface SteinSlot {
@@ -82,7 +88,7 @@ export interface SteinSlot {
   hit: Rect4;
   label: string;
   /** Poststein: löst statt eines Weltwechsels die Postfrosch-Zustellung aus. */
-  aktion?: "post" | "nikolaus" | "abend";
+  aktion?: "post" | "nikolaus" | "abend" | "abendEZ";
 }
 
 /**
@@ -120,6 +126,8 @@ export function steinSlots(welt: WeltId): SteinSlot[] {
       aktion: "nikolaus",
     }, {
       ...BETT_STEIN, art: "bett", ziel: welt, label: STEIN_NAMEN.bett, aktion: "abend",
+    }, {
+      ...EZ_BETT_STEIN, art: "ezbett", ziel: welt, label: STEIN_NAMEN.ezbett, aktion: "abendEZ",
     }]);
 }
 
@@ -148,6 +156,7 @@ const FARBEN: Record<SteinArt, { main: string; edge: string; glow: string }> = {
   bote: { main: "#2c5674", edge: "#9fe0a8", glow: "rgba(150,230,170,.22)" },
   nikolaus: { main: "#805046", edge: "#f3d59a", glow: "rgba(244,202,125,.28)" },
   bett: { main: "#51465f", edge: "#dccde7", glow: "rgba(198,177,222,.18)" },
+  ezbett: { main: "#33405f", edge: "#f0d68e", glow: "rgba(240,214,142,.2)" },
 };
 
 /** Halb eingegrabener Stein; Symbol und Farbe zeigen eindeutig, wohin er führt. */
@@ -185,7 +194,13 @@ export function drawStein(c: C, kind: SteinArt, t = 0, px: number = STEIN.x, py:
   c.lineTo(x + 4, y + 10);
   c.stroke();
   c.fillStyle = edge;
-  if (kind === "bett") {
+  if (kind === "bett" || kind === "ezbett") {
+    if (kind === "ezbett") {
+      // Kleines Bett mit einer Uhr darüber: der Abend in echter Zeit.
+      c.fillStyle = "#fbf1d6"; c.beginPath(); c.arc(x + 6, y - 18, 4.2, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = "#7a5b2a"; c.lineWidth = .9; c.lineCap = "round"; c.stroke();
+      c.beginPath(); c.moveTo(x + 6, y - 18); c.lineTo(x + 6, y - 20.8); c.moveTo(x + 6, y - 18); c.lineTo(x + 8, y - 17); c.stroke();
+    }
     c.fillStyle = "#f2ddc8";
     c.fillRect(x - 11, y - 15, 2.5, 17); c.fillRect(x + 9, y - 9, 2, 11);
     c.fillRect(x - 10, y - 4, 20, 2.2);

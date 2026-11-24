@@ -7,7 +7,7 @@ import { build } from "esbuild";
 const b = await build({
   stdin: {
     contents: readFileSync("src/game/house.ts", "utf8") + "\nexport { COUCHTISCH, wohnzimmerAdventskranz, wohnzimmerKranzlicht, esstischAdventskranz, adventsSonntage };"
-      + "\nexport { railing, drawStair, windowRect, roundWindow, haustuer, drawHouse, drawBedCloth, drawBedEntryBlanket };\nexport { fensterReif, rundReif } from \"./reif\";\nexport { WEIHNACHTSBAUM_X, WEIHNACHTS_ORTE, WEIHNACHTS_FARBEN, weihnachtsKerzenflammen } from \"./weihnachtshaus\";\n",
+      + "\nexport { drawStair, windowRect, roundWindow, haustuer, drawHouse, drawBedCloth, drawBedEntryBlanket };\nexport { fensterReif, rundReif } from \"./reif\";\nexport { WEIHNACHTSBAUM_X, WEIHNACHTS_ORTE, WEIHNACHTS_FARBEN, weihnachtsKerzenflammen } from \"./weihnachtshaus\";\n",
     resolveDir: path.resolve("src/game"), loader: "ts",
   },
   bundle: true, write: false, platform: "node", format: "esm",
@@ -47,18 +47,11 @@ function canvas() {
 let n = 0;
 const test = (name, run) => { run(); n++; console.log(`OK  ${name}`); };
 
-test("Kleine Brüstungen: Streben halb so hoch (13), Handlauf sitzt oben auf", () => {
-  assert.equal(G.BRUESTUNG_HOEHE, 13);
-  const c = canvas();
-  G.railing(c, 100, 500, 40);
-  const striche = c.ops.filter((o) => o.art === "strich");
-  const handlauf = striche.find((o) => o.von[1] === 487 && o.bis[1] === 487);
-  assert.ok(handlauf && handlauf.von[0] === 100 && handlauf.bis[0] === 140, "Handlauf liegt 13 über dem Boden");
-  for (const s of striche.filter((o) => o !== handlauf)) {
-    assert.equal(s.von[0], s.bis[0], "Strebe steht senkrecht");
-    assert.ok(Math.abs(Math.abs(s.bis[1] - s.von[1]) - 13) < 1e-9, "Strebe ist 13 hoch");
-    assert.ok(s.bis[1] === 500, "Strebe steht auf dem Boden");
-  }
+test("Keine kleinen Geländerstücke mehr an den oberen Treppenenden (Hocker im Bad, Strich oben)", () => {
+  assert.equal(G.BRUESTUNG_HOEHE, 13, "die Brüstungshöhe bleibt als Maß erhalten");
+  const haus = readFileSync("src/game/house.ts", "utf8");
+  assert.ok(!/railing\(/.test(haus), "kein Geländerstück wird mehr gezeichnet");
+  assert.ok(haus.includes("if (gr?.kueche) drawEisenBruestung(c, OG_X1 - 12, FO, 12);"), "die Hexenküche behält ihr Eisengeländer");
 });
 
 test("Treppen: alle Streben 27 hoch, Handlauf parallel zu den Stufen", () => {
