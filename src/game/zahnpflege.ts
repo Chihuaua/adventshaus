@@ -1,12 +1,10 @@
+import { ZAHN_TAKTE } from "./abendzeiten";
+export { ZAHN_TAKTE };
+
 type C = CanvasRenderingContext2D;
 type Pt = [number, number];
 const tau = 2 * Math.PI;
 
-/** Nur die Bewegungen der Probe. Reihenfolge und Objektbesitz hängen nicht von der Uhr ab. */
-export const ZAHN_TAKTE = {
-  zNehmen: 1.5, zTube: 1.25, zPaste: 1.35, zTubeZurueck: 1.25, zPutzen: 7.4,
-  zGurgeln: 1.9, zSpucken: 1.6, zHahnAuf: 1.0, zWaschen: 3.0, zHahnZu: 1.0, zZurueck: 1.6,
-} as const;
 export type Zahnschritt = keyof typeof ZAHN_TAKTE;
 const AM_BECKEN: readonly Zahnschritt[] = ["zPutzen", "zGurgeln", "zSpucken", "zHahnAuf", "zWaschen", "zHahnZu"];
 export const ZAHN_WEG = ["zPlatz", "zNehmen", "zTube", "zPaste", "zTubeZurueck", "zZumBecken",
@@ -16,13 +14,13 @@ export const istZahnschritt = (schritt: string | null): schritt is Zahnschritt =
 const glatt = (p: number) => { const q = Math.min(1, Math.max(0, p)); return q * q * (3 - 2 * q); };
 const weg = (a: Pt, b: Pt, p: number): Pt => { const e = glatt(p); return [a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[1]) * e]; };
 
-export function zahnbild(ph: Zahnschritt, t: number, x: number, f: number) {
-  const p = Math.min(1, t / ZAHN_TAKTE[ph]);
+export function zahnbild(ph: Zahnschritt, t: number, x: number, f: number, dauer: number = ZAHN_TAKTE[ph]) {
+  const p = Math.min(1, t / dauer);
   const stand = x + (AM_BECKEN.includes(ph) ? 4 : 17);
   const rechts: Pt = [stand - 7, f - 23], links: Pt = [stand + 8, f - 23];
   const becher: Pt = [x + 8.8, f - 53], tube: Pt = [x + 27, f - 55];
   const bereit: Pt = [stand - 3, f - 32.5], druecken: Pt = [x + 21.2, f - 43];
-  const mund: Pt = [stand + 1, f - 44.1], amMund: Pt = [mund[0] + 7.7, mund[1] - .85];
+  const mund: Pt = [stand + .86, f - 44.1];
   const knauf: Pt = [x + 13, f - 40], strahl: Pt = [x + 17.6, f - 37.2];
   let r: Pt = bereit, l: Pt = links, winkel = -.16, neigung = 0;
   let fluss = 0, schaum = 0, belag = 0;
@@ -35,10 +33,14 @@ export function zahnbild(ph: Zahnschritt, t: number, x: number, f: number) {
     case "zPaste": l = druecken; belag = glatt((p - .25) / .48); break;
     case "zTubeZurueck": l = hoch(druecken, tube, links); belag = 1; break;
     case "zPutzen": {
-      const ans = glatt(p / .12), ab = glatt((p - .88) / .12);
-      const hub = Math.sin(t * 14) * ans * (1 - ab);
-      r = weg(bereit, [amMund[0] + hub * 1.35, amMund[1] + .55 * Math.sin(t * 2.2)], ans * (1 - ab));
-      winkel -= 2.78 * ans * (1 - ab); schaum = glatt((p - .07) / .28); belag = 1 - .65 * schaum; break;
+      const amMund = glatt(t / .95) * glatt((dauer - t) / .95);
+      const hub = Math.sin(t * 14), bogen = Math.sin(amMund * Math.PI);
+      winkel = -.25 - .035 * amMund * Math.sin(t * 2.1);
+      // Griff auf ihrer rechten Seite (im Bild links), Borsten zum Mund. Der Oberarm bleibt unten.
+      const ziel: Pt = [mund[0] - 7.5 * Math.cos(winkel) - 2.4 * Math.sin(winkel) + 1.1 * hub,
+        mund[1] - 7.5 * Math.sin(winkel) + 2.4 * Math.cos(winkel) + .34 * Math.sin(t * 2.2)];
+      r = weg([stand - 11.5, f - 29.5], ziel, amMund); r[0] -= bogen * 2.1;
+      schaum = glatt((t - .55) / 2.6); belag = 1 - .65 * schaum; break;
     }
     case "zGurgeln": schaum = 1; belag = .35; break;
     case "zSpucken": neigung = glatt(p / .33) * (1 - glatt((p - .72) / .28)); schaum = 1 - glatt((p - .36) / .35); belag = .35; break;
@@ -51,7 +53,9 @@ export function zahnbild(ph: Zahnschritt, t: number, x: number, f: number) {
     case "zHahnZu": l = hoch(links, knauf, links); fluss = 1 - glatt((p - .45) / .25); break;
     case "zZurueck": r = hoch(bereit, becher, rechts, .53); winkel -= (Math.PI / 2 - .16) * glatt(p / .53); break;
   }
-  return { r, l, p, ph, t, winkel, neigung, buersteHand, tubeHand, fluss, schaum, belag };
+  const ellbogen: 1 | -1 = ph === "zPutzen" ? -1 : 1;
+  return { r, l, p, ph, t, winkel, neigung, buersteHand, tubeHand, fluss, schaum, belag,
+    ellbogen, frontal: ph === "zPutzen" || ph === "zGurgeln" };
 }
 export type Zahnbild = ReturnType<typeof zahnbild>;
 

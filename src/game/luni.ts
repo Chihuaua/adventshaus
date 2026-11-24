@@ -196,7 +196,11 @@ export interface LuniOpts {
   kleidung?: { oberteil: boolean; hose: boolean; handtuch?: boolean };
   /** Beim Umziehen vor dem Schrank verdeckt der Rücken die davor greifenden Arme. */
   schrankRuecken?: boolean;
+  /** Beide Augen und Schulterseiten zeigen beim Putzen zur Betrachterin. */
+  zahnfrontal?: boolean;
   mundSchaum?: number;
+  /** Nur bei der langen Abendpflege: Zeit für Längen, Spitzen und Seitensträhne. */
+  buerstenzeit?: number;
   /** Rücken zum Betrachter: Haare statt Gesicht */
   back?: boolean;
   /** 0..1: nasse Haare, Tropfen */
@@ -215,6 +219,8 @@ export interface LuniOpts {
   bedSitzen?: number;
   /** Nur Bett: Arme und Beine liegen unter der Decke und werden nicht gezeichnet. */
   bedCover?: boolean;
+  /** Reflektiertes Licht des aktuellen Videobilds, nur auf der Gesichtshaut. */
+  displaylicht?: { rgb: string; staerke: number } | null;
   /** Nur Gesang (expr "sing"): Mundöffnung 0..1 aus der Gesangszeit. */
   singOpen?: number;
   /** Nur Musikzimmer: frontaler Hocker, 0 = stehen, 1 = sitzen. */
@@ -283,6 +289,7 @@ export const SITZ_MUND: readonly [number, number] = [
 ];
 /** Länge der Rückenhaare ab Kopfmitte – Spitze endet etwas unter den Schultern. */
 import { tanzParamsFor } from "./tanz";
+import { haarstrich } from "./haarstrich";
 import { liveDelta } from "./editor-live";
 
 const HAIR_LEN = 18;
@@ -672,7 +679,7 @@ function knieSeite(huefte: V, fuss: V, q: number): V {
   return [huefte[0] + ux * a + px * h * k, huefte[1] + uy * a + py * h * k];
 }
 
-function buildRig(state: LuniState, t: number, walkP: number, phase: number, reach: number, beatT?: number): Rig {
+function buildRig(state: LuniState, t: number, walkP: number, phase: number, reach: number, beatT?: number, buerstenzeit?: number): Rig {
   const r = baseRig();
   const breathe = Math.sin(t * 2) * 0.45;
   // Tanz-Uhr: Musikzeit, falls übergeben (dann läuft der Tanz im Takt zur
@@ -846,8 +853,9 @@ function buildRig(state: LuniState, t: number, walkP: number, phase: number, rea
         const down = k < 0.72;
         const top = lab ? 1 : 3;
         const tip = lab ? 8 : 13;
-        const sPos = down ? lerp(top, tip, ease(k / 0.72)) : lerp(tip, top, ease((k - 0.72) / 0.28));
-        const off = lab ? (down ? 3.5 : 5) : (down ? 7.5 : 10.5);
+        const zug = !lab && buerstenzeit !== undefined ? haarstrich(buerstenzeit) : null;
+        const sPos = zug?.laengs ?? (down ? lerp(top, tip, ease(k / 0.72)) : lerp(tip, top, ease((k - 0.72) / 0.28)));
+        const off = zug?.quer ?? (lab ? (down ? 3.5 : 5) : (down ? 7.5 : 10.5));
         const neckX = lab ? (SHOULDER_Y - HEAD_Y) * Math.sin(r.neckBend) : 0;
         const neckY = lab ? SHOULDER_Y + (HEAD_Y - SHOULDER_Y) * Math.cos(r.neckBend) : HEAD_Y;
         const hand: V = [neckX + D[0] * sPos + P[0] * off, neckY + D[1] * sPos + P[1] * off];
@@ -1821,7 +1829,7 @@ function drawEyeRoll(ctx: C, p: number) {
 
 /* ------------------------------ Gesicht -------------------------------- */
 
-function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = true, gaze = 0, queasy = 0, singOpen = 0, pinsel?: LuniZeichenpinsel) {
+function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = true, gaze = 0, queasy = 0, singOpen = 0, pinsel?: LuniZeichenpinsel, frontal = false) {
   if (pinsel) {
     ctx.save(); ctx.translate(0, HEAD_Y);
     pinsel.gesicht(ctx, expr, blink, t, glasses, gaze, queasy, singOpen);
@@ -1831,8 +1839,8 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
   const closed =
     blink > 0.5 || expr === "sleep" ||
     (queasy < 0.5 && (expr === "happy" || expr === "grin" || expr === "love"));
-  const farX = -2.6;
-  const nearX = 3.6;
+  const farX = frontal ? -3.25 : -2.6;
+  const nearX = frontal ? 3.25 : 3.6;
   const eyeY = 0.4;
 
   ctx.save();
@@ -1886,6 +1894,11 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
   } else if (closed) {
     arcUp(farX, 1.9);
     arcUp(nearX, 2.1);
+  } else if (frontal) {
+    for (const x of [farX, nearX]) {
+      ctx.fillStyle = "#faf6ec"; ctx.beginPath(); ctx.ellipse(x, eyeY, 1.88, 1.55, 0, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = LUNI_COLORS.eye; dot(x, 1.1);
+    }
   } else if (expr === "wink") {
     dot(farX, 1.5);
     arcUp(nearX, 2.1);
@@ -1985,6 +1998,7 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
     ctx.beginPath();
     ctx.moveTo(farX - lw / 2, eyeY - 0.8);
     ctx.lineTo(-7.6, eyeY - 1.6);
+    if (frontal) { ctx.moveTo(nearX + lw / 2, eyeY - .8); ctx.lineTo(7.6, eyeY - 1.6); }
     ctx.stroke();
     ctx.globalAlpha = 0.5;
     ctx.strokeStyle = "#ffffff";
@@ -2857,7 +2871,7 @@ export function luniRigBauen(x: number, y: number, opts: LuniOpts = {}): Rig {
     const neu = buildRig(state, tzeit, walk, phase, armReach, beatT);
     r = mergeRig(alt, neu, ease(blendK));
   } else {
-    r = buildRig(state, tzeit, walk, phase, armReach, beatT);
+    r = buildRig(state, tzeit, walk, phase, armReach, beatT, opts.buerstenzeit);
   }
   if (bedLean > 0) r.bend = Math.max(r.bend, clamp01(bedLean) * 0.28);
   const bettSitzEnde = state === "sit" && bedSitzen !== undefined ? buildRig("sit", t, walk, phase, armReach) : null;
@@ -3156,8 +3170,21 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
   }
 
   const klavierHaareVorn = back && (state === "piano" || pianoSeat !== undefined);
+  const schrank = back && opts.schrankRuecken === true;
+  const rueckenarme = !back ? null : backIK ? { near: r.armNear, far: r.armFar, behind: false } : backArms(state, r, phase);
+  const armeVonHinten = () => {
+    if (!rueckenarme || bedCover) return;
+    for (const [side, arm] of [[-1, rueckenarme.far], [1, rueckenarme.near]] as const) {
+      stroke3(ctx, [side * 6.2, r.shoulderY + 2.2], arm.elbow, arm.hand, side < 0 ? K.cardiganDark : K.cardigan, 4.5, pinsel);
+      if (P?.flausch && oberteil === "dressed") flauschBund(ctx, arm.elbow, pullBack(arm.elbow, arm.hand, 1.5), P.top, 4.9);
+      drawHand(ctx, arm.elbow, arm.hand, K.skin, K.skinShade, -side, "offen", pinsel, true);
+    }
+  };
+  // Der breite Haarfall reicht über die schmalere mittlere Strähne hinaus.
+  // Beim Griff in den Schrank müssen auch diese Haare, Hose und Handtuch vor beiden Armen liegen.
+  if (schrank) armeVonHinten();
   /* --- Haare hinten (beim Vorbeugen hängen sie am Kopf, siehe dort) --- */
-  if (r.bend < 0.7 && !klavierHaareVorn) upperLean(() => drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen, false, pinsel));
+  if (r.bend < 0.7 && !klavierHaareVorn) upperLean(() => drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen, opts.zahnfrontal === true, pinsel));
 
   /* Beine tauschen: das helle Bein steht jetzt hinten, das dunkle vorn. Jedes Bein behält
      Gelenk, Gangphase, Socke und Farbe; nur die Zeichenreihenfolge ändert sich. */
@@ -3283,29 +3310,17 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
 
   if (back) {
     /* --- Rückansicht: Arme seitlich, Oberkörper von hinten --- */
-    const arms = backIK
-      ? { near: r.armNear, far: r.armFar, behind: false }
-      : backArms(state, r, phase);
-    const drawArms = () => {
-      for (const [side, arm] of [[-1, arms.far], [1, arms.near]] as const) {
-        stroke3(ctx, [side * 6.2, r.shoulderY + 2.2], arm.elbow, arm.hand, side < 0 ? K.cardiganDark : K.cardigan, 4.5, pinsel);
-        if (P?.flausch && oberteil === "dressed") flauschBund(ctx, arm.elbow, pullBack(arm.elbow, arm.hand, 1.5), P.top, 4.9);
-        // Rückansicht: ebenfalls Handflächen nach außen, Daumen zur Körpermitte.
-        drawHand(ctx, arm.elbow, arm.hand, K.skin, K.skinShade, -side, "offen", pinsel, true);
-      }
-    };
-    // Vor dem Schrank greift sie vor die Brust: der Rücken deckt beide Arme als Ganzes ab.
-    const verdeckt = opts.schrankRuecken || (arms.behind && state !== "undress" && state !== "wrap");
-    if (!bedCover && verdeckt) drawArms();
+    const verdeckt = rueckenarme?.behind && state !== "undress" && state !== "wrap";
+    if (!schrank && verdeckt) armeVonHinten();
     drawTorsoBack(ctx, r, oberteil, K, pinsel);
     if (P?.flausch && oberteil === "dressed") flauschJacke(ctx, r, P.top, true);
-    if (kleidung?.hose && !kleidung.oberteil) {
+    if (kleidung?.hose && !kleidung.oberteil && !kleidung.handtuch) {
       ctx.fillStyle = K.leggings;
       rr(ctx, -6.8, r.hipY - 1.6, 13.6, 3.6, 1.6);
       ctx.fill();
     }
     if (vampir && oberteil === "dressed") drawVampirRuecken(ctx, r, vampir);
-    if (!bedCover && !verdeckt) drawArms();
+    if (!schrank && !verdeckt) armeVonHinten();
     if (vampir?.umhang && oberteil === "dressed" && umhang > 0.01) drawUmhangRuecken(ctx, r, vampir.umhang, umhang);
     // Die langen Haare liegen über Rücken und Schultern.
     if (!klavierHaareVorn) drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen * (wet > 0.3 ? 0.94 : 1), true, pinsel);
@@ -3397,6 +3412,15 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
     ctx.beginPath();
     ctx.arc(0, HEAD_Y, HEAD_R, 0, Math.PI * 2);
     ctx.fill();
+    if (state === "lie" && opts.displaylicht && opts.displaylicht.staerke > 0) {
+      // Genau den Hautpfad erneut füllen. Haare, Augen und Bett werden nicht mitbelichtet.
+      const { rgb, staerke } = opts.displaylicht;
+      const licht = ctx.createLinearGradient(4, HEAD_Y + 8, -4, HEAD_Y - 7);
+      licht.addColorStop(0, `rgba(${rgb},${staerke})`);
+      licht.addColorStop(.6, `rgba(${rgb},${staerke * .48})`);
+      licht.addColorStop(1, `rgba(${rgb},0)`);
+      ctx.fillStyle = licht; ctx.fill();
+    }
   }
 
   if (back) {
@@ -3467,11 +3491,13 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
       drawHairAside(ctx, k);
       ctx.restore();
     }
-    drawFace(ctx, eyeRoll > 0.01 ? "annoyed" : expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0, singOpen, pinsel);
+    drawFace(ctx, eyeRoll > 0.01 ? "annoyed" : expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0, singOpen, pinsel, opts.zahnfrontal);
     if (opts.mundSchaum) {
       ctx.save(); ctx.globalAlpha *= opts.mundSchaum;
-      for (const [dx, dy, rad] of [[-2, .6, 1.15], [-.5, 1.2, 1.2], [1, .8, 1.15], [2.1, .3, .8], [.4, 2, .6]]) {
-        ctx.fillStyle = dy > 1 ? "#d6e8e1" : "#f9fcf4"; ctx.beginPath();
+      ctx.fillStyle = "#abcfc9"; ctx.beginPath();
+      ctx.ellipse(MUND_X, HEAD_Y + MUND_Y + 1.1, 4.8, 2.05, -.06, 0, 2 * Math.PI); ctx.fill();
+      for (const [dx, dy, rad] of [[-3.65, .45, 1.6], [-2.0, -.15, 1.45], [-.5, .4, 1.8], [1.25, .05, 1.65], [3.3, .55, 1.55], [-1.5, 1.85, 1.25], [.8, 2.65, .9]]) {
+        ctx.fillStyle = dy > 1 ? "#e0efe9" : "#fffef5"; ctx.beginPath();
         ctx.arc(MUND_X + dx, HEAD_Y + MUND_Y + dy, rad, 0, Math.PI * 2); ctx.fill();
       }
       ctx.restore();

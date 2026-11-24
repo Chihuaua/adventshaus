@@ -6,7 +6,7 @@ import { build } from "esbuild";
 
 const b = await build({
   stdin: {
-    contents: readFileSync("src/game/house.ts", "utf8")
+    contents: readFileSync("src/game/house.ts", "utf8") + "\nexport { COUCHTISCH, wohnzimmerAdventskranz, wohnzimmerKranzlicht, esstischAdventskranz, adventsSonntage };"
       + "\nexport { railing, drawStair, windowRect, roundWindow, haustuer, drawHouse, drawBedCloth, drawBedEntryBlanket };\nexport { fensterReif, rundReif } from \"./reif\";\nexport { WEIHNACHTSBAUM_X, WEIHNACHTS_ORTE, WEIHNACHTS_FARBEN, weihnachtsKerzenflammen } from \"./weihnachtshaus\";\n",
     resolveDir: path.resolve("src/game"), loader: "ts",
   },
@@ -233,6 +233,27 @@ test("Adventskranz: pro erreichtem Sonntag genau eine zusätzliche Flamme", () =
     const c = canvas();
     G.weihnachtsKerzenflammen(c, 448, 324, 572, 2, tag);
     assert.equal(c.ops.filter((o) => o.art === "radial").length, 2 + tag, "Bad und Keller plus Adventskerzen");
+  }
+});
+
+test("Wohnzimmer: Kranz von Tischkante zu Tischkante, vier Kerzen, nur in den dekorierten Welten", () => {
+  const { x, w, h } = G.COUCHTISCH, oben = G.FLOOR_Y[1] - h;
+  const c = canvas(), spitzen = [];
+  c.lineTo = (px, py) => spitzen.push([px, py]);
+  G.wohnzimmerAdventskranz(c, x, oben, w);
+  assert.equal(w,70);
+  assert.ok(c.ops.some(o => o.art === "translate" && o.x === x + w/2 && o.y === oben - 4));
+  assert.equal(Math.max(...spitzen.map(p => p[0])) - Math.min(...spitzen.map(p => p[0])), w);
+  const k = canvas(), ring = []; k.ellipse = (cx, cy, rx) => ring.push(rx);
+  G.esstischAdventskranz(k,448); assert.ok(ring.length && 2 * Math.max(...ring) < w * .5);
+  for (const [deko, winter, gr, erwartet] of [[true,false,null,4],[true,true,null,4],[false,false,null,0],[true,false,{},0]]) {
+    const h = canvas(); G.drawHouse(h, {}, { open: 0 }, true, gr, false, undefined, winter, false, deko);
+    assert.equal(h.ops.filter(o => o.art === "linear" && o.stops.includes("#c16a63")).length, erwartet);
+  }
+  for (const [t, an] of [[Date.UTC(2026,10,28,22,59),0],[Date.UTC(2026,10,28,23),1],
+    [Date.UTC(2026,11,6,12),2],[Date.UTC(2026,11,13,12),3],[Date.UTC(2026,11,20,12),4]]) {
+    const c = canvas(); G.wohnzimmerKranzlicht(c,x,oben,w,1.5,G.adventsSonntage(t));
+    assert.equal(c.ops.filter(o => o.art === "radial").length,an,"jeder erreichte Berliner Adventssonntag ein Licht");
   }
 });
 

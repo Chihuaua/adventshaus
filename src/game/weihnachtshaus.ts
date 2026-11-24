@@ -378,6 +378,79 @@ export function esstischAdventskranz(c: C, F: number) {
   for (const dx of [-8.2, 5.2, 9.3]) kreis(c, x + dx, y + 1.6, 0.94, P.rosa);
 }
 
+// Positionen auf dem ovalen Ring; die Vorderseite verdeckt die Kerzenfüße.
+const WOHNKERZEN = [[-19.6, -1.8, 13.0], [12.6, -2.7, 14.7], [23.6, 0.7, 11.4], [-7.8, 2.0, 12.1]] as const;
+
+export function wohnzimmerAdventskranz(c: C, links: number, oben: number, breite: number) {
+  c.save(); c.translate(links + breite / 2, oben - 4.0); c.scale(breite / 70, breite / 70);
+  ell(c, 0, 3.7, 34.9, 2.5, "rgba(23,40,34,.28)");
+  c.lineCap = "round";
+  // Ein wirklicher Ring: Durch die Mitte bleibt das Glas der Tischplatte sichtbar.
+  c.fillStyle = "#244435"; c.beginPath(); c.ellipse(0, 0, 32.9, 5.6, 0, 0, TAU);
+  c.moveTo(19.5, -.55); c.ellipse(0, -.55, 19.5, 2.1, 0, 0, TAU); c.fill("evenodd");
+  const zweige = (vorne: boolean) => {
+    for (let i = 0; i < 54; i++) {
+      const a = i * TAU / 54, s = Math.sin(a), k = Math.cos(a);
+      if ((i <= 27) !== vorne) continue;
+      const x = k * (25.6 + rand(i + 21) * 1.4), y = s * 3.4;
+      const dx = -s * 7.2 + k * 6.7, dy = k * 1.8 + s * 2.8 - .6 * rand(i + 41);
+      const laenge = Math.hypot(dx, dy), nx = -dy / laenge, ny = dx / laenge;
+      const gruen = ["#3f654c", "#52765a", "#315c46", "#617e61"][i % 4];
+      strich(c, x, y, x + dx, y + dy, gruen, .65);
+      for (let n = 0; n < 5; n++) for (const seite of [-1, 1]) {
+        const u = .05 + n * .16, f = (1.5 + rand(i * 7 + n) * 1.8) * (1 - .48 * u);
+        const bx = x + dx * u, by = y + dy * u;
+        const spitze = Math.max(-35, Math.min(35, bx + dx * .31 + nx * seite * f));
+        poly(c, [[bx, by - .3], [bx + dx * .13 + nx * seite * f * .4, by + dy * .1 + ny * seite * f * .29],
+          [spitze, by + dy * .31 + ny * seite * f * .59], [bx + .28, by + .25]],
+        seite > 0 && i % 4 === 0 ? "#839c78" : gruen);
+      }
+    }
+    if (vorne) for (const s of [-1,1]) poly(c, [[31.4*s,-.5],[35*s,-1.1],[33.1*s,.65],[30.5*s,1.1]], "#466c51");
+  };
+  zweige(false);
+  for (const [x, y, h] of WOHNKERZEN) {
+    ell(c, x, y + .4, 4.45, 1.3, P.gold); ell(c, x, y, 3.8, .92, P.goldtief);
+    const wachs = c.createLinearGradient(x - 2.9, 0, x + 2.9, 0);
+    wachs.addColorStop(0, "#733646"); wachs.addColorStop(.32, "#c16a63"); wachs.addColorStop(1, "#87424a");
+    c.fillStyle = wachs; c.beginPath(); c.roundRect(x - 2.9, y - h, 5.8, h + .25, 1); c.fill();
+    ell(c, x, y - h + .3, 2.75, .9, "#df9c88");
+    strich(c, x - 1.6, y - h + .7, x - 1.6, y - h + 3.15, "#d58b7b", .77);
+    strich(c, x, y - h + .25, x + .12, y - h - 1.65, "#43362b", .75);
+  }
+  zweige(true);
+  // Schuppen auf den kleinen Zapfen, dazwischen Beeren mit einem einzelnen Glanzpunkt.
+  for (const [x, y, d] of [[-25.6, 1.35, -.44], [10.2, 2.7, .35]]) {
+    c.save(); c.translate(x, y); c.rotate(d);
+    ell(c, 0, 0, 2.7, 1.85, "#624534");
+    for (let n = 0; n < 5; n++) strich(c, -1.7 + (n % 3) * 1.4, -.7 + Math.floor(n / 3), -1.25 + (n % 3) * 1.4, -.3 + Math.floor(n / 3), "#bb926a", .68);
+    c.restore();
+  }
+  for (const [x, y] of [[-29.8, .5], [-14, 2.8], [4.8, -2.6], [19.1, 2.7], [30.1, .9]]) {
+    kreis(c, x - 1.15, y - .65, 1.05, "#934049"); kreis(c, x + .7, y, 1.25, "#b45550");
+    kreis(c, x + .3, y - .4, .35, "#efb593");
+  }
+  c.save(); c.translate(1.7, 3.2);
+  for (const s of [-1,1]) {
+    c.save(); c.scale(s,1); c.fillStyle = s < 0 ? P.bordeaux : "#a15251";
+    c.beginPath(); c.moveTo(.45,-.2); c.bezierCurveTo(3.1,-2.6,7.9,-3.25,7.7,-.55);
+    c.bezierCurveTo(7.55,2.3,4.9,2.2,.45,.55); c.fill();
+    c.fillStyle = "#69353e"; c.beginPath(); c.moveTo(1.1,.03); c.quadraticCurveTo(4.45,-.85,6.8,-.45);
+    c.quadraticCurveTo(4.8,1.13,1.1,.03); c.fill(); c.restore();
+  }
+  poly(c, [[-.7,.5],[-2.7,4.9],[-3.8,3.7],[-5.15,4.1],[-2.6,.8]], P.bordeaux);
+  poly(c, [[.5,.55],[2.9,4.6],[4.1,3.45],[5.35,3.7],[2.3,.5]], P.rot);
+  strich(c, -6.7, -1.8, -1, .2, P.gold, .52); strich(c, 1, .2, 6.4, -1.65, P.gold, .52);
+  ell(c, 0, .1, 1.65, 1.45, P.goldlicht); c.restore(); c.restore();
+}
+
+export function wohnzimmerKranzlicht(c: C, links: number, oben: number, breite: number, t: number, sonntage: number) {
+  if (sonntage < 1) return;
+  c.save(); c.translate(links + breite / 2, oben - 4.0); c.scale(breite / 70, breite / 70);
+  for (const [x, y, h] of WOHNKERZEN.slice(0, sonntage)) flamme(c, x + .12, y - h - 1.3, t, .97);
+  c.restore();
+}
+
 export function winterBadAblage(c: C, F: number) {
   const x = WEIHNACHTS_ORTE.badkerze, y = F - 45;
   rund(c, x - 12, y, 18, 2.2, 0.6, P.holzlicht);
