@@ -2,7 +2,7 @@
 export const ABEND_ZIEL = (21 * 60 + 15) * 60;
 export const ABEND_EINSCHLAFEN = 1.4;
 export const ABEND_SPANNEN = {
-  dusche: [300, 360, 480], zaehne: [60, 90, 120], haare: [90, 120, 120],
+  dusche: [300, 360, 480], zaehne: [60, 90, 120], haare: [60, 80, 80],
   video: [300, 480, 720], anruf: [1200, 3300, 7200],
 } as const;
 export type AbendWerte = Record<keyof typeof ABEND_SPANNEN, number>;
@@ -23,6 +23,9 @@ export function abendWerte(zufall: () => number): AbendWerte {
 }
 
 export const ABEND_RICHTWERTE = abendWerte(() => .5);
+
+/** Kurze Probe über den Bett-Stein: Videos und Telefonat dauern nur Sekunden. */
+export const PROBE_WERTE: AbendWerte = { dusche: 10, zaehne: 8.4, haare: 7, video: 6.8, anruf: 9 };
 
 export const ZAHN_TAKTE = {
   zNehmen: 4, zTube: 4, zPaste: 6, zTubeZurueck: 4, zPutzen: ABEND_RICHTWERTE.zaehne,

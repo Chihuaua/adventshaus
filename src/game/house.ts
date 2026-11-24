@@ -19,11 +19,13 @@ import {
 } from "./advent";
 import { HundeWelt, type HundId } from "./hunde";
 import { HandyAblauf, HANDY_TASCHE_SICHTBAR } from "./handy";
-import { ABEND_BETT, ABEND_EINSCHLAFEN, ABEND_ZIEL, abendplan, abendTag, tagessekunde, gueltigeAbendwerte, type Abendplan, type AbendFortschritt } from "./abendzeiten";
+import { ABEND_BETT, ABEND_EINSCHLAFEN, ABEND_ZIEL, PROBE_WERTE, abendplan, abendTag, tagessekunde, gueltigeAbendwerte, type Abendplan, type AbendFortschritt } from "./abendzeiten";
 import { haarstrich } from "./haarstrich";
 import { abendWelt, ABEND_WURFHAND, BETT_HANDY, BettHandy, bettArm, bettHandgriff, handyAufDemKissen, pyjamaStoff, type BettBild, type Schlafanzug } from "./abendroutine";
-import { istZahnschritt, ZAHN_WEG, ZAHN_TAKTE, zahnbild, zahnfach, zahnHandobjekte, zahnWasser, type Zahnbild } from "./zahnpflege";
+import { istZahnschritt, ZAHN_PROBE, ZAHN_STAND, ZAHN_WEG, ZAHN_TAKTE, zahnbild, zahnfach, zahnHandobjekte, zahnWasser, type Zahnbild } from "./zahnpflege";
 import { WaschbeckenKlang } from "./audio/waschbecken";
+import { DuschKlang } from "./audio/dusche";
+import { AUGEN_ZU, duschBild } from "./duschprogramm";
 import {
   GOL_BTN,
   GOL_RULES,
@@ -101,7 +103,7 @@ import {
 } from "./gruselhaus/kueche";
 import { drawWetter, ladeWetter, tickWetter, waehleJahreszeit, waehleWetter, schalteZusatz, echtwetter, type WetterState } from "./wetter";
 import { drawWetterStation, wetterStationHit, wetterStationLayout, type WetterBefehl, type WetterTreffer } from "./wetterstation";
-import { drawStein, steinAn, steinSlots, BETT_STEIN, NIKOLAUS_STEIN, type SteinSlot } from "./steine";
+import { drawStein, steinAn, steinSlots, BETT_STEIN, EZ_BETT_STEIN, NIKOLAUS_STEIN, type SteinSlot } from "./steine";
 import { NikolausBesuch, zeichneNikolausSpur, type NikolausStand } from "./nikolaus-besuch";
 import { zeichneNikolaus, type NikolausBild } from "./nikolaus-figur";
 import { ruprechtBegleitung, zeichneRuprechtSpur } from "./ruprecht-begleitung";
@@ -559,6 +561,11 @@ const BETTRUF: Station = {
   id: "stein_bett", label: "Bett-Stein", floor: 0, x: BETT_STEIN.x,
   face: 1, state: "idle", expr: "neutral", hits: [BETT_STEIN.hit],
 };
+/** EZ-Bett-Stein: dieselbe Abendroutine mit den Echtzeit-Dauern des heutigen Abends. */
+const EZ_BETTRUF: Station = {
+  id: "stein_ezbett", label: "EZ-Bett-Stein", floor: 0, x: EZ_BETT_STEIN.x,
+  face: 1, state: "idle", expr: "neutral", hits: [EZ_BETT_STEIN.hit],
+};
 const NIKOLAUSRUF: Station = {
   id: "stein_nikolaus", label: "Nikolausstein", floor: 0, x: NIKOLAUS_STEIN.x,
   face: 1, state: "idle", expr: "happy", hits: [NIKOLAUS_STEIN.hit],
@@ -688,6 +695,7 @@ export const STATIONS: Station[] = [
   { id: "kellertreppe", label: "Kellertreppe", floor: 1, x: 523, face: 1, state: "idle", expr: "neutral", hits: [[440, 470, 70, 102]] },
   NIKOLAUSRUF,
   BETTRUF,
+  EZ_BETTRUF,
 ];
 
 /* -------------------------------- Treppen ------------------------------ */
@@ -827,10 +835,6 @@ function ceilingLamp(c: C, x: number, y0: number, len: number, col = "#e9d9a8") 
 /** Höhe der kleinen Brüstungen an den Treppenaustritten: Die Streben sind halb so hoch wie früher. */
 export const BRUESTUNG_HOEHE = 13;
 
-function railing(c: C, x: number, F: number, w: number) {
-  line(c, x, F - BRUESTUNG_HOEHE, x + w, F - BRUESTUNG_HOEHE, "#2a2420", 3);
-  for (let px = x; px <= x + w + 0.1; px += w / 2) line(c, px, F - BRUESTUNG_HOEHE, px, F, "#2a2420", 2);
-}
 
 /* --- Treppen --- */
 
@@ -3307,9 +3311,8 @@ function drawHouse(
   partition(c, 530, atticCeil(530), FD);
   partition(c, 590, FE + SLAB, FK);
 
-  railing(c, DG_X0 - 14, FD, 12);
+  // Die kleinen Geländerstücke an den oberen Treppenenden sind entfernt; die Hexenküche behält ihr Eisengeländer.
   if (gr?.kueche) drawEisenBruestung(c, OG_X1 - 12, FO, 12);
-  else railing(c, OG_X1 - 12, FO, 12);
 
   /* ---- Dachbalken (nur Gruselhaus-Raumstation) ---- */
   if (gr?.raumstation) {
@@ -3533,7 +3536,8 @@ const ABEND_SEQ: readonly ShPhase[] = [
 const GLASSES_FLIGHT = 1.35;
 /** Dauer in Sekunden; Laufschritte haben keine Dauer, sie enden mit der Ankunft. */
 const SH_DUR: Partial<Record<ShPhase, number>> = {
-  ...ZAHN_TAKTE,
+  ...ZAHN_PROBE,
+  waescheRichten: 1.4, nasswerden: 1.2, abtrocknen: 1.8,
   glassesOff: 1.3, tossGlasses: 0.9,
   openWardrobe: 0.7, undress: 1.6, wrap: 1.5, closeWardrobe: 0.6,
   pressPanel: 0.8, capsuleOpen: 1.1, turnFront: 0.8, capsuleClose: 1.1,
@@ -3563,9 +3567,9 @@ const SH_INSIDE: ShPhase[] = [
   "rinse", "waterOff", "takeTowel", "wrapOn", "openCurtain",
 ];
 const SH_STAND: Record<string, { x: number; face: 1 | -1 }> = {
-  zPlatz: { x: SINK_X + 17, face: 1 },
+  zPlatz: { x: SINK_X + ZAHN_STAND.schrank, face: 1 },
   zZumBecken: { x: SINK_X + 4, face: 1 },
-  zZumBecher: { x: SINK_X + 17, face: 1 },
+  zZumBecher: { x: SINK_X + ZAHN_STAND.schrank, face: 1 },
   toWardrobe: { x: 458, face: 1 },
   dToWardrobe: { x: 458, face: 1 },
   toSink: { x: 602, face: 1 },
@@ -3977,6 +3981,13 @@ export class House {
   private bettHandy: BettHandy | null = null;
   private handyAmKissen = false;
   private hahnKlang = new WaschbeckenKlang();
+  private duschKlang = new DuschKlang();
+  /** Bett-Stein = kurze Probe; EZ-Bett-Stein und die Uhr = Echtzeit. */
+  private abendProbe = false;
+  private abendWunsch: "probe" | "echt" | null = null;
+  private abendIntern = false;
+  /** Zählt die Bürstgänge (wechselnde Saat für die kurze Probe). */
+  private buerstGang = 0;
   private pyjama: { top: string; bottom: string } | null = null;
   private bedEinstieg: "anfahrt" | "umschlagen" | "setzen" | "fuesse" | "greifen" | "toss" | null = null;
   private bedEinstiegT = 0;
@@ -4257,7 +4268,7 @@ export class House {
     this.onUfo = opts.onUfo ?? null;
     this.steine = steinSlots(this.welt);
     // Rufsteine gehören nur einmal in den Fokusumlauf, zusammen mit den Wechselsteinen.
-    this.stations = this.stations.filter((st) => st.id !== NIKOLAUSRUF.id && st.id !== BETTRUF.id);
+    this.stations = this.stations.filter((st) => st.id !== NIKOLAUSRUF.id && st.id !== BETTRUF.id && st.id !== EZ_BETTRUF.id);
     if (this.postWelt) {
       this.nikolaus.laden(loadJson<NikolausStand>(this.nikolausSchluessel));
       this.nikolausEinladen = this.nikolaus.phase === "warten";
@@ -4268,7 +4279,7 @@ export class House {
       // eigene Kopie der Haustür-Station: die Beschriftung wechselt nur in dieser Welt
       this.stations = this.stations.map((st) => (st.id === "haustuer" ? { ...st, hits: [...st.hits] } : st));
     }
-    this.steinStationen = this.steine.map((sl) => sl.aktion === "nikolaus" ? NIKOLAUSRUF : sl.aktion === "abend" ? BETTRUF : ({
+    this.steinStationen = this.steine.map((sl) => sl.aktion === "nikolaus" ? NIKOLAUSRUF : sl.aktion === "abend" ? BETTRUF : sl.aktion === "abendEZ" ? EZ_BETTRUF : ({
       id: `stein_${sl.art}`,
       label: sl.label,
       floor: 0,
@@ -4317,6 +4328,7 @@ export class House {
 
   destroy() {
     this.hahnKlang.stop();
+    this.duschKlang.stop();
     this.speichern();
     window.removeEventListener("pagehide", this.onPageHide);
     this.destroyed = true;
@@ -4524,6 +4536,7 @@ export class House {
     const sl = this.steine[this.steinStationen.indexOf(st)];
     if (!sl) return;
     if (sl.aktion === "abend") { this.command(BETTRUF.id); return; }
+    if (sl.aktion === "abendEZ") { this.command(EZ_BETTRUF.id); return; }
     if (sl.aktion === "nikolaus") {
       if (this.nikolaus.rufen(this.clock)) {
         sfx.ui();
@@ -4843,6 +4856,15 @@ export class House {
    */
   command(request: LuniCommand) {
     const id = typeof request === "string" ? request : request.id;
+    if (id === EZ_BETTRUF.id) {
+      // EZ-Bett-Stein: dieselbe Abendroutine, aber mit den Echtzeit-Dauern des heutigen Abends.
+      if (this.abendAktiv) return;
+      this.abendWunsch = "echt";
+      this.abendIntern = true;
+      try { this.command(BETTRUF.id); } finally { this.abendIntern = false; }
+      return;
+    }
+    if (id === BETTRUF.id && !this.abendIntern && !this.abendAktiv) this.abendWunsch = "probe";
     if (this.abendAktiv) return;
     if (id === BETTRUF.id) {
       if (!abendWelt(this.welt)) return;
@@ -5652,7 +5674,13 @@ export class House {
 
   private update(dt: number, roomDt = dt, live = false) {
     this.elapsed += dt;
-    if (this.abendWartet && !this.abendBeschaeftigt()) this.command(BETTRUF.id);
+    if (this.abendWartet && !this.abendBeschaeftigt()) {
+      // Aufgeschobener Start: der ursprüngliche Wunsch (Probe oder Echtzeit) bleibt erhalten.
+      this.abendIntern = true;
+      try { this.command(BETTRUF.id); } finally { this.abendIntern = false; }
+    }
+    const duscht = this.water && !this.abendStill && (typeof document === "undefined" || document.visibilityState !== "hidden");
+    this.duschKlang.fluss(duscht ? 1 : 0, sfx.peekSharedAudio());
     this.updatePost(dt);
     this.updateNikolaus(dt);
     this.updateTVAudio();
@@ -9159,7 +9187,7 @@ export class House {
   private onPageHide = () => this.speichern();
 
   private onVisibility = () => {
-    if (document.visibilityState === "hidden") this.hahnKlang.stop();
+    if (document.visibilityState === "hidden") { this.hahnKlang.stop(); this.duschKlang.stop(); }
     if (this.musikzimmer) {
       this.musikzimmer.setPaused(document.visibilityState === "hidden");
       this.last = performance.now();
@@ -9274,15 +9302,18 @@ export class House {
 
   private abendAktivieren() {
     const plan = this.heutigerAbend();
-    // Eine Steinprobe am Vormittag verbraucht nicht den automatischen Abendtermin.
-    if (this.abendAngefragtAm === plan.tag || tagessekunde(this.clock) >= this.abendBeginn(plan)) this.abendBegonnenAm = plan.tag;
+    // Bett-Stein: kurze Probe; EZ-Bett-Stein und Uhr: voller Echtzeitablauf.
+    this.abendProbe = this.abendWunsch === "probe";
+    this.abendWunsch = null;
+    // Eine Steinprobe verbraucht nicht den automatischen Abendtermin.
+    if (!this.abendProbe && (this.abendAngefragtAm === plan.tag || tagessekunde(this.clock) >= this.abendBeginn(plan))) this.abendBegonnenAm = plan.tag;
     this.abendAktiv = true;
     this.abendUhrMs = Date.now();
   }
 
   private shDauer(ph: ShPhase): number | undefined {
     const takte: Partial<Record<ShPhase, number>> | undefined = this.abendPlan?.takte;
-    return (this.abendAktiv ? takte?.[ph] : undefined) ?? SH_DUR[ph];
+    return (this.abendAktiv && !this.abendProbe ? takte?.[ph] : undefined) ?? SH_DUR[ph];
   }
 
   private abendBeginn(plan: Abendplan) {
@@ -9324,12 +9355,20 @@ export class House {
     if (this.asleep) { this.abendBegonnenAm = plan.tag; this.speichern(); return; }
     // Spät geöffnet: die Nacht steht nicht am Anfang. Geschützte Tätigkeiten zuerst regulär beenden.
     this.abendNachlauf = this.abendBeschaeftigt() || this.handy || this.holding ? 0 : seitBeginn;
-    this.command(BETTRUF.id);
+    this.abendWunsch = "echt";
+    this.abendIntern = true;
+    try { this.command(BETTRUF.id); } finally { this.abendIntern = false; }
     if (!this.abendAktiv) this.abendNachlauf = 0;
   }
 
+  /** Saat des Bürstgangs: im Echtzeit-Abend fest je Abend, in der Probe wechselnd. */
+  private buerstSaat() {
+    const tag = this.abendPlan?.tag ?? 0;
+    return this.abendAktiv && !this.abendProbe ? tag : tag + this.buerstGang * 7919;
+  }
+
   private bettTakte() {
-    return this.abendAktiv ? ABEND_BETT : { umschlagen: 2.2, setzen: 1.2, fuesse: 1.5, greifen: 1.2, hinlegen: 1.4 };
+    return this.abendAktiv && !this.abendProbe ? ABEND_BETT : { umschlagen: 2.2, setzen: 1.2, fuesse: 1.5, greifen: 1.2, hinlegen: 1.4 };
   }
 
   /** Nur die Abendfolge nachführen, nicht das ganze Haus stundenlang nachsimulieren. */
@@ -9338,7 +9377,7 @@ export class House {
     const still = sekunden > .75 || (typeof document !== "undefined" && document.visibilityState === "hidden");
     const stumm = sfx.muted;
     this.abendStill = still;
-    if (still) { sfx.muted = true; this.hahnKlang.stop(); }
+    if (still) { sfx.muted = true; this.hahnKlang.stop(); this.duschKlang.stop(); }
     try {
       while (sekunden > 1e-8 && this.abendAktiv) {
         const ph = this.shPhase, einstieg = this.bedEinstieg;
@@ -9348,7 +9387,7 @@ export class House {
         if (!geht) {
           if (dauer !== undefined) bis = dauer - this.shT;
           else if (einstieg && einstieg !== "toss") bis = this.bettTakte()[einstieg] - this.bedEinstiegT;
-          else if (this.lieDown) bis = ABEND_BETT.hinlegen - this.lieT;
+          else if (this.lieDown) bis = this.bettTakte().hinlegen - this.lieT;
           else if (this.bedPhase === "toss") bis = ABEND_BETT.wurf - this.tossUp;
           else if (this.bettHandy && this.bettHandy.phase !== "wurf") bis = this.bettHandy.rest;
           else if (this.sleepPhase === "settle") bis = ABEND_EINSCHLAFEN - this.sleepPhaseT;
@@ -9373,7 +9412,7 @@ export class House {
   }
 
   private abendMerken(): AbendFortschritt | undefined {
-    if (!this.abendAktiv || !this.abendPlan) return undefined;
+    if (!this.abendAktiv || !this.abendPlan || this.abendProbe) return undefined;
     const phase = this.shPhase ?? this.bedEinstieg ?? (this.lieDown ? "hinlegen" : this.bettHandy?.phase ?? "settle");
     const sek = this.shPhase ? this.shT : this.bedEinstieg ? this.bedEinstiegT : this.lieDown ? this.lieT : this.bettHandy?.sekunden ?? this.sleepPhaseT;
     return { tag: this.abendPlan.tag, werte: this.abendPlan.werte, standMs: this.abendUhrMs - 1000 * this.abendNachlauf, phase, sek,
@@ -9455,6 +9494,7 @@ export class House {
     }
     this.shPhase = phase;
     this.shT = 0;
+    if (phase === "bBrush") this.buerstGang++;
     if (phase === "pressPanel" && this.gruselBad) this.bioFlashed = false;
     if (SH_STAND[phase] || (this.gruselBad && DEKON_STAND[phase])) this.goTo(this.shStation(phase));
     if (phase === "stepOut") this.wet = 1;
@@ -9530,8 +9570,12 @@ export class House {
       const sichtbar = !this.abendStill && (typeof document === "undefined" || document.visibilityState !== "hidden");
       if (sichtbar) {
         this.hahnKlang.fluss(z.fluss, sfx.peekSharedAudio());
-        if (ph === "zPutzen" && this.shT > .95 && this.shT < dur - .95 && Math.floor(vorher * 14 / Math.PI) !== Math.floor(this.shT * 14 / Math.PI))
-          sfx.zahnpflege("putzen", Math.cos(this.shT * 14) < 0);
+        if (ph === "zPutzen") {
+          // Die Geräusche folgen dem Putzprogramm: jeder Bürstenstrich und das Zwischenspucken.
+          const alt = zahnbild(ph, vorher, SINK_X, FO, dur);
+          if (z.putzt && z.strich !== alt.strich) sfx.zahnpflege("putzen", z.strich % 2 === 1);
+          if (z.spuckt !== alt.spuckt) sfx.zahnpflege("spucken");
+        }
         if (ph === "zGurgeln" && Math.floor(vorher * 4.5) !== Math.floor(this.shT * 4.5)) sfx.zahnpflege("gurgeln");
         if (ph === "zSpucken" && vorher / dur < .38 && p >= .38) sfx.zahnpflege("spucken");
       }
@@ -9729,7 +9773,7 @@ export class House {
   }
 
   /** Pose, Blickrichtung und Rückenansicht für den aktuellen Duschschritt. */
-  private showerPose(): { state: LuniState; face: 1 | -1; phase: number; back: boolean } | null {
+  private showerPose(): { state: LuniState; face: 1 | -1; phase: number; back: boolean; blend?: { phase: number; k: number } } | null {
     const ph = this.shPhase;
     if (!ph) return null;
     const dauer = this.shDauer(ph);
@@ -9803,15 +9847,20 @@ export class House {
       case "tossGlasses":
         return { state: "toss", face: 1, phase: p, back: false };
       case "washHair":
+      case "nasswerden": {
+        // Duschprogramm: echte Bewegungen statt nur unter dem Wasser zu stehen.
+        const d = duschBild(ph, this.shT, this.shDauer(ph) ?? 1);
+        if (d) return { state: "wash", face: 1, phase: d.code, back: false, blend: d.von === null ? undefined : { phase: d.von, k: d.k } };
         return { state: "wash", face: 1, phase: 0.5, back: false };
-      case "nasswerden":
-        return { state: "wash", face: 1, phase: 2.5, back: false };
+      }
       case "abtrocknen":
         return { state: "wrap", face: 1, phase: .55 + .35 * Math.sin(this.shT * 2.1), back: false };
       case "washBody":
-        return { state: "wash", face: 1, phase: 1.5, back: false };
-      case "rinse":
-        return { state: "wash", face: 1, phase: 2.5, back: false };
+      case "rinse": {
+        const d = duschBild(ph, this.shT, this.shDauer(ph) ?? 1);
+        if (d) return { state: "wash", face: 1, phase: d.code, back: false, blend: d.von === null ? undefined : { phase: d.von, k: d.k } };
+        return { state: "wash", face: 1, phase: ph === "rinse" ? 2.5 : 1.5, back: false };
+      }
       default:
         return null;
     }
@@ -10494,7 +10543,7 @@ export class House {
       this.lieT += dt;
       if (this.lieT >= this.bettTakte().hinlegen) {
         this.lieDown = false;
-        if (this.abendAktiv) { this.bettHandy = new BettHandy(this.abendPlan?.werte); this.bedSitHair = 1; return; }
+        if (this.abendAktiv) { this.bettHandy = new BettHandy(this.abendProbe ? PROBE_WERTE : this.abendPlan?.werte); this.bedSitHair = 1; return; }
         // Die Decke wurde bereits im Sitzen herangezogen; nur noch zurechtlegen.
         this.sleepPhase = "settle";
         this.sleepPhaseT = 0;
@@ -10559,8 +10608,8 @@ export class House {
     if (this.brushInHand && !this.handUnterDecke()) {
       const bent = this.shPhase === "bBrush" || this.shPhase === "bBend" || this.shPhase === "bUp";
       if (this.gruselBad) drawLabBrush(c, this.hand[0], this.hand[1], bent ? 0 : -0.7, this.lface);
-      else brushObj(c, this.hand[0], this.hand[1], this.abendAktiv && this.shPhase === "bBrush"
-        ? haarstrich(this.shT).winkel : bent ? 0 : -0.7, this.lface);
+      else brushObj(c, this.hand[0], this.hand[1], this.shPhase === "bBrush"
+        ? haarstrich(this.shT, this.shDauer("bBrush"), this.buerstSaat()).winkel : bent ? 0 : -0.7, this.lface);
     }
     // Beim Bettwurf malt drawBedToss die Brille bereits im Bogen; nicht zugleich an der Hand.
     if (!this.handUnterDecke() && this.glassesInHand && (this.gruselSarg || this.bedPhase !== "toss")) {
@@ -11643,14 +11692,16 @@ export class House {
       this.lastPose = "turnFront";
       return;
     }
+    let duschUebergang: { phase: number; k: number } | undefined;
     const shp = this.showerPose();
     if (shp && !a) {
+      duschUebergang = shp.blend;
       state = shp.state;
       face = shp.face;
       posePhase = shp.phase;
       back = shp.back;
       expr = this.gruselBad && (state === "labBrush" || state === "labBend" || state === "act") ? "focus"
-        : state === "wash" && shp.phase > 2 ? "sleep" : "happy";
+        : state === "wash" && AUGEN_ZU.has(shp.phase) ? "sleep" : "happy";
     }
     if (this.golPhase === "rise") {
       const seat = STATIONS.find((stn) => stn.id === "gaming");
@@ -12012,7 +12063,9 @@ export class House {
       const griff = zahn.ph === "zNehmen" || zahn.ph === "zTube" || zahn.ph === "zTubeZurueck" || zahn.ph === "zZurueck";
       state = griff ? "reachUp" : "idle"; face = 1; back = false; posePhase = zahn.p;
       expr = zahn.ph === "zPutzen" ? "neutral" : zahn.ph === "zGurgeln" || zahn.ph === "zSpucken" ? "talk" : "focus";
-      saxHand = zahn.r; saxHand2 = zahn.l; handElbow = zahn.ellbogen; handElbow2 = -1;
+      // Die Bürste bleibt in der Hand auf der Beckenseite (vorderer Arm), die andere Hand nimmt Tube und Wasserhahn.
+      saxHand = zahn.buersteNah ? zahn.l : zahn.r; saxHand2 = zahn.buersteNah ? zahn.r : zahn.l;
+      handElbow = zahn.buersteNah ? zahn.ellbogenFrei : zahn.ellbogen; handElbow2 = zahn.buersteNah ? zahn.ellbogen : zahn.ellbogenFrei;
     }
     const hand = drawLuni(c, x, y + yOff, {
       t: this.elapsed,
@@ -12032,7 +12085,9 @@ export class House {
       kleidung,
       schrankRuecken: abendWelt(this.welt) && !!shp?.back && this.lf === 2 && Math.abs(x - SH_STAND.toWardrobe.x) < 1,
       zahnfrontal: zahn?.frontal,
-      buerstenzeit: this.abendAktiv && this.shPhase === "bBrush" ? this.shT : undefined,
+      buerstenzeit: this.shPhase === "bBrush" ? this.shT : undefined,
+      buerstendauer: this.shPhase === "bBrush" ? this.shDauer("bBrush") : undefined,
+      buerstensaat: this.buerstSaat(),
       mundSchaum: zahn?.schaum,
       bedLean: zahn?.neigung,
       back,
@@ -12056,7 +12111,7 @@ export class House {
       sitzgriffLinks: handy ? handyGriff(handy) : null,
       handKontakt: !!zahn || !!this.saxPhase || !!tee || st?.id === "eimer" || !!aschziel,
       handVorRumpf: !!handy,
-      armeVorne: !!zahn || !!tee || traegt,
+      armeVorne: !!zahn?.frontal || !!tee || traegt,
       rauchzeit: this.smokeIdleT,
       handOut: saxHands,
       betweenBodyAndArms: this.saxPhase ? () => this.drawSaxCarried(c) : null,
@@ -12068,12 +12123,13 @@ export class House {
         : undefined),
       // Smoothe Tanzwechsel: alte Pose zublenden, neue unsichtbar ersetzen
       blendFrom: this.danceBlendFrom ?? undefined,
-      blendK: this.danceBlendFrom ? Math.min(1, this.danceBlendT / 0.35) : undefined,
+      blendK: this.danceBlendFrom ? Math.min(1, this.danceBlendT / 0.35) : duschUebergang?.k,
+      blendPhase: this.danceBlendFrom ? undefined : duschUebergang?.phase,
     });
     this.hand[0] = hand[0];
     this.hand[1] = hand[1];
     this.luniHaende = { front: [saxHands.front[0], saxHands.front[1]], rear: [saxHands.rear[0], saxHands.rear[1]] };
-    if (pflege) zahnHandobjekte(c, pflege, saxHands.front, saxHands.rear, SINK_X, FO);
+    if (pflege) zahnHandobjekte(c, pflege, saxHands.rear, saxHands.front, SINK_X, FO);
     this.luniKopf = { x, y: y + yOff, face, sichtbar: !hiddenInWc && this.alpha > 0.5 };
     if (traegt) {
       const px = (saxHands.front[0] + saxHands.rear[0]) / 2;

@@ -201,6 +201,11 @@ export interface LuniOpts {
   mundSchaum?: number;
   /** Nur bei der langen Abendpflege: Zeit für Längen, Spitzen und Seitensträhne. */
   buerstenzeit?: number;
+  /** Länge des Bürstgangs und seine Saat (Hänger höchstens einmal je Gang). */
+  buerstendauer?: number;
+  buerstensaat?: number;
+  /** Weicher Übergang von dieser Phase desselben Zustands (z. B. zwischen Duschbewegungen). */
+  blendPhase?: number;
   /** Rücken zum Betrachter: Haare statt Gesicht */
   back?: boolean;
   /** 0..1: nasse Haare, Tropfen */
@@ -679,7 +684,8 @@ function knieSeite(huefte: V, fuss: V, q: number): V {
   return [huefte[0] + ux * a + px * h * k, huefte[1] + uy * a + py * h * k];
 }
 
-function buildRig(state: LuniState, t: number, walkP: number, phase: number, reach: number, beatT?: number, buerstenzeit?: number): Rig {
+function buildRig(state: LuniState, t: number, walkP: number, phase: number, reach: number, beatT?: number, buerstenzeit?: number,
+  buerstendauer?: number, buerstensaat?: number): Rig {
   const r = baseRig();
   const breathe = Math.sin(t * 2) * 0.45;
   // Tanz-Uhr: Musikzeit, falls übergeben (dann läuft der Tanz im Takt zur
@@ -853,7 +859,7 @@ function buildRig(state: LuniState, t: number, walkP: number, phase: number, rea
         const down = k < 0.72;
         const top = lab ? 1 : 3;
         const tip = lab ? 8 : 13;
-        const zug = !lab && buerstenzeit !== undefined ? haarstrich(buerstenzeit) : null;
+        const zug = !lab && buerstenzeit !== undefined ? haarstrich(buerstenzeit, buerstendauer, buerstensaat) : null;
         const sPos = zug?.laengs ?? (down ? lerp(top, tip, ease(k / 0.72)) : lerp(tip, top, ease((k - 0.72) / 0.28)));
         const off = zug?.quer ?? (lab ? (down ? 3.5 : 5) : (down ? 7.5 : 10.5));
         const neckX = lab ? (SHOULDER_Y - HEAD_Y) * Math.sin(r.neckBend) : 0;
@@ -896,25 +902,76 @@ function buildRig(state: LuniState, t: number, walkP: number, phase: number, rea
     }
 
     case "wash": {
-      // phase < 1: Haare einseifen, < 2: Körper einseifen, sonst abspülen.
+      // Duschbewegungen (Codes aus duschprogramm.ts): Haare einseifen .5, Körper 1.5, Kopf abspülen 2.5,
+      // Beine 3.5, linker Arm 4.5, rechter Arm 5.5, Kopf in den Nacken 6.5, Gesicht abwischen 7.5,
+      // Haare nach hinten streifen 8.5, Körper abwaschen 9.5.
       const s = Math.sin(t * 9);
       const c2 = Math.cos(t * 9);
       r.rootY = breathe * 0.4;
       r.legFar = leg([-3.4, -10], [-4, 0]);
       r.legNear = leg([3.4, -10], [4, 0]);
-      if (phase < 1) {
+      const code = Math.floor(phase);
+      if (code === 0) {
         r.headTilt = 0.1;
         r.armNear = { elbow: [9, -48], hand: [3 + s * 2.2, -57 + c2 * 1.2] };
         r.armFar = { elbow: [-9, -48], hand: [-3 - s * 2.2, -57 - c2 * 1.2] };
         r.hairFlow = s * 0.6;
-      } else if (phase < 2) {
+      } else if (code === 1) {
         r.armNear = { elbow: [7, -28], hand: [2 + s * 3, -27 + c2 * 3] };
         r.armFar = { elbow: [-6, -26], hand: [-1 - c2 * 2.6, -22 + s * 2.4] };
-      } else {
+      } else if (code === 2) {
         r.headTilt = -0.22;
         r.armNear = { elbow: [9, -46], hand: [6 + s * 0.8, -55] };
         r.armFar = { elbow: [-9, -46], hand: [-6 - s * 0.8, -55] };
         r.hairFlow = -0.5;
+      } else if (code === 3) {
+        // Beine einseifen: vorgebeugt, beide Hände reiben an den Beinen auf und ab.
+        const b = 0.68;
+        r.bend = b;
+        r.rootX = -1.5;
+        const D: V = [Math.sin(b), Math.cos(b)];
+        const reiben = Math.sin(t * 5.5) * 1.8;
+        r.armNear = armIK([3.4, -34], [3.4 + D[0] * (16 + reiben), -34 + D[1] * (16 + reiben)], 1);
+        r.armFar = armIK([-3.4, -34], [-1 + D[0] * (16 - reiben), -34 + D[1] * (16 - reiben)], -1);
+        r.hairFlow = 0.35;
+      } else if (code === 4 || code === 5) {
+        // Einen Arm einseifen: er ist nach vorn gestreckt, die andere Hand reibt an ihm entlang.
+        const lang = { elbow: [8.5, -30] as V, hand: [15, -27] as V };
+        const k = 0.5 + 0.5 * Math.sin(t * 4.2);
+        const reibend = { elbow: [2.5, -26] as V, hand: [7 + 6.5 * k, -29.5 + 1.8 * k + c2 * 0.4] as V };
+        if (code === 4) { r.armFar = lang; r.armNear = reibend; } else { r.armNear = lang; r.armFar = { elbow: [0, -25], hand: [6.5 + 6.5 * k, -29 + 1.8 * k] }; }
+        r.headTilt = 0.12;
+      } else if (code === 6) {
+        // Kopf in den Nacken, das Wasser läuft übers Gesicht.
+        r.headTilt = -0.42;
+        r.hairFlow = -0.75;
+        r.armNear = { elbow: [7.5, -27], hand: [9, -22 + breathe * 0.4] };
+        r.armFar = { elbow: [-7.5, -27], hand: [-9, -22 + breathe * 0.4] };
+      } else if (code === 7) {
+        // Wasser aus dem Gesicht wischen: beide Hände von der Stirn bis zum Kinn, dann neu ansetzen.
+        const k = (t * 0.8) % 1;
+        const ab = k < 0.62 ? k / 0.62 : 1 - (k - 0.62) / 0.38;
+        const weg = k < 0.62 ? 0 : Math.sin(Math.PI * (k - 0.62) / 0.38) * 2.2;
+        const y = -55 + 13 * ab * ab * (3 - 2 * ab);
+        r.headTilt = -0.1;
+        r.armNear = { elbow: [10, -40], hand: [6.5 + weg, y] };
+        r.armFar = { elbow: [-2, -40], hand: [4.5 + weg, y + 0.6] };
+      } else if (code === 8) {
+        // Haare nach hinten streifen: von der Stirn über den Kopf bis in den Nacken.
+        const k = (t * 0.62) % 1;
+        const vor = k < 0.68 ? k / 0.68 : 1 - (k - 0.68) / 0.32;
+        const e = vor * vor * (3 - 2 * vor);
+        const ueber = k < 0.68 ? 0 : Math.sin(Math.PI * (k - 0.68) / 0.32) * 2.5;
+        r.headTilt = -0.24;
+        r.hairFlow = -0.4 - 0.4 * e;
+        r.armNear = { elbow: [9, -50], hand: [5.5 - 11.5 * e, -56 - 2.5 * Math.sin(Math.PI * e) - ueber] };
+        r.armFar = { elbow: [-6, -50], hand: [3.5 - 10.5 * e, -55 - 2.5 * Math.sin(Math.PI * e) - ueber] };
+      } else {
+        // Körper abwaschen: die Hände streichen abwechselnd von den Schultern zur Hüfte.
+        const a = (t * 0.9) % 1, b2 = (t * 0.9 + 0.5) % 1;
+        r.headTilt = 0.14;
+        r.armNear = { elbow: [8, -27], hand: [6.5, -31 + 13 * a] };
+        r.armFar = { elbow: [-6, -26], hand: [3.5, -31 + 13 * b2] };
       }
       break;
     }
@@ -2870,8 +2927,12 @@ export function luniRigBauen(x: number, y: number, opts: LuniOpts = {}): Rig {
     const alt = buildRig(blendFrom, tzeit, walk, phase, armReach, beatT);
     const neu = buildRig(state, tzeit, walk, phase, armReach, beatT);
     r = mergeRig(alt, neu, ease(blendK));
+  } else if (opts.blendPhase !== undefined && blendK !== undefined && blendK < 1) {
+    // Beginn eines Übergangs: zuerst ganz die alte Haltung, dann weich zur neuen.
+    const alt = buildRig(state, tzeit, walk, opts.blendPhase, armReach, beatT);
+    r = blendK <= 0 ? alt : mergeRig(alt, buildRig(state, tzeit, walk, phase, armReach, beatT), ease(blendK));
   } else {
-    r = buildRig(state, tzeit, walk, phase, armReach, beatT, opts.buerstenzeit);
+    r = buildRig(state, tzeit, walk, phase, armReach, beatT, opts.buerstenzeit, opts.buerstendauer, opts.buerstensaat);
   }
   if (bedLean > 0) r.bend = Math.max(r.bend, clamp01(bedLean) * 0.28);
   const bettSitzEnde = state === "sit" && bedSitzen !== undefined ? buildRig("sit", t, walk, phase, armReach) : null;
