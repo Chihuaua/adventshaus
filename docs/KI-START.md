@@ -34,12 +34,17 @@ Mörtelkübel/Zahnspachtel, Fliesenstapel und anschließendem Verfugen mit Flies
 Im normalen Haus und im Adventshaus liegen alle 9 Raum-Steine im 3×3-Raster auf dem linken Kiesteil
 (`KIES_PLAETZE`, `RAUM_STEINE`). Vorschau der Stile weiterhin unter `#studio-renovierung`.
 
-Luni renoviert selbst: hingehen, je Bahn alte Tapete abziehen, neue ansetzen/abrollen und
-glattstreichen. Leiter und Haende verwenden denselben Takt; weitere Raum-Auftraege warten
-auf dieselbe Luni. Der Wohnzimmer-Stein renoviert zuerst den Eingangsbereich und dann das
-Wohnzimmer. Fertige Waende/Badfliesen benutzen exakt die Maler des Weihnachtshauses
-(`zeichneHausWaende`, Vergleich in `tools/test-renovierung.mjs`). Handgriffe und Werkzeug:
-`src/game/renovierung-luni.ts`. Moebel, Boeden und Spieloberflaeche bleiben unveraendert.
+Luni renoviert Tapetenraeume in drei Durchgaengen: 1) Alte Tapetenbahnen grob abkratzen und
+eingerollt nach unten tragen — unregelmaessige typische Tapetenreste bleiben kleben. 2) Mit der
+Leiter zu den Resten gehen und jeden auf seiner Hoehe abkratzen. 3) Je neuer Bahn: Leiter
+bewegen → hochklettern → Tapete rollt runter → runterklettern → Leiter weiterbewegen.
+Viel Dreck bleibt am Boden liegen, bis Luni ihn mit dem Handfeger in einen Muellsack kehrt.
+Abgeloeste Papierreste lagern in Muellsaecken unten im Keller (`src/game/muell.ts`,
+`lcp1.welt.*.v1`); **nur Dienstags** steht die Muelltonne vor dem Haus, und Luni bringt
+frische wie im Keller gelagerte Saecke durch die Haustuer hinaus. Badfliesen bleiben fix.
+Fertige Waende/Badfliesen benutzen exakt die Maler des Weihnachtshauses (`zeichneHausWaende`,
+Vergleich in `tools/test-renovierung.mjs`). Der Wohnzimmer-Stein renoviert zuerst den
+Eingangsbereich und dann das Wohnzimmer. Moebel, Boeden und Spieloberflaeche bleiben unveraendert.
 
 ## Die vier Grundsätze (nicht verhandelbar)
 1. **Zuschauen statt gewinnen** – keine Punkte, Balken, Game Over, Belohnungsschleifen.

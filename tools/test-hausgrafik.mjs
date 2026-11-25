@@ -379,6 +379,26 @@ test("UFO: Trefferfläche im sicheren Bereich, Zeilen mindestens 24 hoch", () =>
   assert.equal(G.ufoZeileBei(G.UFO_MENUE.x + 10, G.UFO_MENUE.y + 45, 1), -1);
 });
 
+test("UFO zeigt das aktuelle Archiv sichtbar im Menü und lädt erst nach Auswahl", () => {
+  const h = Object.create(G.House.prototype);
+  h.ufoOffen = false; h.ufoZeile = -1; h.ufoHover = false; h.hover = null; h.dirty = false;
+  const empfangen = [];
+  h.onUfo = (e) => empfangen.push(e);
+  h.ufoUmschalten();
+  assert.equal(h.ufoOffen, true, "Menü ist sichtbar geöffnet");
+  assert.equal(h.ufoZeile, 0, "erste Zeile ist vorausgewählt");
+  assert.deepEqual(empfangen, [], "bloßes Öffnen lädt nichts herunter");
+  // Die sichtbare erste Zeile trägt exakt den aktuellen Archivnamen dieser Sitzung.
+  assert.equal(G.PATCH_EINTRAEGE[h.ufoZeile], G.PATCH_ZIP);
+  assert.match(G.PATCH_ZIP, new RegExp(`-${String(G.PATCH_NUMMER).padStart(2, "0")}\\.zip$`));
+  h.ufoWaehlen(h.ufoZeile);
+  assert.deepEqual(empfangen, [G.PATCH_ZIP], "Auswahl übergibt genau dieses Archiv");
+  assert.equal(h.ufoOffen, false, "Menü schließt sich nach der Auswahl");
+  h.ufoUmschalten();
+  h.ufoUmschalten();
+  assert.equal(h.ufoOffen, false, "zweiter Klick schließt wieder");
+});
+
 test("UFO bietet genau ein Archiv mit aktuell.patch und aktuell.json", () => {
   assert.equal(G.PATCH_EINTRAEGE[0], G.PATCH_ZIP);
   assert.ok(G.PATCH_EINTRAEGE.length >= 1);

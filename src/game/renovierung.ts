@@ -76,15 +76,15 @@ export interface RenoRaum {
 
 /** Plan für jeden Raum des Hauses (von oben nach unten: Dachgeschoss → Keller). */
 export const RENO_RAEUME: readonly RenoRaum[] = [
-  { id: "musik", name: "Musikzimmer", methode: "bahnen", dauer: 11, bahnen: 10, kurz: "10 Tapetenbahnen rollen von der Dachschräge ab." },
-  { id: "gaming", name: "Gaming-Zimmer", methode: "bahnen", dauer: 13, bahnen: 9, randAnteil: 5 / 14, kurz: "14 Bahnen ziehen vom Treppenrand über den Dachfirst." },
-  { id: "schlafzimmer", name: "Schlafzimmer", methode: "bahnen", dauer: 9.5, bahnen: 8, kurz: "8 ruhige Bahnen von links nach rechts." },
+  { id: "musik", name: "Musikzimmer", methode: "bahnen", dauer: 22, bahnen: 10, kurz: "10 Tapetenbahnen rollen von der Dachschräge ab." },
+  { id: "gaming", name: "Gaming-Zimmer", methode: "bahnen", dauer: 24, bahnen: 9, randAnteil: 5 / 14, kurz: "14 Bahnen ziehen vom Treppenrand über den Dachfirst." },
+  { id: "schlafzimmer", name: "Schlafzimmer", methode: "bahnen", dauer: 18, bahnen: 8, kurz: "8 ruhige Bahnen von links nach rechts." },
   { id: "badezimmer", name: "Badezimmer", methode: "fliesen", dauer: 13, kurz: "Fliese für Fliese von unten nach oben mit Kleber, Fliesenkreuzen und Fugenschwamm." },
-  { id: "treppenhaus", name: "Treppenhaus", methode: "bahnen", dauer: 9.5, bahnen: 5, kurz: "5 hohe Bahnen über beide Stockwerke." },
-  { id: "flur", name: "Flur", methode: "bahnen", dauer: 7, bahnen: 5, kurz: "5 Bahnen hinter Garderobe und Haustür." },
-  { id: "wohnzimmer", name: "Wohnzimmer", methode: "bahnen", dauer: 11, bahnen: 10, kurz: "Eingang und Wohnzimmer: Luni zieht die alten Bahnen ab und tapeziert neu." },
-  { id: "kueche", name: "Küche", methode: "bahnen", dauer: 7, bahnen: 5, kurz: "5 Bahnen von der Küchenzeile bis zum Esstisch." },
-  { id: "keller", name: "Keller", methode: "bahnen", dauer: 14, bahnen: 14, kurz: "14 Bahnen über beide Kellerräume." },
+  { id: "treppenhaus", name: "Treppenhaus", methode: "bahnen", dauer: 18, bahnen: 5, kurz: "5 hohe Bahnen über beide Stockwerke." },
+  { id: "flur", name: "Flur", methode: "bahnen", dauer: 14, bahnen: 5, kurz: "5 Bahnen hinter Garderobe und Haustür." },
+  { id: "wohnzimmer", name: "Wohnzimmer", methode: "bahnen", dauer: 22, bahnen: 10, kurz: "Eingang und Wohnzimmer: Luni zieht die alten Bahnen ab und tapeziert neu." },
+  { id: "kueche", name: "Küche", methode: "bahnen", dauer: 14, bahnen: 5, kurz: "5 Bahnen von der Küchenzeile bis zum Esstisch." },
+  { id: "keller", name: "Keller", methode: "bahnen", dauer: 24, bahnen: 14, kurz: "14 Bahnen über beide Kellerräume." },
 ] as const;
 
 export function renoRaumInfo(id: RenoRaumId): RenoRaum {
@@ -202,6 +202,13 @@ export function renoVorschlag(id: RenoId): RenoVorschlag {
 /** So viele Bahnen hat eine Wand beim Tapezieren. */
 export const RENO_BAHNEN = 10;
 
+/** Anteil der Arbeit, bis Durchgang 1 (grobes Abkratzen, Reste bleiben) endet. */
+export const TAPETE_ABZIEHEN_BIS = 0.34;
+/** Anteil der Arbeit, bis Durchgang 2 (Restfetzen gezielt mit Leiter entfernen) endet. */
+export const TAPETE_RESTE_BIS = 0.56;
+/** Ab hier rollt die neue Tapete; dazwischen steht kurz der saubere Rohputz. */
+export const TAPETE_NEU_AB = 0.59;
+
 /* ------------------------------- Helfer -------------------------------- */
 
 const TAU = Math.PI * 2;
@@ -256,47 +263,321 @@ function bahn(w: RenoWand, i: number) {
   return { xa, b, oben };
 }
 
-/** Gemeinsamer Takt fuer Wand, Leiter und Haende. */
-export function tapezierTakt(w: RenoWand, p: number) {
+/** Ein unregelmäßiger alter Tapetenrest, der nach Durchgang 1 noch klebt. */
+export interface TapetenRest {
+  x: number;
+  y: number;
+  b: number;
+  h: number;
+  /** Ausgefranste Umrisspunkte (Weltkoordinaten). */
+  punkte: [number, number][];
+}
+
+/**
+ * Berechnet die typischen, unregelmäßigen alten Tapetenreste einer Wand,
+ * sortiert von rechts nach links (passend zum Rückweg nach Durchgang 1).
+ */
+export function tapetenReste(w: RenoWand): TapetenRest[] {
+  const breite = w.x1 - w.x0;
+  const anzahl = Math.max(3, Math.min(6, Math.round(breite / 56)));
+  const spanne = breite - 28;
+  const schritt = spanne / anzahl;
+  const liste: TapetenRest[] = [];
+  for (let k = 0; k < anzahl; k++) {
+    const saat = Math.round(w.x0 * 3 + w.yTop * 5 + k * 41);
+    const x = klemm(w.x0 + 14 + (k + 0.25 + zufall(saat) * 0.5) * schritt, w.x0 + 14, w.x1 - 14);
+    const oben = w.decke(x) + 6;
+    const platz = Math.max(24, w.yBot - oben - 26);
+    // Verteilt auf verschiedene Höhen (oben unter der Decke, mittig, tiefer)
+    const hoehenStufe = (k * 2 + (Math.round(w.x0) % 3)) % 3;
+    const anteilY = hoehenStufe === 0 ? 0.06 + zufall(saat + 1) * 0.2
+      : hoehenStufe === 1 ? 0.36 + zufall(saat + 2) * 0.22
+      : 0.68 + zufall(saat + 3) * 0.22;
+    const h = 15 + zufall(saat + 4) * 14;
+    const b = 11 + zufall(saat + 5) * 11;
+    const y = klemm(oben + anteilY * (platz - h * 0.4), oben, Math.max(oben, w.yBot - h - 8));
+    // Typische ausgefranste Abrissform: schräge Spitze oben, eingekerbte Kante, spitze Zunge unten
+    const hw = b * 0.5;
+    const punkte: [number, number][] = [
+      [x - hw * 0.45, y],
+      [x + hw * 0.25, y + h * 0.08],
+      [x + hw * (0.75 + zufall(saat + 6) * 0.35), y + h * 0.32],
+      [x + hw * (0.35 + zufall(saat + 7) * 0.4), y + h * 0.62],
+      [x + hw * 0.6, y + h * 0.88],
+      [x - hw * 0.1, y + h],
+      [x - hw * (0.65 + zufall(saat + 8) * 0.3), y + h * 0.72],
+      [x - hw * 0.4, y + h * 0.45],
+      [x - hw * (0.8 + zufall(saat + 9) * 0.25), y + h * 0.18],
+    ];
+    liste.push({ x, y, b, h, punkte });
+  }
+  return liste.sort((a, b) => b.x - a.x);
+}
+
+/** Gemeinsamer Takt für Wand, Leiter, Hände und Papier über alle drei Durchgänge. */
+export interface TapetenTakt {
+  phase: "abziehen" | "reste" | "rohbau" | "tapezieren";
+  /** Unterschritt innerhalb von Durchgang 3 (tapezieren) oder Durchgang 2 (reste). */
+  schritt: "bewegen" | "hoch" | "abrollen" | "kratzen" | "runter" | "warten";
+  i: number;
+  u: number;
+  n: number;
+  xa: number;
+  b: number;
+  oben: number;
+  x: number;
+  mitte: number;
+  leiterX: number;
+  leiterNeig: number;
+  hub: number;
+  hoch: number;
+  y: number;
+  /** Unterkante der gerade gelösten Tapete bzw. der neuen Rolle. */
+  kante: number;
+  /** 0..1 innerhalb des aktuellen Streifens bzw. Rests: alte Tapete abgekratzt. */
+  ab: number;
+  /** 0..1: neue Bahn abgerollt. */
+  auf: number;
+  /** 0..1: wie weit Luni auf der Leiter steht. */
+  klettern: number;
+}
+
+export function tapezierTakt(w: RenoWand, p: number): TapetenTakt {
   const n = bahnZahl(w);
-  const z = klemm(p) * n;
-  const i = Math.min(n - 1, Math.floor(z));
-  const u = p >= 1 ? 1 : z - i;
+  const k = klemm(p);
+  const streifen = (w.x1 - w.x0) / n;
+  const letzteMitte = klemm(w.x0 + (n - 0.5) * streifen + 5, w.x0 + 14, w.x1 - 14);
+  const reste = tapetenReste(w);
+  const letzterRestX = reste.length ? klemm(reste[reste.length - 1].x + 5, w.x0 + 14, w.x1 - 14) : letzteMitte;
+
+  // Durchgang 1: Bahnen grob von oben nach unten abziehen (Reste bleiben hängen)
+  if (k < TAPETE_ABZIEHEN_BIS) {
+    const q = k / TAPETE_ABZIEHEN_BIS;
+    const z = q * n;
+    const i = Math.min(n - 1, Math.max(0, Math.floor(z)));
+    const u = q >= 1 ? 1 : z - i;
+    const { xa, b, oben } = bahn(w, i);
+    const mitte = klemm(xa + b * 0.5 + 5, w.x0 + 14, w.x1 - 14);
+    const vorher = klemm(xa - b * 0.5 + 5, w.x0 + 14, w.x1 - 14);
+    const bewEnde = i > 0 ? 0.16 : 0;
+    const step = i > 0 ? weich(u / bewEnde) : 1;
+    const hochSpan = i === 0 ? 0.34 : 0.26;
+    const hochEnde = bewEnde + hochSpan;
+    const klettern = weich((u - bewEnde) / hochSpan);
+    const ab = weich((u - hochEnde) / (0.92 - hochEnde));
+    const kante = oben + (w.yBot - oben) * ab;
+    const yZiel = klemm(kante + 28, w.decke(mitte) + 56, w.yBot);
+    const y = w.yBot - (w.yBot - yZiel) * klettern;
+    const x = i === 0 ? mitte : vorher + (mitte - vorher) * step;
+    const schritt = u < bewEnde ? "bewegen" : u < hochEnde ? "hoch" : ab < 1 ? "kratzen" : "runter";
+    return {
+      phase: "abziehen", schritt, i, u, n, xa, b, oben, x, mitte,
+      leiterX: x, leiterNeig: schritt === "bewegen" ? 0.12 : 0,
+      hub: Math.max(0, w.yBot - y), hoch: klettern, y, kante, ab, auf: 0, klettern,
+    };
+  }
+
+  // Durchgang 2: Luni geht mit der Leiter zu den verbliebenen Resten und kratzt sie auf deren Höhe ab
+  if (k < TAPETE_RESTE_BIS) {
+    const rn = Math.max(1, reste.length);
+    const q = (k - TAPETE_ABZIEHEN_BIS) / (TAPETE_RESTE_BIS - TAPETE_ABZIEHEN_BIS);
+    const z = q * rn;
+    const i = Math.min(rn - 1, Math.max(0, Math.floor(z)));
+    const u = q >= 1 ? 1 : z - i;
+    const rest = reste[i];
+    const mitte = klemm(rest.x + 5, w.x0 + 14, w.x1 - 14);
+    const vorher = i === 0 ? letzteMitte : klemm(reste[i - 1].x + 5, w.x0 + 14, w.x1 - 14);
+    const zielY = klemm(rest.y + rest.h * 0.5 + 34, w.decke(mitte) + 56, w.yBot);
+    const bewegung = weich(u / 0.22);
+    const x = vorher + (mitte - vorher) * bewegung;
+    let hoch = 0;
+    let schritt: TapetenTakt["schritt"] = "bewegen";
+    if (u < 0.22) {
+      schritt = "bewegen";
+    } else if (u < 0.42) {
+      schritt = "hoch";
+      hoch = weich((u - 0.22) / 0.2);
+    } else if (u < 0.78) {
+      schritt = "kratzen";
+      hoch = 1;
+    } else {
+      schritt = "runter";
+      hoch = 1 - weich((u - 0.78) / 0.22);
+    }
+    const y = w.yBot - (w.yBot - zielY) * hoch;
+    const ab = u < 0.42 ? 0 : u >= 0.78 ? 1 : weich((u - 0.42) / 0.34);
+    const kante = rest.y + rest.h * ab;
+    return {
+      phase: "reste", schritt, i, u, n: rn,
+      xa: rest.x - rest.b * 0.5, b: rest.b, oben: rest.y,
+      x, mitte,
+      leiterX: schritt === "bewegen" ? x : mitte,
+      leiterNeig: schritt === "bewegen" ? 0.14 : 0,
+      hub: Math.max(0, w.yBot - zielY), hoch, y, kante, ab, auf: 0, klettern: hoch,
+    };
+  }
+
+  // Kurzer Rohbau-Moment mit sauber freigekratztem Putz
+  if (k < TAPETE_NEU_AB) {
+    const { xa, b, oben } = bahn(w, 0);
+    return {
+      phase: "rohbau", schritt: "warten", i: 0, u: 0, n, xa, b, oben,
+      x: letzterRestX, mitte: letzterRestX, leiterX: letzterRestX, leiterNeig: 0,
+      hub: 0, hoch: 0, y: w.yBot, kante: w.yBot, ab: 1, auf: 0, klettern: 0,
+    };
+  }
+
+  // Durchgang 3: Tapezieren — Leiter bewegen -> hochklettern -> Tapete rollt runter -> runterklettern
+  const q = (k - TAPETE_NEU_AB) / (1 - TAPETE_NEU_AB);
+  const z = q * n;
+  const i = Math.min(n - 1, Math.max(0, Math.floor(z)));
+  const u = q >= 1 ? 1 : z - i;
   const { xa, b, oben } = bahn(w, i);
   const mitte = klemm(xa + b * 0.5 + 5, w.x0 + 14, w.x1 - 14);
-  const vorher = klemm(xa - b * 0.5 + 5, w.x0 + 14, w.x1 - 14);
-  const schritt = weich(u / 0.14);
-  const x = i === 0 ? mitte : vorher + (mitte - vorher) * schritt;
-  const hoch = weich((u - 0.14) / 0.12) * (1 - weich((u - 0.82) / 0.12));
+  const vorher = i === 0 ? letzterRestX : klemm(xa - b * 0.5 + 5, w.x0 + 14, w.x1 - 14);
+  const bewegung = weich(u / 0.22);
+  const x = vorher + (mitte - vorher) * bewegung;
   const hub = Math.max(0, w.yBot - w.decke(mitte) - 64);
+
+  let schritt: TapetenTakt["schritt"] = "bewegen";
+  let hoch = 0;
+  let auf = 0;
+  if (u < 0.22) {
+    schritt = "bewegen";
+    hoch = 0;
+    auf = 0;
+  } else if (u < 0.44) {
+    schritt = "hoch";
+    hoch = weich((u - 0.22) / 0.22);
+    auf = 0;
+  } else if (u < 0.78) {
+    schritt = "abrollen";
+    hoch = 1;
+    auf = weich((u - 0.44) / 0.28);
+  } else {
+    schritt = "runter";
+    hoch = 1 - weich((u - 0.78) / 0.22);
+    auf = 1;
+  }
+  const y = w.yBot - hub * hoch;
+  const kante = oben + (w.yBot - oben) * auf;
   return {
-    i, u, n, xa, b, oben, x, mitte, hub, hoch,
-    y: w.yBot - hub * hoch,
-    ab: weich((u - 0.26) / 0.2),
-    auf: weich((u - 0.52) / 0.21),
+    phase: "tapezieren", schritt, i, u, n, xa, b, oben, x, mitte,
+    leiterX: schritt === "bewegen" ? x : mitte,
+    leiterNeig: schritt === "bewegen" ? 0.14 : 0,
+    hub, hoch, y, kante, ab: 1, auf, klettern: hoch,
   };
+}
+
+/** Zeichnet einen unregelmäßigen Rest der echten alten Tapete auf den Putz. */
+function maleTapetenRest(c: C, rest: TapetenRest, alt: Maler, ab: number) {
+  if (ab >= 0.999) return;
+  const kante = rest.y + rest.h * ab;
+  c.save();
+  // Nur der noch nicht abgekratzte Teil unterhalb kante bleibt kleben
+  c.beginPath();
+  c.rect(rest.x - rest.b, kante, rest.b * 2, rest.y + rest.h - kante + 2);
+  c.clip();
+
+  // Leichter Schatten auf dem Putz
+  c.save();
+  c.translate(0.9, 1);
+  c.beginPath();
+  c.moveTo(rest.punkte[0][0], rest.punkte[0][1]);
+  for (let i = 1; i < rest.punkte.length; i++) c.lineTo(rest.punkte[i][0], rest.punkte[i][1]);
+  c.closePath();
+  c.fillStyle = "rgba(38,28,20,.25)";
+  c.fill();
+  c.restore();
+
+  // Ausgefranste helle Papierfaser-Kante rund um den Abriss
+  c.beginPath();
+  c.moveTo(rest.punkte[0][0], rest.punkte[0][1]);
+  for (let i = 1; i < rest.punkte.length; i++) c.lineTo(rest.punkte[i][0], rest.punkte[i][1]);
+  c.closePath();
+  c.lineWidth = 2.1;
+  c.strokeStyle = "#e6dac2";
+  c.stroke();
+
+  // Innen die echte alte Wandtapete!
+  c.clip();
+  alt(c);
+  c.restore();
 }
 
 function handwerkBahnen(c: C, w: RenoWand, p: number, alt: Maler, neu: Maler) {
   const a = tapezierTakt(w, p);
+  const reste = tapetenReste(w);
+
+  if (a.phase === "rohbau") {
+    putz(c, w);
+    return;
+  }
+
+  if (a.phase === "tapezieren") {
+    // Wand steht komplett als Putz bereit; nun rollt jede Bahn nacheinander ab.
+    putz(c, w);
+    const n = a.n;
+    const q = (p - TAPETE_NEU_AB) / (1 - TAPETE_NEU_AB);
+    const naht = 0.2 * (1 - weich((q - 0.9) / 0.1));
+    for (let i = 0; i < n; i++) {
+      if (i > a.i) continue;
+      const { xa, b, oben } = bahn(w, i);
+      const auf = i < a.i ? 1 : a.auf;
+      if (auf <= 0) continue;
+      const kante = oben + (w.yBot - oben) * auf;
+      teil(c, xa, w.yTop, b + 0.5, kante - w.yTop, neu);
+      const feucht = i < a.i ? klemm(1 - (a.i - i) / 2.6) * 0.14 : 0.18 * (1 - weich((a.u - 0.72) / 0.2));
+      if (feucht > 0.01) {
+        c.fillStyle = `rgba(6,18,14,${feucht.toFixed(3)})`;
+        c.fillRect(xa, w.yTop, b, kante - w.yTop);
+      }
+      if (naht > 0.01 && i < n - 1) {
+        c.fillStyle = `rgba(0,0,0,${naht.toFixed(3)})`;
+        c.fillRect(xa + b - 0.4, w.yTop, 0.8, kante - w.yTop);
+      }
+      if (auf < 1) rolle(c, xa, kante, b, "#efe6d0", "#cdbf9f");
+    }
+    return;
+  }
+
+  if (a.phase === "reste") {
+    // Durchgang 2: nackter Putz mit den verbliebenen Tapetenresten; Luni kratzt sie einzeln weg.
+    putz(c, w);
+    for (let j = 0; j < reste.length; j++) {
+      if (j < a.i) continue;
+      maleTapetenRest(c, reste[j], alt, j === a.i ? a.ab : 0);
+    }
+    return;
+  }
+
+  // Durchgang 1 (abziehen): alte Tapete weg, Putz wird sichtbar, typische Reste bleiben hängen!
   alt(c);
-  if (a.i > 0) teil(c, w.x0, w.yTop, a.xa - w.x0, w.yBot - w.yTop, neu);
-  const abKante = a.oben + (w.yBot - a.oben) * a.ab;
-  if (a.ab > 0) {
-    teil(c, a.xa, w.yTop, a.b, abKante - w.yTop, (cc) => putz(cc, w));
-    if (a.ab < 1) {
-      // Bedruckte Vorderseite klappt nach unten, helle Rueckseite rollt sich ein.
-      teil(c, a.xa, abKante, a.b, 7, (cc) => { cc.translate(0, 5); alt(cc); });
-      rolle(c, a.xa, abKante, a.b, "#ded0b8", "#b4a385");
+  for (let i = 0; i < a.n; i++) {
+    const { xa, b, oben } = bahn(w, i);
+    if (i < a.i) {
+      teil(c, xa, w.decke(xa), b + 0.4, w.yBot - w.decke(xa), (cc) => putz(cc, w));
+    } else if (i === a.i) {
+      const kante = oben + (w.yBot - oben) * a.ab;
+      if (kante > w.decke(xa)) teil(c, xa, w.decke(xa), b + 0.4, kante - w.decke(xa), (cc) => putz(cc, w));
+      if (a.ab < 1) {
+        for (let r = 0; r < 5; r++) {
+          const rx = xa + zufall(i * 9 + r) * b;
+          const rh = 1.6 + zufall(i * 9 + r + 40) * 3.4;
+          c.fillStyle = r % 2 ? "rgba(196,175,145,.8)" : "rgba(150,105,95,.65)";
+          c.fillRect(rx, kante, 1.4 + zufall(i + r) * 2.6, rh);
+        }
+        c.fillStyle = "rgba(32,24,18,.26)";
+        c.fillRect(xa, kante + 0.6, b, 1);
+      }
     }
   }
-  if (a.auf > 0) {
-    const kante = a.oben + (w.yBot - a.oben) * a.auf;
-    teil(c, a.xa, w.yTop, a.b, kante - w.yTop, neu);
-    const feucht = 0.12 * (1 - weich((a.u - 0.73) / 0.2));
-    c.fillStyle = `rgba(6,18,14,${feucht})`;
-    c.fillRect(a.xa, w.yTop, a.b, kante - w.yTop);
-    if (a.auf < 1) rolle(c, a.xa, kante, a.b, "#efe6d0", "#cdbf9f");
+  // Alle bereits freigekratzten Stellen behalten ihre unregelmäßigen alten Tapetenreste für Durchgang 2
+  const aktuelleKante = a.oben + (w.yBot - a.oben) * a.ab;
+  for (const r of reste) {
+    if (r.x < a.xa || (r.x <= a.xa + a.b && r.y + r.h * 0.4 < aktuelleKante)) {
+      maleTapetenRest(c, r, alt, 0);
+    }
   }
 }
 
@@ -355,9 +636,24 @@ function putz(c: C, w: RenoWand) {
   c.fillStyle = "rgba(255,255,255,.08)";
   for (let x = w.x0 + 5; x < w.x1; x += 17) c.fillRect(x, w.yTop, 3, hoehe);
   c.fillStyle = "rgba(60,50,40,.34)";
-  for (let i = 1; i < RENO_BAHNEN; i++) {
+  for (let i = 1; i < bahnZahl(w); i++) {
     const { xa, oben } = bahn(w, i);
     c.fillRect(xa - 0.35, oben + 5, 0.7, 7);
+  }
+  // Kleine Tapetenreste duerfen stehen bleiben.
+  for (let i = 0; i < 9; i++) {
+    const fx = w.x0 + zufall(i * 11 + 500) * breite;
+    const fy = w.yTop + zufall(i * 11 + 501) * hoehe;
+    const fw = 2.2 + zufall(i * 11 + 502) * 6.5;
+    const fh = 1.3 + zufall(i * 11 + 503) * 3.2;
+    c.fillStyle = i % 3 === 0 ? "rgba(220,203,176,.72)" : i % 3 === 1 ? "rgba(150,105,95,.42)" : "rgba(176,157,128,.5)";
+    c.beginPath();
+    c.moveTo(fx, fy);
+    c.lineTo(fx + fw, fy + fh * 0.4);
+    c.lineTo(fx + fw * 0.7, fy + fh);
+    c.lineTo(fx + 0.4, fy + fh * 0.7);
+    c.closePath();
+    c.fill();
   }
   c.fillStyle = "rgba(0,0,0,.14)";
   c.fillRect(w.x0, w.yBot - 4, breite, 4);
@@ -724,24 +1020,26 @@ export function drawRenovierungWand(c: C, id: RenoMethode, p: number, t: number,
 
 /* ----------------------------- Das Beiwerk ----------------------------- */
 
-function leiter(c: C, x: number, boden: number, hoehe: number) {
+function leiter(c: C, x: number, boden: number, hoehe: number, neigung = 0) {
   c.save();
+  c.translate(x, boden - (neigung ? 2.5 : 0));
+  if (neigung) c.rotate(neigung);
   c.lineCap = "round";
   c.strokeStyle = "#7c5d31";
   c.lineWidth = 2.3;
   c.beginPath();
-  c.moveTo(x - 8, boden);
-  c.lineTo(x - 4, boden - hoehe);
-  c.moveTo(x + 8, boden);
-  c.lineTo(x + 4, boden - hoehe);
+  c.moveTo(-8, 0);
+  c.lineTo(-4, -hoehe);
+  c.moveTo(8, 0);
+  c.lineTo(4, -hoehe);
   c.stroke();
   c.strokeStyle = "#c9a468";
   c.lineWidth = 1.6;
   for (let s = 7; s < hoehe - 3; s += 9) {
     const halb = 8 - 4 * (s / hoehe);
     c.beginPath();
-    c.moveTo(x - halb, boden - s);
-    c.lineTo(x + halb, boden - s);
+    c.moveTo(-halb, -s);
+    c.lineTo(halb, -s);
     c.stroke();
   }
   c.restore();
@@ -889,6 +1187,154 @@ function maleFliesenVorn(c: C, w: RenoWand, p: number, t: number) {
   }
 }
 
+/** So breit rollt Luni die alte Tapete zusammen, während sie sie von oben nach unten abkratzt. */
+function abgezogeneTapete(c: C, a: TapetenTakt) {
+  if (a.phase !== "abziehen" || a.ab <= 0.01 || a.ab >= 0.999) return;
+  // Die gelöste Bahn hängt nicht meterlang an der Wand: Luni rollt sie ein und
+  // trägt sie mit der Hand nach unten. Die Rolle wächst mit dem Fortschritt.
+  const r = 2.6 + a.ab * 4.8;
+  const rollX = a.x - 13.5;
+  const rollY = a.y - 27 - a.ab * 3;
+  c.save();
+  // kleiner Papierzipfel zwischen Wand und Hand
+  c.strokeStyle = "#e6dbc2";
+  c.lineWidth = 1.7;
+  c.lineCap = "round";
+  c.beginPath();
+  c.moveTo(a.mitte + 1, Math.min(a.kante + 1, a.y - 14));
+  c.quadraticCurveTo(rollX + 7, rollY - 4, rollX + r, rollY);
+  c.stroke();
+  // gerollte Tapete (Rückseite hell, alte Musterseite als schmaler Streifen)
+  c.fillStyle = "#d9ccb2";
+  c.beginPath();
+  c.arc(rollX, rollY, r, 0, TAU);
+  c.fill();
+  c.strokeStyle = "rgba(116,95,70,.55)";
+  c.lineWidth = 0.7;
+  c.beginPath();
+  c.arc(rollX, rollY, r, 0.4, 5.2);
+  c.stroke();
+  c.fillStyle = "#bba98a";
+  c.beginPath();
+  c.arc(rollX, rollY, r * 0.55, 0, TAU);
+  c.fill();
+  c.fillStyle = "#efe5cd";
+  c.beginPath();
+  c.arc(rollX, rollY, r * 0.28, 0, TAU);
+  c.fill();
+  // ein paar kleine alte Musterflecken bleiben aussen haften
+  c.fillStyle = "rgba(150,105,95,.5)";
+  c.fillRect(rollX - r * 0.8, rollY - r * 0.3, 1.3, 1);
+  c.fillRect(rollX + r * 0.35, rollY + r * 0.55, 1.2, 0.9);
+  c.restore();
+}
+
+/** Wieviel Dreck (0..1) durch das Abkratzen bisher am Boden liegt. */
+export function tapetenDreckAnteil(w: RenoWand, p: number): number {
+  const a = tapezierTakt(w, p);
+  if (a.phase === "abziehen") return klemm(((a.i + a.ab) / a.n) * 0.72);
+  if (a.phase === "reste") return klemm(0.72 + ((a.i + a.ab) / a.n) * 0.28);
+  return 1;
+}
+
+/** So viele Papier- und Putzstücke liegen gerade am Boden (0 = sauber). */
+export function tapetenDreckMenge(w: RenoWand, p: number): number {
+  const anteil = tapetenDreckAnteil(w, p);
+  if (anteil <= 0) return 0;
+  return Math.round(anteil * 125);
+}
+
+/**
+ * Zeichnet deutlich sichtbaren Abkratz-Dreck (Tapetenfetzen, gekringelte Papierstreifen,
+ * Putzbrösel und mehrere Haufen) entlang des Raumbodens. Bleibt liegen, bis Luni fegt!
+ */
+export function drawTapetenDreck(c: C, w: RenoWand, anteil: number, aktivX?: number) {
+  const k = klemm(anteil);
+  const stuecke = Math.round(k * 125);
+  if (stuecke <= 0) return;
+  const breite = w.x1 - w.x0;
+  c.save();
+
+  // 1) Breiter, sichtbarer Staub- und Bröselstreifen entlang der gesamten Wand
+  c.fillStyle = "rgba(48,38,28,.24)";
+  c.beginPath();
+  c.ellipse(w.x0 + breite * 0.5, w.yBot - 1.6, 12 + breite * 0.49 * Math.min(1, k * 1.15), 4.6, 0, 0, TAU);
+  c.fill();
+
+  // 2) Mehrere echte, größere Haufen abgekratzter Tapete entlang der Wand
+  const haufenAnzahl = Math.max(2, Math.round(breite / 72));
+  for (let h = 0; h < haufenAnzahl; h++) {
+    const hPos = (h + 0.5) / haufenAnzahl;
+    if (k < hPos * 0.45) continue;
+    const hKraft = klemm((k - hPos * 0.3) / 0.5);
+    const hx = w.x0 + breite * (0.1 + hPos * 0.8) + (zufall(h + 15) - 0.5) * 14;
+    const hb = (14 + zufall(h + 25) * 16) * (0.4 + 0.6 * hKraft);
+    const hh = (3.4 + zufall(h + 35) * 3.8) * (0.4 + 0.6 * hKraft);
+    c.fillStyle = "rgba(62,48,36,.34)";
+    c.beginPath();
+    c.ellipse(hx, w.yBot - 1, hb * 0.72, hh * 0.72, 0, 0, TAU);
+    c.fill();
+    for (let m = 0; m < Math.round(9 * hKraft); m++) {
+      const mx = hx + (zufall(h * 17 + m + 40) - 0.5) * hb * 1.1;
+      const my = w.yBot - 1.2 - zufall(h * 17 + m + 90) * hh * 1.25;
+      c.fillStyle = m % 3 === 0 ? "rgba(218,204,178,.96)"
+        : m % 3 === 1 ? "rgba(154,108,96,.92)" : "rgba(126,104,78,.94)";
+      c.beginPath();
+      c.ellipse(mx, my, 1.8 + zufall(m + 140) * 2.5, 1.1 + zufall(m + 190) * 1.6, zufall(m + 240), 0, TAU);
+      c.fill();
+    }
+  }
+
+  // 3) Viele unregelmäßige Schnipsel und gekringelte Tapetenstreifen
+  for (let i = 0; i < stuecke; i++) {
+    const x = w.x0 + 3 + zufall(i * 7 + 800) * Math.max(4, breite - 6);
+    const hh = 2.4 + zufall(i * 7 + 801) * 6.8;
+    const bb = 2.2 + zufall(i * 7 + 802) * 7.2;
+    const neigung = (zufall(i * 7 + 803) - 0.5) * 1.1;
+    c.save();
+    c.translate(x, w.yBot - 0.5);
+    c.rotate(neigung);
+    c.fillStyle = i % 5 === 0 ? "rgba(154,106,94,.95)"
+      : i % 5 === 1 ? "rgba(226,212,186,.97)"
+      : i % 5 === 2 ? "rgba(190,174,144,.95)"
+      : i % 5 === 3 ? "rgba(126,104,78,.92)"
+      : "rgba(96,80,62,.92)";
+    if (i % 6 === 0) {
+      // Gekringelter Papierstreifen
+      c.strokeStyle = c.fillStyle;
+      c.lineWidth = 1.6;
+      c.beginPath();
+      c.arc(0, -hh * 0.45, bb * 0.42, 0.2, Math.PI * 1.45);
+      c.stroke();
+    } else {
+      c.beginPath();
+      c.moveTo(0, 0);
+      c.lineTo(bb * 0.52, -hh);
+      c.lineTo(bb, -hh * 0.35);
+      c.lineTo(bb * 0.38, 0.2);
+      c.closePath();
+      c.fill();
+    }
+    c.restore();
+  }
+
+  // 4) Unter der aktuellen Kratzstelle frischer Rutsch
+  if (aktivX !== undefined) {
+    c.fillStyle = "rgba(118,96,72,.78)";
+    c.beginPath();
+    c.ellipse(aktivX, w.yBot - 1.8, 12, 3.2, 0, 0, TAU);
+    c.fill();
+    c.fillStyle = "rgba(222,208,182,.95)";
+    for (let j = 0; j < 6; j++) c.fillRect(aktivX - 6 + j * 2.5, w.yBot - 2.6 - zufall(j + 80) * 3.4, 2, 1.8);
+  }
+  c.restore();
+}
+
+function tapetenDreck(c: C, w: RenoWand, p: number) {
+  const a = tapezierTakt(w, p);
+  drawTapetenDreck(c, w, tapetenDreckAnteil(w, p), a.schritt === "kratzen" ? a.mitte : undefined);
+}
+
 /** Wo gerade gearbeitet wird: gleitet von Bahn zu Bahn. */
 function arbeitsX(w: RenoWand, q: number): number {
   const n = bahnZahl(w);
@@ -907,6 +1353,7 @@ function arbeitsX(w: RenoWand, q: number): number {
 export function drawRenovierungVorn(
   c: C, id: RenoMethode, p: number, t: number, w: RenoWand,
   sicht: { x: number; y: number; w: number; h: number },
+  ohneDreck = false,
 ) {
   if (p <= 0 || p >= 1) return;
   const breite = w.x1 - w.x0, hoehe = w.yBot - w.yTop;
@@ -920,9 +1367,31 @@ export function drawRenovierungVorn(
     }
   } else if (id === "bahnen" && w.handwerk) {
     const a = tapezierTakt(w, p);
-    c.globalAlpha = klemm(a.u / 0.12) * klemm((1 - a.u) / 0.07);
-    leiter(c, a.mitte, w.yBot, Math.max(18, a.hub + 8));
-    eimer(c, klemm(a.mitte - 20, w.x0 + 8, w.x1 - 8), w.yBot);
+    if (a.phase === "abziehen") {
+      leiter(c, a.leiterX, w.yBot, Math.max(20, w.yBot - a.oben + 6), a.leiterNeig);
+      abgezogeneTapete(c, a);
+    } else if (a.phase === "reste") {
+      // Luni bewegt die Leiter zum Rest und steigt genau auf seine Höhe
+      const restHoehe = Math.max(22, Math.min(w.yBot - w.decke(a.leiterX) - 4, w.yBot - a.oben + 10));
+      leiter(c, a.leiterX, w.yBot, restHoehe, a.leiterNeig);
+      if (a.schritt === "kratzen") {
+        // Kleine Papierschnipsel rieseln beim Abkratzen auf den Boden
+        c.fillStyle = "rgba(220,206,180,.88)";
+        for (let k = 0; k < 4; k++) {
+          const fall = (t * 28 + k * 9.1) % Math.max(10, w.yBot - a.kante);
+          const sx = a.mitte - 4 + Math.sin(t * 4 + k * 2.1) * 5;
+          const sy = a.kante + fall;
+          if (sy < w.yBot - 2) c.fillRect(klemm(sx, w.x0 + 2, w.x1 - 2), sy, 1.8, 1.5);
+        }
+      }
+    } else if (a.phase === "tapezieren") {
+      const lHoehe = Math.max(22, Math.min(w.leiterMax ?? 64, w.yBot - w.decke(a.leiterX) - 6));
+      leiter(c, a.leiterX, w.yBot, Math.max(lHoehe, a.hub + 10), a.leiterNeig);
+      if (a.schritt !== "bewegen") {
+        eimer(c, klemm(a.mitte - 20, w.x0 + 8, w.x1 - 8), w.yBot);
+      }
+    }
+    if (!ohneDreck) tapetenDreck(c, w, p);
   } else if (id === "bahnen" || id === "abziehen") {
     let q = p;
     if (id === "abziehen") {

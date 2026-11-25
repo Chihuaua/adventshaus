@@ -384,5 +384,11 @@ renovierung-haus-alle-raeume | src/game/house.ts | raumRenoStart
 renovierung-gaming-first | src/game/renovierung.ts | export function gamingTeile
 renovierung-luni-handgriffe | src/game/renovierung-luni.ts | export function renovierungsPose
 renovierung-alte-bahn-entfernen | src/game/renovierung.ts | function handwerkBahnen
+renovierung-tapete-zuerst-runter | src/game/renovierung.ts | TAPETE_ABZIEHEN_BIS
+renovierung-tapetenrolle-traegt-luni | src/game/renovierung.ts | function abgezogeneTapete
+renovierung-dreck-am-boden | src/game/renovierung.ts | export function tapetenDreckMenge
+renovierung-tapetenreste-zweiter-gang | src/game/renovierung.ts | export function tapetenReste
+renovierung-muellsaecke-keller | src/game/muell.ts | export function drawKellerMuellsaecke
+renovierung-muelltonne-dienstag | src/game/muell.ts | export function istMuellTag
 renovierung-wohnen-mit-eingang | src/game/renovierung.ts | export function renoAuftragsRaeume
 renovierung-weihnachtsreferenz | src/game/house.ts | export function zeichneHausWaende

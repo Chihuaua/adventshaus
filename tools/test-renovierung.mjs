@@ -10,6 +10,7 @@ const R = await lade("src/game/renovierung.ts");
 const G = await lade("src/game/house.ts");
 const S = await lade("src/game/steine.ts");
 const L = await lade("src/game/renovierung-luni.ts");
+const M = await lade("src/game/muell.ts");
 
 let n = 0;
 const test = (name, fn) => { fn(); n++; console.log(`OK  ${name}`); };
@@ -156,7 +157,7 @@ test("Raumplan: alle 9 Räume, 8× Tapetenbahnen + eigene Fliesen-Methode fürs 
   assert.equal(bad.methode, "fliesen", "Bad nutzt die eigene Fliesen-Methode");
   for (const r of R.RENO_RAEUME) {
     assert.equal(r.methode, r.id === "badezimmer" ? "fliesen" : "bahnen", r.id);
-    assert.ok(r.dauer >= 6 && r.dauer <= 18, `${r.id}: angenehme Dauer`);
+    assert.ok(r.dauer >= 6 && r.dauer <= 26, `${r.id}: angenehme Dauer`);
     if (r.methode === "bahnen") assert.ok(r.bahnen >= 5 && r.bahnen <= 14, `${r.id}: Bahnzahl`);
   }
   // Gaming-Zimmer teilt sauber in linken Rand (5 Bahnen) und Hauptwand über Dachfirst (9 Bahnen).
@@ -321,14 +322,15 @@ test("Alle 9 Räume im Haus: jeder wechselt nur seine eigene Wand, eine Luni arb
   h.raumRenoStart("keller");
   assert.equal(h.raumRenoAktiv.size, 3);
   const besucht = [];
-  for (let i = 0; i < 12000 && h.raumRenoAktiv.size; i++) {
+  for (let i = 0; i < 24000 && (h.raumRenoAktiv.size || h.muellArbeit); i++) {
     const vorher = { ...h.raumReno };
     h.step(0.04);
     const geaendert = Object.keys(h.raumReno).filter((r) => h.raumReno[r] !== vorher[r]);
     assert.ok(geaendert.length <= 1, "niemals zwei Arbeitsstellen gleichzeitig");
-    if (h.renoPose && besucht.at(-1) !== h.renoArbeit.raum) {
+    if (h.renoArbeit && h.renoPose && besucht.at(-1) !== h.renoArbeit.raum) {
       besucht.push(h.renoArbeit.raum);
       const v = flaeche();
+      h.drawRaumDreck(v.c);
       h.drawRaumRenoVorn(v.c);
       h.drawLuniNow(v.c);
       assert.equal(v.merk.sichern, v.merk.zurueck);
@@ -347,32 +349,190 @@ test("Wohnzimmer-Stein renoviert auch den Eingang, ohne weitere Steine zu versch
   h.command("stein_wohnzimmer");
   h.command("stein_wohnzimmer");
   assert.deepEqual([...h.raumRenoAktiv], ["flur", "wohnzimmer"], "wiederholter Klick erzeugt keine doppelten Auftraege");
-  for (let i = 0; i < 5000 && h.raumRenoAktiv.size; i++) h.step(0.04);
+  for (let i = 0; i < 16000 && (h.raumRenoAktiv.size || h.muellArbeit); i++) h.step(0.04);
   assert.equal(h.raumReno.flur, 1);
   assert.equal(h.raumReno.wohnzimmer, 1);
   assert.equal(h.raumReno.kueche, undefined, "Kueche bleibt unberuehrt");
   assert.equal(h.renoPose, null, "nach der Arbeit wieder normale Luni");
+  assert.equal(h.muellSaecke, 2, "25.11.2026 ist Mittwoch: Flur- und Wohnzimmersack lagern im Keller");
 });
 
-test("Handwerk: alte Bahn zuerst ab, neue erst danach; Haende und Leiter folgen demselben Takt", () => {
+test("Tapete: Durchgang 1 (Reste bleiben) -> Durchgang 2 (Reste mit Leiter) -> Durchgang 3 (Tapezieren)", () => {
+  const w = G.RENO_WAENDE.musik;
+  const reste = R.tapetenReste(w);
+  assert.ok(reste.length >= 3 && reste.length <= 6, "mehrere typische Tapetenreste");
+  // Sortiert von rechts nach links (nahtlos nach Durchgang 1)
+  for (let i = 1; i < reste.length; i++) assert.ok(reste[i].x < reste[i - 1].x);
+  // Reste liegen auf unterschiedlichen Höhen innerhalb der Wand
+  assert.ok(new Set(reste.map((r) => Math.round(r.y / 25))).size >= 2);
+
+  assert.equal(R.tapezierTakt(w, 0.18).phase, "abziehen");
+  assert.equal(R.tapezierTakt(w, 0.45).phase, "reste");
+  assert.equal(R.tapezierTakt(w, 0.57).phase, "rohbau");
+  assert.equal(R.tapezierTakt(w, 0.78).phase, "tapezieren");
+
+  // Während Durchgang 1, 2 und Rohbau wird noch keine neue Tapete geklebt
+  for (const p of [0.15, 0.35, 0.45, 0.57, R.TAPETE_NEU_AB]) {
+    let neu = 0;
+    const { c } = flaeche();
+    R.drawRenovierungWand(c, "bahnen", p, 0, w, () => {}, () => neu++);
+    assert.equal(neu, 0, `p=${p}: noch keine neue Tapete`);
+  }
+  // Am Ende von Durchgang 1 sind alle berechneten Tapetenreste noch da (alt wird für die Fetzen gemalt)
+  let altAmEnde1 = 0;
+  const fR = flaeche();
+  R.drawRenovierungWand(fR.c, "bahnen", R.TAPETE_ABZIEHEN_BIS - 1e-4, 0, w, () => altAmEnde1++, () => {});
+  assert.ok(altAmEnde1 >= reste.length, "typische Reste der alten Tapete bleiben bis Durchgang 2 sichtbar");
+  // Im Rohbau zwischen Durchgang 2 und 3 ist kein alter Rest mehr da
+  let altRohbau = 0;
+  const fRoh = flaeche();
+  R.drawRenovierungWand(fRoh.c, "bahnen", 0.575, 0, w, () => altRohbau++, () => {});
+  assert.equal(altRohbau, 0, "nach Durchgang 2 ist die Wand komplett frei von alter Tapete");
+});
+
+test("Durchgang 2 & 3: Luni bewegt die Leiter, klettert auf Rest-Höhe, klettert beim Tapezieren hoch & runter", () => {
   const w = G.RENO_WAENDE.musik;
   const n = w.bahnen;
-  assert.equal(w.handwerk, true);
-  const ab = R.tapezierTakt(w, 0.36 / n);
-  const neu = R.tapezierTakt(w, 0.62 / n);
-  assert.ok(ab.ab > 0 && ab.ab < 1 && ab.auf === 0);
-  assert.ok(neu.ab === 1 && neu.auf > 0 && neu.auf < 1);
-  const a = L.renovierungsPose(w, 0.36 / n, 0);
-  assert.equal(a.x, ab.x);
-  assert.equal(a.y, ab.y);
-  assert.equal(a.werkzeug, "spachtel");
-  assert.equal(L.renovierungsPose(w, 0.62 / n, 0).werkzeug, "papier");
-  // Kein Positionssprung beim Wechsel zur naechsten Bahn.
-  for (let i = 1; i < n; i++) {
-    const vorher = L.renovierungsPose(w, i / n - 1e-8, 0);
-    const nachher = L.renovierungsPose(w, i / n, 0);
-    assert.ok(Math.hypot(vorher.x - nachher.x, vorher.y - nachher.y) < 0.001);
+  const pAb = (u) => (u * R.TAPETE_ABZIEHEN_BIS) / n;
+  // Durchgang 1: Luni steigt mit dem Spachtel und der gelösten Tapete nach unten
+  assert.ok(R.tapezierTakt(w, pAb(0.35)).y < w.yBot - 20);
+  assert.ok(R.tapezierTakt(w, pAb(0.9)).y > w.yBot - 15);
+  assert.equal(L.renovierungsPose(w, pAb(0.5), 0).werkzeug, "spachtel");
+
+  // Durchgang 2: Reste auf Höhe entfernen
+  const rTakt = (j, u) => R.tapezierTakt(w, R.TAPETE_ABZIEHEN_BIS + ((j + u) / R.tapetenReste(w).length) * (R.TAPETE_RESTE_BIS - R.TAPETE_ABZIEHEN_BIS));
+  assert.equal(rTakt(0, 0.1).schritt, "bewegen");
+  assert.equal(rTakt(0, 0.1).y, w.yBot, "Leiter wird am Boden bewegt");
+  assert.equal(rTakt(0, 0.3).schritt, "hoch");
+  assert.equal(rTakt(0, 0.55).schritt, "kratzen");
+  assert.equal(rTakt(0, 0.9).schritt, "runter");
+  const restPose = L.renovierungsPose(w, R.TAPETE_ABZIEHEN_BIS + (0.55 / R.tapetenReste(w).length) * (R.TAPETE_RESTE_BIS - R.TAPETE_ABZIEHEN_BIS), 0);
+  assert.equal(restPose.werkzeug, "spachtel");
+
+  // Durchgang 3: exakt "Leiter bewegen -> hochklettern -> Tapete rollt runter -> runterklettern" je Bahn
+  const pNeu = (i, u) => R.TAPETE_NEU_AB + ((i + u) / n) * (1 - R.TAPETE_NEU_AB);
+  const sBew = R.tapezierTakt(w, pNeu(1, 0.1));
+  const sHoch = R.tapezierTakt(w, pNeu(1, 0.33));
+  const sAbroll = R.tapezierTakt(w, pNeu(1, 0.58));
+  const sRunter = R.tapezierTakt(w, pNeu(1, 0.9));
+  assert.equal(sBew.schritt, "bewegen");
+  assert.equal(sBew.y, w.yBot);
+  assert.equal(sBew.auf, 0, "beim Leiterbewegen rollt noch keine neue Bahn");
+  assert.equal(sHoch.schritt, "hoch");
+  assert.ok(sHoch.y < w.yBot && sHoch.auf === 0, "klettert erst hoch, ehe die Tapete rollt");
+  assert.equal(sAbroll.schritt, "abrollen");
+  assert.ok(sAbroll.y < w.yBot - 20 && sAbroll.auf > 0 && sAbroll.auf < 1, "Tapete rollt ab, während Luni oben steht");
+  assert.equal(sRunter.schritt, "runter");
+  assert.equal(sRunter.auf, 1, "erst wenn die Bahn klebt, klettert sie herunter");
+  assert.ok(sRunter.y > sAbroll.y, "bewegt sich nach unten");
+  assert.ok(Math.abs(R.tapezierTakt(w, 0.999999).y - w.yBot) < 0.01 && R.tapezierTakt(w, 1).y === w.yBot, "nach letzter Bahn wieder am Boden");
+
+  // Kein Positionssprung über den gesamten Durchlauf (im echten 60-Hz-Schritt des Hauses)
+  const N = Math.round(R.renoRaumInfo("musik").dauer * 1.4 * 60);
+  let vor = L.renovierungsPose(w, 0, 0);
+  for (let k = 1; k <= N; k++) {
+    const p = k / N;
+    const jetzt = L.renovierungsPose(w, p, k / 60);
+    assert.ok(Math.hypot(jetzt.x - vor.x, jetzt.y - vor.y) < 10.5, `Sprung bei p=${p}`);
+    vor = jetzt;
   }
+});
+
+test("Mehr Dreck am Boden: sammelt sich, bleibt nach dem Tapezieren liegen bis Luni fegt", () => {
+  const w = G.RENO_WAENDE.musik;
+  assert.equal(R.tapetenDreckMenge(w, 0), 0, "vorher sauber");
+  let vor = 0;
+  for (let p = 0.05; p <= R.TAPETE_RESTE_BIS; p += 0.05) {
+    const jetzt = R.tapetenDreckMenge(w, p);
+    assert.ok(jetzt >= vor, `p=${p}: Dreck wächst`);
+    vor = jetzt;
+  }
+  assert.ok(vor >= 100, `deutlich mehr Dreck als vorher (${vor} Stücke)`);
+  assert.equal(R.tapetenDreckMenge(w, 0.8), vor, "bleibt während Tapezieren liegen");
+  assert.equal(R.tapetenDreckMenge(w, 0.99), vor, "verschwindet nicht von selbst");
+
+  // Im echten Haus: nach Ende des Tapezierens liegt der Dreck voll da und wird von Luni zusammengekehrt
+  const h = spielHaus(3, 550);
+  h.command("stein_musikzimmer");
+  let gesehenDreckVoll = false, gesehenFegen = false;
+  for (let i = 0; i < 6000 && (h.raumRenoAktiv.size || h.muellArbeit); i++) {
+    h.step(0.04);
+    if ((h.raumReno.musik ?? 0) >= 1 && (h.raumDreck.musik ?? 0) > 0.5) gesehenDreckVoll = true;
+    if (h.muellArbeit?.phase === "fegen") {
+      gesehenFegen = true;
+      assert.ok(["feger", null].includes(h.renoPose?.werkzeug));
+    }
+  }
+  assert.ok(gesehenDreckVoll, "nach fertiger Wand liegt der Dreck noch zum Aufkehren am Boden");
+  assert.ok(gesehenFegen, "Luni fegt die Reste am Boden selbst zusammen");
+  assert.equal(h.raumDreck.musik, 0, "nach dem Fegen ist der Boden sauber");
+  assert.equal(h.muellSaecke, 1, "gesammelter Sack lagert unten im Keller (Mittwoch)");
+});
+
+test("Müllsäcke im Keller & Dienstags-Mülltonne vor dem Haus", () => {
+  // Kalenderprüfung (Europe/Berlin-Datum)
+  assert.equal(M.istMuellTag({ year: 2026, month: 11, day: 24 }), true, "24.11.2026 ist Dienstag");
+  assert.equal(M.istMuellTag({ year: 2026, month: 11, day: 25 }), false, "25.11.2026 ist Mittwoch");
+  assert.equal(M.istMuellTag({ year: 2026, month: 12, day: 1 }), true, "01.12.2026 ist Dienstag");
+  assert.ok(M.MUELLTONNE.x + M.MUELLTONNE.w * 0.5 <= 98 && M.MUELLTONNE.x - M.MUELLTONNE.w * 0.5 >= 78, "Tonne passt zwischen Briefkasten und Wand");
+
+  // Zeichnung Tonne, Kellersäcke und offene Haustür
+  const fT = flaeche();
+  M.drawMuellTonne(fT.c, 0.6, 2, true);
+  M.drawKellerMuellsaecke(fT.c, 5, 572);
+  M.drawMuellHaustuer(fT.c, { width: 960, height: 600 }, 0.8, true);
+  assert.equal(fT.merk.sichern, fT.merk.zurueck);
+
+  // 1) Nicht-Dienstag (Mittwoch): Säcke sammeln sich im Keller und bleiben im Snapshot gespeichert
+  const speicher = new Map();
+  const canvas = () => ({ width: 960, height: 600, parentElement: { clientWidth: 960, clientHeight: 600 }, style: {}, getContext: () => flaeche().c });
+  globalThis.localStorage = { getItem: (k) => speicher.get(k) ?? null, setItem: (k, v) => speicher.set(k, v) };
+  globalThis.document = { createElement: canvas, visibilityState: "visible" };
+  globalThis.window = { devicePixelRatio: 1 };
+
+  const mittwoch = { year: 2026, month: 11, day: 25, hour: 11, min: 0 };
+  const hMi = new G.House(canvas(), { welt: "adventshaus", clock: mittwoch });
+  hMi.lf = 1; hMi.lx = 180;
+  hMi.command("stein_flur");
+  for (let i = 0; i < 6000 && (hMi.raumRenoAktiv.size || hMi.muellArbeit); i++) hMi.step(0.04);
+  assert.equal(hMi.muellSaecke, 1, "Mittwochs landet der Sack unten im Keller");
+  assert.equal(hMi.tonneVoll, 0);
+  hMi.speichern();
+
+  // 2) Am nächsten Dienstag: Haus lädt gespeicherten Sack und Luni bringt ihn automatisch in die Tonne vor dem Haus
+  const dienstag = { year: 2026, month: 12, day: 1, hour: 11, min: 0 };
+  const hDi = new G.House(canvas(), { welt: "adventshaus", clock: dienstag });
+  assert.equal(hDi.muellSaecke, 1, "Kellersack wurde aus Snapshot geladen");
+  let tuerGeoeffnet = false;
+  for (let i = 0; i < 6000 && (hDi.muellSaecke > 0 || hDi.muellArbeit); i++) {
+    hDi.step(0.04);
+    if (hDi.muellTuerOffen > 0.5) tuerGeoeffnet = true;
+  }
+  assert.ok(tuerGeoeffnet, "Luni hat Dienstags die Haustür für die Tonne geöffnet");
+  assert.equal(hDi.muellSaecke, 0, "Keller am Dienstag geleert");
+  assert.equal(hDi.tonneVoll, 1, "Sack ist in der Dienstags-Mülltonne");
+
+  // 3) Direkte Renovierung am Dienstag: Sack geht ohne Kellerlagerung sofort vor die Tür
+  hDi.command("stein_flur");
+  for (let i = 0; i < 6000 && (hDi.raumRenoAktiv.size || hDi.muellArbeit); i++) hDi.step(0.04);
+  assert.equal(hDi.muellSaecke, 0, "Dienstags kein Umweg über den Keller");
+  assert.equal(hDi.tonneVoll, 2, "zweiter Sack direkt in der Tonne");
+});
+
+test("Bad bleibt unberührt: eigene Fliesen-Methode fix, kein Dreck, keine Kellersäcke", () => {
+  const bad = G.RENO_WAENDE.badezimmer;
+  assert.equal(R.renoRaumInfo("badezimmer").methode, "fliesen");
+  assert.equal(bad.handwerk, true, "Luni arbeitet weiterhin auch im Bad");
+  for (const p of [0.1, 0.35, 0.8]) {
+    const st = R.fliesenStand(bad, p);
+    assert.equal(st.phase, p < R.FLIESEN_VERFUGEN_AB ? "legen" : "verfugen");
+  }
+  const h = spielHaus(2, 520);
+  h.command("stein_badezimmer");
+  for (let i = 0; i < 6000 && (h.raumRenoAktiv.size || h.muellArbeit); i++) h.step(0.04);
+  assert.equal(h.raumReno.badezimmer, 1);
+  assert.equal(h.muellSaecke, 0, "Badfliesen erzeugen keinen Tapeten-Müllsack");
+  assert.equal(h.raumDreck.badezimmer ?? 0, 0);
 });
 
 test("Alle Raum-Steine erreichen mit Luni ihr fertiges Referenzbild", () => {
@@ -381,7 +541,7 @@ test("Alle Raum-Steine erreichen mit Luni ihr fertiges Referenzbild", () => {
     const floor = G.FLOOR_Y.indexOf(w.yBot);
     const h = spielHaus(floor, w.x0 + 24);
     h.command(`stein_${raum.id === "musik" ? "musikzimmer" : raum.id}`);
-    for (let i = 0; i < 9000 && h.raumRenoAktiv.size; i++) h.step(0.04);
+    for (let i = 0; i < 16000 && (h.raumRenoAktiv.size || h.muellArbeit); i++) h.step(0.04);
     assert.equal(h.raumRenoAktiv.size, 0, `${raum.id}: Auftrag beendet`);
     assert.equal(h.raumReno[raum.id], 1, `${raum.id}: Wand vollstaendig fertig`);
     assert.equal(h.renoPose, null, `${raum.id}: keine zweite Figur bleibt zurueck`);
@@ -431,7 +591,7 @@ test("Luni verlaesst die Leiter vor einer anderen Anweisung und kann aus dem Bet
   const schlaeft = spielHaus(2, 345);
   schlaeft.asleep = true;
   schlaeft.command("stein_musikzimmer");
-  for (let i = 0; i < 9000 && schlaeft.raumRenoAktiv.size; i++) schlaeft.step(0.04);
+  for (let i = 0; i < 16000 && (schlaeft.raumRenoAktiv.size || schlaeft.muellArbeit); i++) schlaeft.step(0.04);
   assert.equal(schlaeft.raumReno.musik, 1, "nach sichtbarem Aufwachen und Treppenweg renoviert");
 });
 
