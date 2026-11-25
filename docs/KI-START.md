@@ -14,6 +14,33 @@ einem Haus (4 Ebenen) in Echtzeit (Europe/Berlin). Web ist der Prototyp, **Wii i
 Endziel**. Zielbild (Adventskalender, zwei Hunde, Nikolaus/Postbote, Silvester) ist noch
 nicht gebaut.
 
+## Welten und Ausbau
+
+Welten: normal, traum, gruesel, weihnacht, adventshaus. Das Adventshaus (Hash `#adventshaus`,
+Adventsstein rechts im Erdreich, in jeder Welt am selben Platz) ist die Zielwelt: ein Klon des Traumhauses, der über den
+Adventskalender Stück für Stück zum fertigen Haus wird. Alle anderen Häuser sind
+Entwicklungshäuser und landen nicht im Zielprojekt.
+
+Der Ausbauplan liegt in `src/game/adventshaus-ausbau.ts`: 24 Stufen, eine pro Türchen
+(Deko, Gegenstand, Bewohner, Ablauf, Ereignis). Echtes Datum, nachholbar, nie vorziehbar.
+Eigene Schlüssel: `lcp1.welt.adventshaus.*` und `lcp1.advent.adventshaus.*`.
+Vorschau einer Ausbaustufe ohne Speicheränderung: `#adventshaus/12`.
+In allen anderen Welten ist jeder Schalter offen – ihr Verhalten bleibt unverändert.
+
+Renovierung: Für alle 9 Räume des Hauses liegt die Wand-Renovierung in `src/game/renovierung.ts` (`RENO_RAEUME`):
+8 Tapetenräume wechseln „Bahn für Bahn“ (Leiter + Kleistereimer), das Badezimmer nutzt eine eigene
+Fliesen-Methode („Fliese für Fliese“ von unten nach oben mit gekämmtem Kleber, Fliesenkreuzen,
+Mörtelkübel/Zahnspachtel, Fliesenstapel und anschließendem Verfugen mit Fliesenschwamm).
+Im normalen Haus und im Adventshaus liegen alle 9 Raum-Steine im 3×3-Raster auf dem linken Kiesteil
+(`KIES_PLAETZE`, `RAUM_STEINE`). Vorschau der Stile weiterhin unter `#studio-renovierung`.
+
+Luni renoviert selbst: hingehen, je Bahn alte Tapete abziehen, neue ansetzen/abrollen und
+glattstreichen. Leiter und Haende verwenden denselben Takt; weitere Raum-Auftraege warten
+auf dieselbe Luni. Der Wohnzimmer-Stein renoviert zuerst den Eingangsbereich und dann das
+Wohnzimmer. Fertige Waende/Badfliesen benutzen exakt die Maler des Weihnachtshauses
+(`zeichneHausWaende`, Vergleich in `tools/test-renovierung.mjs`). Handgriffe und Werkzeug:
+`src/game/renovierung-luni.ts`. Moebel, Boeden und Spieloberflaeche bleiben unveraendert.
+
 ## Die vier Grundsätze (nicht verhandelbar)
 1. **Zuschauen statt gewinnen** – keine Punkte, Balken, Game Over, Belohnungsschleifen.
 2. **Echtzeit** – echte Uhr/Kalender (Europe/Berlin); Türchen nachholbar, nicht vorziehbar.

@@ -17,20 +17,22 @@
    ======================================================================= */
 
 import { loadJson, saveJson } from "./storage";
+import { istAdventshausHash } from "./adventshaus-ausbau";
 import type { TVStand } from "./tv";
 import type { FlauschiStand } from "./flauschi";
 import type { LavaSnapshot } from "./lavalampe";
 import type { AbendFortschritt } from "./abendzeiten";
 
-export type WeltId = "normal" | "traum" | "gruesel" | "weihnacht";
+export type WeltId = "normal" | "traum" | "gruesel" | "weihnacht" | "adventshaus";
 
-export const WELTEN: readonly WeltId[] = ["normal", "traum", "gruesel", "weihnacht"] as const;
+export const WELTEN: readonly WeltId[] = ["normal", "traum", "gruesel", "weihnacht", "adventshaus"] as const;
 
 export const WELT_NAMEN: Record<WeltId, string> = {
   normal: "Normales Haus",
   traum: "Traumhaus",
   gruesel: "Gruselhaus",
   weihnacht: "Weihnachtshaus",
+  adventshaus: "Adventshaus",
 };
 
 /** URL-Hash je Welt. Das normale Haus liegt bewusst auf dem leeren Hash. */
@@ -39,12 +41,15 @@ export const WELT_HASH: Record<WeltId, string> = {
   traum: "#traumhaus",
   gruesel: "#gruselhaus",
   weihnacht: "#weihnachtshaus",
+  adventshaus: "#adventshaus",
 };
 
 export function weltAusHash(hash: string): WeltId | null {
   if (hash === "#traumhaus") return "traum";
   if (hash === "#gruselhaus") return "gruesel";
   if (hash === "#weihnachtshaus") return "weihnacht";
+  // "#adventshaus" und "#adventshaus/12" (Vorschau einer Ausbaustufe)
+  if (istAdventshausHash(hash)) return "adventshaus";
   if (hash === "" || hash === "#") return "normal";
   return null;
 }

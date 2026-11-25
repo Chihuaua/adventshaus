@@ -1,7 +1,7 @@
 import type { WeltId } from "./welten";
 import { ABEND_BETT, ABEND_EINSCHLAFEN, ABEND_RICHTWERTE, type AbendWerte } from "./abendzeiten";
 
-export const abendWelt = (welt: WeltId) => welt === "normal" || welt === "weihnacht";
+export const abendWelt = (welt: WeltId) => welt === "normal" || welt === "weihnacht" || welt === "adventshaus";
 export type Schlafanzug = { top: string; bottom: string; flausch?: boolean };
 type Datum = { year: number; month: number; day: number };
 

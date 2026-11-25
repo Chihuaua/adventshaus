@@ -10,7 +10,9 @@ import NikolausStudio from "@/components/NikolausStudio";
 import LuniFeinStudio from "@/components/LuniFeinStudio";
 import FigurenAtelier from "@/components/FigurenAtelier";
 import { atelierAusHash } from "@/game/atelier/figuren";
+import { ausbauVorschauAusHash, istAdventshausHash } from "@/game/adventshaus-ausbau";
 import { FigurenEditor } from "@/components/FigurenEditor";
+import RenovierungStudio from "@/components/RenovierungStudio";
 
 /** Hash-Weiche: "#studio" Figuren-Studio, "#studio-frosch" Methan Frog, "#editor" Figuren-Editor,
     "#studio-odin"/"#studio-apollo" Hunde-Studios,
@@ -27,6 +29,8 @@ function useHash() {
 
 export default function App() {
   const hash = useHash();
+  // Vorschläge für den Tapetenwechsel im Musikzimmer (reine Vorschau, kein Teil des Spiels).
+  if (hash === "#studio-renovierung") return <RenovierungStudio />;
   if (hash === "#studio-schwebetransporter") return <FigurenAtelier key="schwebetransporter" id="briefkurier" fahrzeug />;
   const atelier = atelierAusHash(hash);
   if (atelier) return <FigurenAtelier key={atelier} id={atelier} />;
@@ -41,6 +45,11 @@ export default function App() {
   if (hash === "#studio-nikolaus") return <NikolausStudio />;
   if (hash === "#studio-ruprecht") return <NikolausStudio key="ruprecht" gast="ruprecht" />;
   if (hash === "#editor") return <FigurenEditor />;
+  // Adventshaus: Klon des Traumhauses, der über den Adventskalender ausgebaut wird.
+  // "#adventshaus/12" zeigt eine Ausbaustufe zur Abnahme, ohne den Speicher zu ändern.
+  if (istAdventshausHash(hash)) {
+    return <HouseView key="adventshaus" welt="adventshaus" ausbauVorschau={ausbauVorschauAusHash(hash)} />;
+  }
   if (hash === "#traumhaus") return <HouseView key="traum" welt="traum" />;
   // key: jede Hauswelt bekommt ihre eigene Instanz (und damit ihren eigenen Speicher)
   if (hash === "#gruselhaus") return <HouseView key="gruesel" welt="gruesel" />;

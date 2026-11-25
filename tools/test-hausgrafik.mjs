@@ -1210,16 +1210,26 @@ test("Weihnachtshaus & Weihnachtsstein: vierte Hauswelt, drei überlappungsfreie
   for (const w of G.WELTEN) {
     const slots = G.steinSlots(w);
     const wechsel = slots.filter(s => !s.aktion);
-    assert.equal(wechsel.length, 3, `${w}: drei Steine der anderen Welten`);
+    // Der Adventsstein führt ins Adventshaus und steht dort, wo kein Poststein liegt.
+    const advent = wechsel.filter(s => s.ziel === "adventshaus");
+    assert.deepEqual(advent.length, w === "adventshaus" ? 0 : 1, `${w}: Adventsstein`);
+    assert.equal(wechsel.length - advent.length, 3, `${w}: drei Steine der anderen Welten`);
     assert.equal(wechsel.some(s => s.ziel === w), false, `${w}: eigener Wechselstein fehlt`);
-    assert.deepEqual(slots.filter(s => s.aktion).map(s => s.aktion),
-      w === "normal" || w === "weihnacht"
+    const raumAktionen = ["musikzimmer", "gaming", "schlafzimmer", "badezimmer", "treppenhaus", "flur", "wohnzimmer", "kueche", "keller"];
+    const erwartetAktionen = w === "normal" || w === "adventshaus"
+      ? ["post", "nikolaus", "abend", "abendEZ", "aufsteh", "aufstehEZ", "kaffee", "kaffeeEZ", ...raumAktionen]
+      : w === "weihnacht"
         ? ["post", "nikolaus", "abend", "abendEZ", "aufsteh", "aufstehEZ", "kaffee", "kaffeeEZ"]
-        : [], `${w}: passende Rufsteine`);
+        : [];
+    assert.deepEqual(slots.filter(s => s.aktion).map(s => s.aktion), erwartetAktionen, `${w}: passende Rufsteine`);
     for (let i = 0; i < slots.length; i++) {
       const [hx, hy, hw, hh] = slots[i].hit;
       assert.ok(hw >= 24 && hh >= 24, `${slots[i].label}: mindestens 24×24`);
-      assert.ok(hx >= 96 && hx + hw <= 350 && hy + hh <= 570, `${slots[i].label}: im sicheren Erdbereich`);
+      if (slots[i].kies) {
+        assert.ok(hx >= 2 && hx + hw <= 94 && hy >= 460 && hy + hh <= 570, `${slots[i].label}: im linken Kiesteil`);
+      } else {
+        assert.ok(hx >= 96 && hx + hw <= 354 && hy + hh <= 570, `${slots[i].label}: im sicheren Erdbereich`);
+      }
       for (let j = i + 1; j < slots.length; j++) {
         const [bx, by, bw, bh] = slots[j].hit;
         const ueber = hx < bx + bw && hx + hw > bx && hy < by + bh && hy + hh > by;
