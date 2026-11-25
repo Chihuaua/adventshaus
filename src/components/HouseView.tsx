@@ -26,7 +26,14 @@ function patchAktion(eintrag: string) {
   patchZipHerunterladen(eintrag);
 }
 
-export default function HouseView({ welt = "normal" }: { welt?: "normal" | "gruesel" | "weihnacht" | "traum" }) {
+export default function HouseView({
+  welt = "normal",
+  ausbauVorschau = null,
+}: {
+  welt?: "normal" | "gruesel" | "weihnacht" | "traum" | "adventshaus";
+  /** Nur Adventshaus: Ausbaustufe zur Abnahme (0–24), null = echter Stand. */
+  ausbauVorschau?: number | null;
+}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [muted, setMuted] = useState(false);
   // Osterei „Datenkoffer“: Luni hat den Koffer im Keller geöffnet.
@@ -43,6 +50,7 @@ export default function HouseView({ welt = "normal" }: { welt?: "normal" | "grue
     if (!cv) return;
     const house = new House(cv, {
       welt,
+      ausbauVorschau,
       onWelt: wechsleWelt,
       onUpdate: () => setTransfer(true),
       onUfo: patchAktion,
@@ -51,7 +59,7 @@ export default function HouseView({ welt = "normal" }: { welt?: "normal" | "grue
     const onFonts = () => house.resize();
     if (document.fonts?.ready) void document.fonts.ready.then(onFonts);
     return () => house.destroy();
-  }, [welt]);
+  }, [welt, ausbauVorschau]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -84,7 +92,9 @@ export default function HouseView({ welt = "normal" }: { welt?: "normal" | "grue
           <div className="flex items-baseline gap-2">
             <span className="font-display text-[11px] tracking-[0.28em] text-mint-50 sm:text-sm">LUNIS HAUS</span>
             <span className="hidden text-[10px] tracking-[0.18em] text-mint-400/80 sm:inline">
-              {welt === "gruesel"
+              {welt === "adventshaus"
+                ? "LITTLE COMPUTER LUNI · ADVENTSHAUS"
+                : welt === "gruesel"
                 ? "LITTLE COMPUTER LUNI · GRUSELHAUS"
                 : welt === "weihnacht"
                   ? "LITTLE COMPUTER LUNI · WEIHNACHTSHAUS"

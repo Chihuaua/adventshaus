@@ -79,7 +79,8 @@ for (const welt of ["normal", "weihnacht", "traum", "gruesel"]) {
   const [x, y, w, h] = stein.hit;
   assert(x >= 96 && x + w <= 864 && y >= 30 && y + h <= 570 && w >= 24 && h >= 24);
   assert.equal(G.steinAn(slots, x + w / 2, y + h / 2), stein);
-  assert.equal(slots.filter(s => !s.aktion).length, 3);
+  // Drei klassische Wechselsteine; der Adventsstein kommt als vierter dazu.
+  assert.equal(slots.filter(s => !s.aktion && s.ziel !== "adventshaus").length, 3);
   for (const anderer of slots.filter(s => s !== stein)) {
     const [a, b, c, d] = anderer.hit; assert(!(x < a + c && x + w > a && y < b + d && y + h > b));
   }

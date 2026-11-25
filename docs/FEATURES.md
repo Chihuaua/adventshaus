@@ -347,3 +347,42 @@ rauch-nur-mit-luni | src/game/house.ts | raucherQuelle
 schritte-barfuss | src/game/audio.ts | barfuss = false
 stopfen-zwei-wiederholungen | src/game/house.ts | rollCount >= 2
 senseo-klick-schluck-gartentuer | src/game/house.ts | kaffeeSchluck
+adventshaus-welt | src/game/welten.ts | adventshaus: "Adventshaus"
+adventshaus-ausbauplan | src/game/adventshaus-ausbau.ts | AUSBAU_STUFEN
+adventshaus-datumstreu | src/game/adventshaus-ausbau.ts | export function tuerchenFrei
+adventshaus-vorschau-hash | src/game/adventshaus-ausbau.ts | ausbauVorschauAusHash
+adventshaus-schalter | src/game/house.ts | private hat(schalter
+adventshaus-deko-waechst | src/game/house.ts | drawDeko(this.bgc
+adventshaus-deko-licht | src/game/house.ts | drawDekoLicht(a
+adventshaus-stationen-sperre | src/game/house.ts | private stationFrei
+adventshaus-rufsteine-sperre | src/game/house.ts | private steinFrei
+adventshaus-steine-neubau | src/game/house.ts | private steineSetzen
+adventshaus-meldung | src/game/house.ts | drawAusbauMeldung
+adventshaus-festlich-stufe | src/game/house.ts | private get festlich
+adventshaus-abend-stufe | src/game/house.ts | private get abendHaus
+adventshaus-wetter-stufe | src/game/house.ts | private get wetterSichtbar
+adventsstein | src/game/steine.ts | Adventsstein
+adventshaus-hash-weiche | src/App.tsx | istAdventshausHash
+adventshaus-untertitel | src/components/HouseView.tsx | ADVENTSHAUS
+adventshaus-pruefungen | tools/test-adventshaus.mjs | Ausbauplan hat 24
+adventshaus-hauspruefungen | tools/test-adventshaus-haus.mjs | Andere Häuser bleiben unberührt
+renovierung-vorschlaege | src/game/renovierung.ts | RENO_VORSCHLAEGE
+renovierung-wand | src/game/renovierung.ts | export function drawRenovierungWand
+renovierung-beiwerk | src/game/renovierung.ts | export function drawRenovierungVorn
+renovierung-altwand-finden | src/game/renovierung.ts | export function altwandTeil
+renovierung-studio | src/components/RenovierungStudio.tsx | TAPETENWECHSEL
+renovierung-hash | src/App.tsx | #studio-renovierung
+renovierung-pruefungen | tools/test-renovierung.mjs | Anfang und Ende sind bildgleich
+kiesfeld-sechs-plaetze | src/game/steine.ts | KIES_PLAETZE
+kiesfeld-zeichnung | src/game/steine.ts | export function drawKiesFeld
+musikzimmer-stein | src/game/steine.ts | MUSIKZIMMER_STEIN
+raum-steine-alle-neun | src/game/steine.ts | export const RAUM_STEINE
+renovierung-alle-raeume | src/game/renovierung.ts | export const RENO_RAEUME
+renovierung-fliesen-methode | src/game/renovierung.ts | function maleFliesenWand
+renovierung-fliesen-beiwerk | src/game/renovierung.ts | function maleFliesenVorn
+renovierung-haus-alle-raeume | src/game/house.ts | raumRenoStart
+renovierung-gaming-first | src/game/renovierung.ts | export function gamingTeile
+renovierung-luni-handgriffe | src/game/renovierung-luni.ts | export function renovierungsPose
+renovierung-alte-bahn-entfernen | src/game/renovierung.ts | function handwerkBahnen
+renovierung-wohnen-mit-eingang | src/game/renovierung.ts | export function renoAuftragsRaeume
+renovierung-weihnachtsreferenz | src/game/house.ts | export function zeichneHausWaende
