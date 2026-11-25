@@ -110,10 +110,15 @@ import { drawWetter, ladeWetter, tickWetter, waehleJahreszeit, waehleWetter, sch
 import { drawWetterStation, wetterStationHit, wetterStationLayout, type WetterBefehl, type WetterTreffer } from "./wetterstation";
 import { drawKiesFeld, drawStein, steinAn, steinSlots, BETT_STEIN, EZ_BETT_STEIN, AUFSTEH_STEIN, EZ_AUFSTEH_STEIN, KAFFEE_STEIN, EZ_KAFFEE_STEIN, NIKOLAUS_STEIN, RAUM_STEINE, type SteinSlot } from "./steine";
 import {
-  drawRenovierungVorn, drawRenovierungWand, gamingTeile, renoRaumInfo, renoAuftragsRaeume, tapezierTakt,
+  drawRenovierungVorn, drawRenovierungWand, drawTapetenDreck, gamingTeile, renoRaumInfo,
+  renoAuftragsRaeume, tapetenDreckAnteil, tapezierTakt,
   type RenoRaumId, type RenoStand, type RenoWand,
 } from "./renovierung";
-import { renovierungsPose, drawRenovierungsWerkzeug, type RenoLuniPose } from "./renovierung-luni";
+import { fegenPose, renovierungsPose, drawRenovierungsWerkzeug, type RenoLuniPose } from "./renovierung-luni";
+import {
+  KELLER_MUELL_STAND, MAX_KELLER_SAECKE, drawFegenSack, drawKellerMuellsaecke,
+  drawMuellHaustuer, drawMuellSack, drawMuellTonne, istMuellTag, muellEinwurfStand, muellTagNr,
+} from "./muell";
 import {
   NAPF_ORTE, TAGES_DAUERN, TAGES_PROBE, TAGES_ZEITEN, aufwachSekunde, drawEssTeller, drawNapfPaar, tageswerte,
   type NapfStand, type Tageswerte,
@@ -3976,15 +3981,38 @@ export class House {
   /** Meldung "Neu im Haus: ..." mit Restlaufzeit in Sekunden. */
   private ausbauMeldung: string | null = null;
   private ausbauMeldungT = 0;
-  /** Wand-Renovierung für jeden Raum (Tapete „Bahn für Bahn“, Bad „Fliese für Fliese“). */
+  /** Wand-Renovierung für jeden Raum (Tapete in 3 Durchgängen, Bad „Fliese für Fliese“ fix). */
   private raumReno: RenoStand = {};
   private raumRenoAktiv: Set<RenoRaumId> = new Set();
+  /** Am Boden liegender Tapeten- und Putzdreck je Raum (0..1); bleibt bis zum Einsammeln! */
+  private raumDreck: Partial<Record<RenoRaumId, number>> = {};
+  private randDreck = 0;
   private renoArbeit: {
     raum: RenoRaumId; wand: RenoWand; von: number; bis: number;
     ziel: Station; phase: "weg" | "arbeit";
   } | null = null;
   private renoPose: RenoLuniPose | null = null;
   private renoDanach: LuniCommand | null = null;
+
+  /** Tapetenmüll: bis Dienstag unten im Keller in Säcken gelagert; Dienstags vor die Tür in die Tonne. */
+  private muellSaecke = 0;
+  private tonneVoll = 0;
+  private tonneTag = 0;
+  private traegtMuellSack = false;
+  private muellTuerOffen = 0;
+  private muellDeckelOffen = 0;
+  private muellPause = 0;
+  private muellArbeit: {
+    phase: "fegenWeg" | "fegen" | "kellerWeg" | "kellerHolen" | "zurTonne" | "einwurf";
+    wand?: RenoWand;
+    raum?: RenoRaumId;
+    istRand?: boolean;
+    t: number;
+  } | null = null;
+
+  private get istMuellWelt(): boolean {
+    return this.istNormalHaus && this.welt !== "traum";
+  }
 
   /** Eine Luni, eine Arbeitsstelle; weitere Steinklicks reihen sich dahinter ein. */
   private raumRenoStart(raum: RenoRaumId) {
@@ -3998,11 +4026,11 @@ export class House {
     sfx.ui();
   }
 
-  /** Erst hinlaufen, dann je Bahn abziehen, neu ansetzen, abrollen und glattstreichen. */
+  /** Erst hinlaufen, dann Tapete entfernen (2 Durchgänge) und Bahn für Bahn neu tapezieren (Bad bleibt fix). */
   private updateRaumReno(dt: number) {
-    if (this.raumRenoAktiv.size === 0) return;
+    if (this.raumRenoAktiv.size === 0 || this.muellArbeit) return;
     if (!this.renoArbeit) {
-      // Keine Spruenge von Treppen, aus der Dusche oder mitten aus einer Bettbewegung.
+      // Keine Sprünge von Treppen, aus der Dusche oder mitten aus einer Bettbewegung.
       if (this.abendAktiv || this.shPhase || this.bedWach || this.bedEinstieg || this.sleepPhase
         || this.lieDown || this.cur?.step.k === "stair" || this.wcInside || this.luniTraegtPaket) return;
       const raum = [...this.raumRenoAktiv][0];
@@ -4040,12 +4068,18 @@ export class House {
       pose.x = lerp(this.renoPose.x, pose.x, k);
       pose.y = lerp(this.renoPose.y, pose.y, k);
     }
+    if (a.raum !== "badezimmer") {
+      // Abgekratzter Dreck bleibt voll am Boden liegen, bis er eingesammelt wird.
+      const dreck = tapetenDreckAnteil(a.wand, lokal);
+      if (a.wand === GAMING_RAND_WAND) this.randDreck = Math.max(this.randDreck, dreck);
+      else this.raumDreck[a.raum] = Math.max(this.raumDreck[a.raum] ?? 0, dreck);
+    }
     this.advanceWalk(Math.abs(pose.x - this.lx));
     this.lx = pose.x;
     this.lface = -1;
     this.renoPose = pose;
     this.dirty = true;
-    const amBoden = a.raum === "badezimmer" ? lokal >= 0.995 : tapezierTakt(a.wand, lokal).u >= 0.94;
+    const amBoden = a.raum === "badezimmer" ? lokal >= 0.995 : Math.abs(pose.y - a.wand.yBot) < 1.5;
     if (this.renoDanach && amBoden) {
       const danach = this.renoDanach;
       this.renoDanach = null;
@@ -4055,21 +4089,244 @@ export class House {
       this.activity = this.target = null;
       this.command(danach);
     } else if (p >= a.bis) {
+      const istRand = a.wand === GAMING_RAND_WAND;
+      const fertigerRaum = a.raum;
       if (a.bis === 1) this.raumRenoAktiv.delete(a.raum);
       this.renoArbeit = null;
       this.renoPose = null;
       this.activity = this.target = null;
+      // Nach jedem Tapeten-Raum (nicht Bad!) kehrt Luni die Reste in einen Müllsack.
+      if (fertigerRaum !== "badezimmer") {
+        this.muellFegenStarten(fertigerRaum, a.wand, istRand);
+      }
     }
   }
 
-  /** Beiwerk vor den Möbeln: Leiter/Kleistereimer bei Tapeten, Kübel/Stapel/Schwamm im Bad. */
+  /** Luni sammelt die abgekratzte Tapete am Boden in einen Müllsack ein. */
+  private muellFegenStarten(raum: RenoRaumId, wand: RenoWand, istRand: boolean) {
+    const floor = FLOOR_Y.indexOf(wand.yBot as (typeof FLOOR_Y)[number]);
+    if (floor < 0) return;
+    const [rMin, rMax] = RANGE[floor];
+    const zielX = clamp((wand.x0 + wand.x1) * 0.5 + 14, rMin, rMax);
+    this.muellArbeit = { phase: "fegenWeg", raum, wand, istRand, t: 0 };
+    const ziel: Station = {
+      id: "muell_fegen", label: "Tapetenreste zusammenkehren",
+      x: zielX, floor, face: -1, state: "bend", expr: "focus", hits: [],
+    };
+    this.command(ziel);
+  }
+
+  /** Schickt Luni mit einem vollen Müllsack entweder direkt dienstags zur Tonne oder in den Keller. */
+  private muellSackWegbringen() {
+    if (!this.muellArbeit) return;
+    if (istMuellTag(this.clock)) {
+      this.muellArbeit = { phase: "zurTonne", t: 0 };
+      const tuerZiel: Station = {
+        id: "muell_tuer", label: "Müll rausbringen",
+        floor: 1, x: 161, face: -1, state: "idle", expr: "happy", hits: [],
+      };
+      this.command(tuerZiel);
+    } else {
+      this.muellArbeit = { phase: "kellerWeg", t: 0 };
+      const kellerZiel: Station = {
+        id: "muell_keller_ablage", label: "Müllsack im Keller lagern",
+        ...KELLER_MUELL_STAND, state: "idle", expr: "neutral", hits: [],
+      };
+      this.command(kellerZiel);
+    }
+  }
+
+  /** Steuert Einsammeln, Kellerlagerung und die Dienstags-Entleerung in die Mülltonne vor dem Haus. */
+  private updateMuell(dt: number) {
+    const tag = muellTagNr(this.clock);
+    if (this.tonneTag !== tag) {
+      this.tonneTag = tag;
+      this.tonneVoll = 0;
+    }
+
+    // Automatisch am Dienstag: Luni holt gelagerte Säcke aus dem Keller vor die Haustür in die Tonne.
+    if (!this.muellArbeit && !this.renoArbeit && this.raumRenoAktiv.size === 0) {
+      if (this.istMuellWelt && istMuellTag(this.clock) && this.muellSaecke > 0) {
+        if (this.muellPause > 0) {
+          this.muellPause = Math.max(0, this.muellPause - dt);
+          return;
+        }
+        const frei = this.tagesFrei() && !this.post.anDerTuer && !this.nikolaus?.aktiv
+          && !this.handy && !this.holding && !this.smoking && !this.standing && !this.ashMove
+          && !this.saxPhase && !this.plattenPhase && !this.singPhase && !this.golPhase
+          && !this.flauschiPhase && !this.musikzimmer?.getState().luniPlaying;
+        if (frei) {
+          this.muellArbeit = { phase: "kellerHolen", t: 0 };
+          this.command({
+            id: "muell_keller", label: "Müllsack aus dem Keller holen",
+            ...KELLER_MUELL_STAND, state: "act", expr: "neutral", hits: [],
+          });
+        }
+      }
+      return;
+    }
+
+    const m = this.muellArbeit;
+    if (!m) return;
+
+    if (m.phase === "fegenWeg") {
+      if (this.cur || this.path.length || this.pending || this.activity?.id !== "muell_fegen") return;
+      m.phase = "fegen";
+      m.t = 0;
+      if (m.wand) {
+        this.renoPose = fegenPose(this.lx, m.wand.yBot, this.elapsed, 0);
+        this.lface = -1;
+      }
+      return;
+    }
+
+    if (m.phase === "fegen") {
+      m.t += dt;
+      const q = clamp(m.t / 2.8, 0, 1);
+      if (m.wand) {
+        this.renoPose = fegenPose(this.lx, m.wand.yBot, this.elapsed, q);
+        this.lface = -1;
+        const rest = 1 - q;
+        if (m.istRand) this.randDreck = rest;
+        else if (m.raum) this.raumDreck[m.raum] = rest;
+      }
+      if (q >= 1) {
+        if (m.istRand) this.randDreck = 0;
+        else if (m.raum) this.raumDreck[m.raum] = 0;
+        this.renoPose = null;
+        this.traegtMuellSack = true;
+        this.activity = this.target = null;
+        sfx.ui();
+        this.muellSackWegbringen();
+      }
+      return;
+    }
+
+    if (m.phase === "kellerWeg") {
+      if (this.cur || this.path.length || this.pending || this.activity?.id !== "muell_keller_ablage") return;
+      m.t += dt;
+      if (m.t >= 0.4) {
+        this.traegtMuellSack = false;
+        this.muellSaecke = Math.min(MAX_KELLER_SAECKE, this.muellSaecke + 1);
+        this.speichern();
+        sfx.holzDumpf();
+        this.muellArbeit = null;
+        this.activity = this.target = null;
+        if (this.renoDanach) {
+          const d = this.renoDanach;
+          this.renoDanach = null;
+          this.command(d);
+        }
+      }
+      return;
+    }
+
+    if (m.phase === "kellerHolen") {
+      if (this.cur || this.path.length || this.pending || this.activity?.id !== "muell_keller") return;
+      m.t += dt;
+      if (m.t >= 0.35) {
+        if (this.muellSaecke <= 0) {
+          this.muellArbeit = null;
+          this.activity = this.target = null;
+          return;
+        }
+        this.muellSaecke -= 1;
+        this.traegtMuellSack = true;
+        this.speichern();
+        sfx.ui();
+        m.phase = "zurTonne";
+        m.t = 0;
+        this.command({
+          id: "muell_tuer", label: "Müll rausbringen",
+          floor: 1, x: 161, face: -1, state: "idle", expr: "happy", hits: [],
+        });
+      }
+      return;
+    }
+
+    if (m.phase === "zurTonne") {
+      if (this.cur || this.path.length || this.pending || this.activity?.id !== "muell_tuer") return;
+      if (this.post.aktiv) return;
+      m.phase = "einwurf";
+      m.t = 0;
+      sfx.ui();
+      return;
+    }
+
+    if (m.phase === "einwurf") {
+      m.t += dt;
+      const q = clamp(m.t / 2.4, 0, 1);
+      const st = muellEinwurfStand(q);
+      this.muellTuerOffen = st.tuer;
+      this.muellDeckelOffen = st.deckel;
+      if (q >= 0.46 && this.traegtMuellSack) {
+        this.traegtMuellSack = false;
+        this.tonneVoll += 1;
+        this.tonneTag = muellTagNr(this.clock);
+        this.speichern();
+        sfx.holzDumpf();
+      }
+      if (q >= 1) {
+        this.muellTuerOffen = 0;
+        this.muellDeckelOffen = 0;
+        this.muellArbeit = null;
+        this.muellPause = 0.5;
+        this.activity = this.target = null;
+        if (this.renoDanach) {
+          const d = this.renoDanach;
+          this.renoDanach = null;
+          this.command(d);
+        }
+      }
+    }
+  }
+
+  /** Bricht einen laufenden Müllgang sauber ab, ohne dass ein Sack verloren geht. */
+  private muellAbbrechen() {
+    if (this.traegtMuellSack) {
+      this.traegtMuellSack = false;
+      this.muellSaecke = Math.min(MAX_KELLER_SAECKE, this.muellSaecke + 1);
+      this.speichern();
+    }
+    this.muellArbeit = null;
+    this.muellTuerOffen = 0;
+    this.muellDeckelOffen = 0;
+    this.renoPose = null;
+  }
+
+  /** Zeichnet liegengebliebenen Tapeten- und Putzdreck auf dem Boden der Zimmer. */
+  private drawRaumDreck(c: C) {
+    if (this.welt === "gruesel") return;
+    if (this.randDreck > 0.005) {
+      drawTapetenDreck(c, GAMING_RAND_WAND, this.randDreck);
+    }
+    const aktiv = this.renoArbeit;
+    for (const key of Object.keys(this.raumDreck) as RenoRaumId[]) {
+      if (key === "badezimmer") continue;
+      const wert = this.raumDreck[key] ?? 0;
+      if (wert <= 0.005) continue;
+      const w = RENO_WAENDE[key];
+      let aktivX: number | undefined;
+      if (aktiv && aktiv.phase === "arbeit" && aktiv.raum === key && aktiv.wand === w) {
+        const p = clamp(((this.raumReno[key] ?? aktiv.von) - aktiv.von) / (aktiv.bis - aktiv.von), 0, 1);
+        const tk = tapezierTakt(w, p);
+        if (tk.schritt === "kratzen") aktivX = tk.mitte;
+      }
+      drawTapetenDreck(c, w, wert, aktivX);
+    }
+  }
+
+  /** Beiwerk vor den Möbeln: Leiter/Kleistereimer bei Tapeten, Kübel/Stapel/Schwamm im Bad, Fegesack beim Aufräumen. */
   private drawRaumRenoVorn(c: C) {
+    if (this.muellArbeit?.phase === "fegen" && this.muellArbeit.wand) {
+      drawFegenSack(c, this.lx - 15, this.muellArbeit.wand.yBot, clamp(this.muellArbeit.t / 2.8, 0, 1));
+    }
     const a = this.renoArbeit;
     if (!a || a.phase !== "arbeit") return;
     const w = a.wand;
     const p = clamp(((this.raumReno[a.raum] ?? a.von) - a.von) / (a.bis - a.von), 0, 1);
     drawRenovierungVorn(c, renoRaumInfo(a.raum).methode, p, this.elapsed, w,
-      { x: w.x0, y: w.yTop, w: w.x1 - w.x0, h: w.yBot - w.yTop });
+      { x: w.x0, y: w.yTop, w: w.x1 - w.x0, h: w.yBot - w.yTop }, a.raum !== "badezimmer");
   }
 
   /**
@@ -4408,6 +4665,28 @@ export class House {
   private onUfo: ((datei: string) => void) | null = null;
   /** UFO-Menü oben rechts offen (Patch-Dateien) */
   private ufoOffen = false;
+
+  /** UFO/Schlitten öffnet oder schließt sein sichtbares Patch-Menü. */
+  private ufoUmschalten() {
+    this.ufoOffen = !this.ufoOffen;
+    this.ufoZeile = this.ufoOffen ? 0 : -1;
+    this.ufoHover = true;
+    this.hover = null;
+    this.dirty = true;
+    if (this.ufoOffen) sfx.ui();
+  }
+
+  /** Ausgewählte Zeile ausführen (ZIP, TXT oder Patch-Vorschau) und Menü schließen. */
+  private ufoWaehlen(index: number) {
+    const eintrag = PATCH_EINTRAEGE[index];
+    if (!eintrag) return;
+    this.ufoOffen = false;
+    this.ufoZeile = -1;
+    this.dirty = true;
+    // Erste Zeile ist immer das vollständige Archiv dieser Sitzung.
+    if (eintrag === PATCH_ZIP) this.onUfo?.(PATCH_ZIP);
+    else this.onUfo?.(eintrag);
+  }
   /** im Menü berührte Zeile (nur Zeiger) */
   private ufoZeile = -1;
   /** Zeiger liegt auf dem UFO (nur minimaler Hover-Effekt) */
@@ -4968,6 +5247,9 @@ export class House {
       tagErledigt: { ...this.tagErledigt },
       einschlafSek: this.einschlafSek,
       einschlafTag: this.einschlafTagNr,
+      muellSaecke: this.muellSaecke,
+      tonneVoll: this.tonneVoll,
+      tonneTag: this.tonneTag,
     };
   }
 
@@ -5061,6 +5343,10 @@ export class House {
     this.vampirStil = typeof vi === "number" && vi >= 0 && vi < VAMPIR_OUTFITS.length ? vi : null;
     this.vampirLetzt = typeof s.vampirLetzt === "number" ? s.vampirLetzt : -1;
     if (this.abendHaus && s.abendFortschritt) this.abendFortsetzen(s.abendFortschritt);
+    this.muellSaecke = typeof s.muellSaecke === "number" ? clamp(Math.round(s.muellSaecke), 0, MAX_KELLER_SAECKE) : 0;
+    this.tonneTag = typeof s.tonneTag === "number" ? s.tonneTag : muellTagNr(this.clock);
+    this.tonneVoll = this.tonneTag === muellTagNr(this.clock) && typeof s.tonneVoll === "number"
+      ? Math.max(0, Math.round(s.tonneVoll)) : 0;
     this.dirty = true;
   }
 
@@ -5268,22 +5554,22 @@ export class House {
     if (this.ufoOffen) {
       const z = ufoZeileBei(x, y, PATCH_EINTRAEGE.length);
       if (z >= 0) {
-        this.ufoOffen = false;
         sfx.ui();
-        this.onUfo?.(PATCH_EINTRAEGE[z]);
+        this.ufoWaehlen(z);
         return;
       }
+      // Klick daneben oder erneut aufs UFO schließt das Menü, ohne etwas zu laden.
       this.ufoOffen = false;
-      this.dirty = false;
-      if (!ufoTreffer(x, y)) return;
+      this.ufoZeile = -1;
+      this.dirty = true;
+      this.hover = null;
       sfx.ui();
       return;
     }
     if (ufoTreffer(x, y)) {
-      // Ein Klick aufs UFO bzw. den Weihnachtsmann lädt direkt das Archiv mit
-      // allen Patch-Dateien herunter; es gibt kein Menü und keine Einzeldateien mehr.
-      this.onUfo?.(PATCH_ZIP);
-      sfx.ui();
+      // Erst sichtbar öffnen: Das Menü zeigt das aktuelle Archiv dieser Sitzung.
+      // Geladen wird erst nach Auswahl einer Zeile.
+      this.ufoUmschalten();
       return;
     }
     // Wetterstation: reine GUI, klickbar ohne Lunis Weg (auch im normalen Haus).
@@ -5406,10 +5692,14 @@ export class House {
     const id = typeof request === "string" ? request : request.id;
     const raumAuftrag = RAUM_STATION_ID[id];
     if (raumAuftrag) { this.raumRenoStart(raumAuftrag); return; }
-    if (this.nutzerEingabe && this.raumRenoAktiv.size && !id.startsWith("reno_")) {
-      if (this.renoArbeit?.phase === "arbeit") { this.renoDanach = request; return; }
+    if (this.nutzerEingabe && (this.raumRenoAktiv.size || this.muellArbeit) && !id.startsWith("reno_") && !id.startsWith("muell_")) {
+      if (this.renoArbeit?.phase === "arbeit" || this.muellArbeit?.phase === "fegen" || this.muellArbeit?.phase === "einwurf") {
+        this.renoDanach = request;
+        return;
+      }
       this.raumRenoAktiv.clear();
       this.renoArbeit = null;
+      this.muellAbbrechen();
     }
     // Ein Klick des Spielers beendet den Kaffee- bzw. Tee-Ablauf; alles kommt an seinen Platz.
     if (this.kAblauf && this.nutzerEingabe && !this.kIntern) this.kaffeeAbbrechen();
@@ -6279,6 +6569,7 @@ export class House {
     this.updateTVAudio();
     this.updateHarvest(dt);
     this.updateRaumReno(dt);
+    this.updateMuell(dt);
     if (this.istNormalHaus) updateLavaLampe(this.lavaLampe, dt);
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) {
       this.kessel.update(dt);
@@ -7744,7 +8035,11 @@ export class House {
       activity: this.activity?.id ?? null,
       night: this.night,
       musikzimmer: this.musikzimmer?.getState() ?? null,
-      renovierung: { stand: { ...this.raumReno }, raum: this.renoArbeit?.raum ?? null, phase: this.renoArbeit?.phase ?? null, wartend: [...this.raumRenoAktiv] },
+      renovierung: {
+        stand: { ...this.raumReno }, raum: this.renoArbeit?.raum ?? null, phase: this.renoArbeit?.phase ?? null,
+        wartend: [...this.raumRenoAktiv],
+        muell: { saeckeImKeller: this.muellSaecke, tonneVoll: this.tonneVoll, muellTag: istMuellTag(this.clock), job: this.muellArbeit?.phase ?? null, traegt: this.traegtMuellSack },
+      },
       pianoSeat: this.pianoSeat,
       pianoRise: this.pianoRise,
       pianoEscape: this.pianoEscape,
@@ -7977,8 +8272,17 @@ export class House {
     ctx.setTransform(s, 0, 0, s, 0, 0);
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(this.bg, 0, 0, W, H);
+    // Dienstags steht die Mülltonne draußen vor dem Haus (auf Vorgartenhöhe vor der Tür).
+    if (this.istMuellWelt && istMuellTag(this.clock)) {
+      drawMuellTonne(ctx, this.muellDeckelOffen, this.tonneVoll, true);
+    }
     this.zeichneNikolausBesuch(ctx);
     this.zeichnePostTuer(ctx);
+    if (this.muellTuerOffen > 0.001 && !this.post.aktiv) {
+      const sackDraussen = this.muellArbeit?.phase === "einwurf"
+        && muellEinwurfStand(clamp(this.muellArbeit.t / 2.4, 0, 1)).sackImFreien;
+      drawMuellHaustuer(ctx, this.sky, this.muellTuerOffen, sackDraussen);
+    }
 
     // Wetter früh, damit Innenraum-Deko (Lichtbogen auf der Fensterbank), Truhe und Luni sauber davor liegen.
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) {
@@ -8099,6 +8403,8 @@ export class House {
   this.drawRauchRaum(ctx);
   // Osterei: der Datenkoffer steht hinter Luni, nicht vor ihrem Laufweg.
   this.drawKoffer(ctx);
+  // Unten im Keller gelagerte Müllsäcke (bis zum nächsten Dienstag).
+  if (this.istMuellWelt && this.muellSaecke > 0) drawKellerMuellsaecke(ctx, this.muellSaecke, FK);
   // Hundenäpfe am Küchenboden und der Teller beim Essen vor dem Fernseher.
   this.drawNaepfe(ctx);
   // Senseo, offene Schranktüren, Kühlschrank, Tassen.
@@ -8108,6 +8414,7 @@ export class House {
   if (this.bettRendered) drawBedFront(ctx, 282, FO, weihnacht);
   if (this.handyAmKissen) handyAufDemKissen(ctx);
   if (this.handyOrt === "nachttisch") drawHandyAufTisch(ctx, 416, FLOOR_Y[2] - 26, this.handyDisplayT > 0);
+   this.drawRaumDreck(ctx);
    this.drawRaumRenoVorn(ctx);
    this.drawLuniLayered(ctx);
   // Sitzt Luni im normalen Haus / Weihnachtshaus mit dem Rücken zum Spieler am Klavier,
@@ -10018,7 +10325,27 @@ export class House {
       e.preventDefault();
       return;
     }
-    if (this.ufoOffen) return;
+    if (this.ufoOffen) {
+      // Auch ohne Maus: Zeilen durchschalten, mit Enter laden, mit Escape schließen.
+      const n = PATCH_EINTRAEGE.length;
+      const i = this.ufoZeile < 0 ? 0 : this.ufoZeile;
+      if (e.code === "Escape") {
+        this.ufoOffen = false;
+        this.ufoZeile = -1;
+        this.dirty = true;
+      } else if (e.code === "ArrowDown" || e.code === "ArrowRight") {
+        this.ufoZeile = (i + 1) % n;
+        this.dirty = true;
+      } else if (e.code === "ArrowUp" || e.code === "ArrowLeft") {
+        this.ufoZeile = (i + n - 1) % n;
+        this.dirty = true;
+      } else if (e.code === "Enter" || e.code === "Space") {
+        sfx.ensure();
+        this.ufoWaehlen(i);
+      } else return;
+      e.preventDefault();
+      return;
+    }
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.code)) {
       // Dieselben benannten Ziele wie beim Zeiger; verdeckte/entfernte Ziele auslassen.
       const ziele = [...this.steinStationen, ...this.stations].filter(st =>
@@ -10331,7 +10658,7 @@ export class House {
 
   /** Ist Luni frei für einen Termin? Dusche, Herd, Essen und Bett sind geschützt. */
   private tagesFrei(): boolean {
-    if (this.raumRenoAktiv.size) return false;
+    if (this.raumRenoAktiv.size || this.muellArbeit) return false;
     if (this.kAblauf || this.bedWach) return false;
     if (this.asleep || this.sleepPhase || this.lieDown || this.sargPhase || this.wcInside) return false;
     if (this.shPhase || this.abendAktiv || this.abendWartet) return false;
@@ -10382,6 +10709,7 @@ export class House {
     this.packMove = false; this.takeMove = false; this.handy = null; this.handyDanach = null;
     this.doorHand = null; this.doorHandT = -1; this.doorHandOpen = null; this.doorIntent = null;
     this.petHund = null; this.petT = 0; this.kerzenLauft = false; this.lavaLauft = false;
+    this.muellAbbrechen();
     this.pending = null; this.target = null; this.activity = null; this.cur = null; this.path = []; this.chain = [];
   }
 
@@ -11037,7 +11365,7 @@ export class House {
   }
 
   private abendPruefen() {
-    if (!this.abendHaus || this.raumRenoAktiv.size) return;
+    if (!this.abendHaus || this.raumRenoAktiv.size || this.muellArbeit) return;
     const plan = this.heutigerAbend();
     if (plan.tag !== abendTag(this.clock) || this.abendBegonnenAm === plan.tag || this.abendAngefragtAm === plan.tag) return;
     const seitBeginn = tagessekunde(this.clock) - this.abendBeginn(plan);
@@ -14049,8 +14377,9 @@ export class House {
       saxHand = aschziel;
       handElbow = 1;
     }
-    // Paket tragen: beide Hände halten es vor dem Bauch
-    const traegt = this.luniTraegtPaket;
+    // Paket oder vollen Müllsack tragen: beide Hände halten es vor dem Bauch
+    const traegtMuell = this.traegtMuellSack;
+    const traegt = this.luniTraegtPaket || traegtMuell;
     if (traegt) {
       const mx = x + face * 6 * LUNI_SCALE;
       const my = y + yOff - 21 * LUNI_SCALE;
@@ -14189,7 +14518,8 @@ export class House {
     if (traegt) {
       const px = (saxHands.front[0] + saxHands.rear[0]) / 2;
       const py = (saxHands.front[1] + saxHands.rear[1]) / 2 - 4.2;
-      drawGeschenkPaket(c, [px, py], 0.86);
+      if (this.luniTraegtPaket) drawGeschenkPaket(c, [px, py], 0.86);
+      if (traegtMuell) drawMuellSack(c, px, py + 7.4, 0.82, 1, false);
     }
     // Hustenstöße: kleine Wolken vor dem Mund
     if (hustet) {

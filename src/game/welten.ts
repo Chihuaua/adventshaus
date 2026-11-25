@@ -119,6 +119,10 @@ export interface HausSnapshot {
     odin?: { x: number; floor: 0 | 1 | 2; face: 1 | -1 };
     apollo?: { x: number; floor: 0 | 1 | 2; face: 1 | -1 };
   };
+  /** Renovierungsmüll: bis Dienstag unten im Keller gelagerte Müllsäcke + Tonnenfüllung am Dienstag. */
+  muellSaecke?: number;
+  tonneVoll?: number;
+  tonneTag?: number;
 }
 
 const schluessel = (welt: WeltId) => `lcp1.welt.${welt}.v1`;
