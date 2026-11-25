@@ -39,7 +39,7 @@ export function gueltigeAbendwerte(w: AbendWerte | undefined): w is AbendWerte {
 
 /** Pro Berliner Kalendertag und Welt genau dieselbe Ziehung, auch nach dem Neuladen. */
 export function tageswerte(tag: number, welt: string): AbendWerte {
-  let saat = (Math.imul(tag, 2654435761) ^ (welt === "weihnacht" ? 0x1f738531 : 0x63baed37)) >>> 0;
+  let saat = (Math.imul(tag, 2654435761) ^ (welt === "weihnacht" || welt === "adventshaus" ? 0x1f738531 : 0x63baed37)) >>> 0;
   return abendWerte(() => {
     saat = (Math.imul(saat, 1664525) + 1013904223) >>> 0;
     return saat / 4294967296;
