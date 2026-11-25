@@ -29,6 +29,7 @@ import {
   drawKanneKlein, drawKuehlOffen, drawMilch, drawMuell, drawPad, drawPadDose, drawSchrankRechts, drawSenseo,
   drawTank, drawTasse, drawTassenSpuele, kuehlGriffPos, muellGriffPos, neuerKaffeeStand, schrankGriffPos, type KaffeeStand,
 } from "./kaffee";
+import { AORT, AutomatKlang, automatTakt, automatTasse, drawAutomat, drawAutomatTasse, neuerAutomatStand, type AutomatStand } from "./kaffeeautomat";
 import { DuschKlang } from "./audio/dusche";
 import { augenZu, duschBild, duschProbeDauer, flascheAufAblage, type DuschBild } from "./duschprogramm";
 import {
@@ -623,6 +624,8 @@ type KPose = {
   trag?: boolean;
   /** Strähnen neben das Ohr legen (0 = vorne, 1 = hinten). */
   hairAside?: number;
+  /** Gesichtsausdruck (z. B. „annoyed“ beim widerwilligen Kaffee). */
+  expr?: LuniExpr;
 };
 interface KSchritt {
   was: string;
@@ -3459,6 +3462,8 @@ function drawHouse(
   weihnachtsdeko = true,
   /** Wand-Renovierung je Raum (0..1, fehlt = unverändert). Nur Wandfläche/Fliesen. */
   raumReno: RenoStand | null = null,
+  /** Adventshaus vor der Senseo: der alte Kaffeeautomat wird dynamisch gezeichnet (nicht hier). */
+  alterAutomat = false,
 ) {
   const festlich = weihnacht && !gr;
   const farben = WEIHNACHTS_FARBEN.moebel;
@@ -3572,7 +3577,7 @@ function drawHouse(
   } else {
     // Normales Haus und Weihnachtshaus: violette Senseo (dynamisch), Griff rechts
     // (die Tür öffnet an der rechten Angel), Teekanne im rechten Unterschrank.
-    const senseo = weihnachtsdeko;
+    const senseo = weihnachtsdeko || alterAutomat;
     fridge(c, 574, FE, festlich, senseo);
     kitchenCounter(c, 614, FE, 76, festlich, senseo);
     if (festlich) festzweig(c, 619, FE - 40.9, 9.3);
@@ -4445,9 +4450,9 @@ export class House {
     return this.welt === "adventshaus" && this.hat("festlich");
   }
 
-  /** Abendroutine: im Adventshaus erst ab Tuerchen 4. */
+  /** Abend-, Aufsteh- und Tagesroutine: normales Haus, Weihnachtshaus und Adventshaus (von Anfang an). */
   private get abendHaus(): boolean {
-    return abendWelt(this.welt) && this.hat("abend");
+    return abendWelt(this.welt);
   }
 
   /** Wetterstation: im Adventshaus erst ab Tuerchen 14. */
@@ -4825,6 +4830,9 @@ export class House {
   private kAusT = 0;
   private kuechenHahn = new WaschbeckenKlang();
   private senseoKlang = new SenseoKlang();
+  /** Alter Kaffeeautomat (Adventshaus vor der Senseo). */
+  private automat: AutomatStand = neuerAutomatStand();
+  private automatKlang = new AutomatKlang();
   /* ------------------------- Tagesablauf (Uhrzeit) ----------------------- */
   /** Termine des heutigen Tages; null, bis der erste Blick auf die Uhr fällt. */
   private tagPlan: Tageswerte | null = null;
@@ -5794,6 +5802,13 @@ export class House {
       // Klick auf die Senseo: 1 Kaffee, 1–2 Schluck trinken, dann (ohne andere Anweisung) Gartentür auf & Zigarette.
       if (id === "kaffee") { this.kaffeeStart(1, false, true); return; }
       if (id === KAFFEERUF.id || id === EZ_KAFFEERUF.id) { this.laufendesBeenden(); this.kaffeeStart(2, id === KAFFEERUF.id); return; }
+    }
+    if (this.automatHaus && !this.kIntern) {
+      // Klick auf den alten Kaffeeautomaten: Tasse holen, Knopf drücken, widerwillig trinken.
+      if (id === "kaffee") { this.automatStart(false); return; }
+      if (id === KAFFEERUF.id || id === EZ_KAFFEERUF.id) { this.laufendesBeenden(); this.automatStart(id === KAFFEERUF.id); return; }
+    }
+    if (this.kuecheHaus && !this.kIntern) {
       if (id === "tee" && this.kaffee.kanne === "schrank" && !this.kAblauf) { this.teeMitSchrank(false); return; }
     }
     if (id === EZ_BETTRUF.id) {
@@ -7264,7 +7279,7 @@ export class House {
         this.teaSetzeZeile(false, false, 0);
         this.finishActivity();
         // Senseo-Häuser: die Kanne wandert zurück in den rechten Unterschrank.
-        if (this.senseoHaus && this.kaffee.kanne === "theke" && !this.kAblauf) this.teeMitSchrank(true);
+        if (this.kuecheHaus && this.kaffee.kanne === "theke" && !this.kAblauf) this.teeMitSchrank(true);
       }
       return;
     }
@@ -8175,11 +8190,12 @@ export class House {
       this.golOnShelf,
       this.welt === "gruesel" ? GRUSELRAEUME : null,
       this.bettRendered,
-      { kanne: !this.teaKanneWeg && !(this.senseoHaus && this.kaffee && this.kaffee.kanne !== "theke"), tasse: !this.teaTasseWeg, fill: this.teaFuellung },
+      { kanne: !this.teaKanneWeg && !(this.kuecheHaus && this.kaffee && this.kaffee.kanne !== "theke"), tasse: !this.teaTasseWeg, fill: this.teaFuellung },
       weihnacht,
       this.flauschiModulSichtbar,
       this.weihnachtsdeko,
       this.raumReno,
+      this.automatHaus,
     );
     this.bgc.restore();
     // Adventshaus: Die 24 Deko-Stuecke wachsen mit den Tuerchen in den Hintergrund.
@@ -8349,7 +8365,7 @@ export class House {
 
   private draw() {
     const weihnacht = this.festlich;
-    const bettBelegt = this.welt === "normal" || this.welt === "weihnacht"
+    const bettBelegt = abendWelt(this.welt)
       ? (this.lf === 2 && !this.cur && !this.pending
         && this.path.length === 0 && (this.lieDown || !!this.sleepPhase || this.asleep || !!this.bettHandy ||
           (this.bedEinstieg !== null && this.bedEinstieg !== "anfahrt") || this.bedWach !== null))
@@ -10830,9 +10846,10 @@ export class House {
       return;
     }
     // Morgens: zweimal Kaffee → Zigarette, noch in Pyjama und Weste.
-    if (this.senseoHaus && this.westeAn && this.tagErledigt.kaffee !== tag && sek < TAGES_ZEITEN.westeBis && this.tagesFrei()) {
+    if (this.kuecheHaus && this.westeAn && this.tagErledigt.kaffee !== tag && sek < TAGES_ZEITEN.westeBis && this.tagesFrei()) {
       this.tagErledigt.kaffee = tag;
-      this.kaffeeStart(2, false);
+      if (this.senseoHaus) this.kaffeeStart(2, false);
+      else this.automatStart(false);
       return;
     }
     // Mittagessen vor dem Fernseher zwischen 12 und 13 Uhr.
@@ -10866,9 +10883,19 @@ export class House {
 
   /* ======================= Kaffee mit der Senseo ========================= */
 
-  /** Senseo und Tee-Schrank: normales Haus, Weihnachtshaus und Adventshaus ab Tuerchen 3. */
+  /** Senseo: normales Haus, Weihnachtshaus und Adventshaus ab Tuerchen 3. */
   private get senseoHaus(): boolean {
     return this.welt === "normal" || this.welt === "weihnacht" || (this.welt === "adventshaus" && this.hat("weihnachtsdeko"));
+  }
+
+  /** Alter Kaffeeautomat: das Adventshaus, solange die Senseo (Tuerchen 3) noch nicht da ist. */
+  private get automatHaus(): boolean {
+    return this.welt === "adventshaus" && !this.hat("weihnachtsdeko");
+  }
+
+  /** Kaffeeküche mit rechtem Unterschrank (Teekanne, Tassen, Dose), Mülleimer und Kühlschranktür: Senseo- und Automat-Häuser. */
+  private get kuecheHaus(): boolean {
+    return this.senseoHaus || this.automatHaus;
   }
 
   private kZeit(k: keyof typeof KAFFEE_ZEIT): number {
@@ -10909,6 +10936,7 @@ export class House {
     if (k.tragUnten > 0) { k.tassenSpuele = Math.min(3, k.tassenSpuele + k.tragUnten); k.tragUnten = 0; }
     k.milch = "kuehl"; k.schrank = 0; k.muell = 0; k.kuehl = 0; k.hahnKueche = false; k.laeuft = false;
     if (k.kanne === "hand") k.kanne = "schrank";
+    this.automat.phase = "aus"; this.automat.p = 0;
     if (this.target?.id === "kweg") this.target = null;
     if (this.activity?.id === "kweg") this.activity = null;
     if (this.glassesInHand && this.bedPhase !== "toss") { this.glassesInHand = false; this.glassesOn = true; }
@@ -10952,6 +10980,14 @@ export class House {
     } else this.kAusT = 0;
     const sichtbar = typeof document === "undefined" || document.visibilityState !== "hidden";
     this.senseoKlang.laufen(k.laeuft && sichtbar, sfx.peekSharedAudio());
+    // Alter Kaffeeautomat: heizt, lässt Kaffee und Milch laufen, dann ist die Tasse voll.
+    if (this.automatHaus) {
+      if (automatTakt(this.automat, dt, !!this.kAblauf?.probe)) sfx.tick();
+      const tf = automatTasse(this.automat);
+      if (k.tasse === "maschine") { k.tasseFuell = tf.fuell; k.tasseMilch = tf.milch; }
+      const ph = this.automat.phase;
+      this.automatKlang.laufen(!sichtbar ? null : ph === "heizen" ? "heizen" : ph === "kaffee" || ph === "milch" ? "laufen" : null, sfx.peekSharedAudio());
+    } else this.automatKlang.laufen(null, null);
     this.kuechenHahn.fluss(k.hahnKueche && sichtbar ? 1 : 0, sfx.peekSharedAudio());
 
     // Schlucke auf dem Raucherstuhl, solange die Tasse auf dem Tischchen steht.
@@ -11340,6 +11376,110 @@ export class House {
   }
 
   /** Gesundheitstee: Kanne aus dem rechten Unterschrank holen, danach Tee wie gewohnt. */
+  /* ===================== Alter Kaffeeautomat (Adventshaus) ================= */
+
+  /** Startet den Gang zum alten Kaffeeautomaten (Stein = kurze Probe). */
+  private automatStart(probe: boolean) {
+    if (!this.automatHaus || this.kAblauf) return;
+    if (this.asleep) this.aufwachen();
+    this.kAblaufStarten(this.automatRunde(), probe);
+  }
+
+  /**
+   * Eine Tasse am alten Automaten: Tasse aus dem rechten Unterschrank, in die
+   * Nische stellen, roten Knopf drücken, warten (heizen, Kaffee, Milch),
+   * Tasse nehmen, widerwillig trinken und das Gesicht verziehen, Tasse zur Spüle.
+   */
+  private automatRunde(): KSchritt[] {
+    const F = FLOOR_Y[1], O = KORT(F), A = AORT(F), S = LUNI_SCALE, k = this.kaffee, a = this.automat;
+    const weich = (v: number) => { const q = clamp(v, 0, 1); return q * q * (3 - 2 * q); };
+    const weg = (p1: Pt, p2: Pt, v: number): Pt => { const e = weich(v); return [lerp(p1[0], p2[0], e), lerp(p1[1], p2[1], e)]; };
+    const vorn = (x: number, face: 1 | -1 = 1): Pt => [x + face * 7 * S, F - 31 * S];
+    const hinUndHer = (ruhe: Pt, ziel: Pt, p: number): Pt => (p < 0.5 ? weg(ruhe, ziel, p / 0.42) : weg(ziel, ruhe, (p - 0.58) / 0.42));
+    const stehen = (hand: Pt | null, face: 1 | -1 = 1, expr?: LuniExpr, yOff?: number): KPose => ({
+      state: "idle", hand, face, elbow: 1, elbow2: 1, expr, yOff,
+    });
+    const ruecken = (standX: number, links: Pt | null, rechts: Pt | null, rechtsHand = false): KPose => {
+      const rL: Pt = [standX - 8 * S, F - 21 * S];
+      const rR: Pt = [standX + 8 * S, F - 21 * S];
+      const l = links ?? rL, r = rechts ?? rR;
+      const sy = F - 34 * S;
+      return { state: "idle", back: true, face: 1, hand: l, hand2: r, elbow: l[1] < sy ? -1 : 1, elbow2: r[1] < sy ? 1 : -1, rechtsHand };
+    };
+    const bueck = (b: number, hand: Pt | null): KPose => ({
+      state: "bend", phase: clamp(b * 0.68, 0, 0.32), hand, face: 1, elbow: 1, elbow2: 1, hairAside: 1,
+    });
+    const MB = KSTAND.maschine, MS = KSTAND.maschineSeite, SR = KSTAND.schrank, H = KSTAND.hahn;
+    const ruheRechts = (x: number): Pt => [x + 7.5 * S, F - 24 * S];
+    const TR = 652;
+    const mundPkt: Pt = [TR + 4.2 * S, F - 42 * S];
+    const kappeTasse: Pt = [TR + 7 * S, F - 31 * S];
+    const nische: Pt = [A.tasse[0], F - 46];
+
+    return [
+      // 1) Tasse aus dem rechten Unterschrank holen
+      { was: "zumSchrank", x: SR, face: 1 },
+      { was: "schrankAuf", dauer: 1.2,
+        pose: (p) => {
+          const o = weich(clamp((p - 0.2) / 0.65, 0, 1));
+          const g = schrankGriffPos(F, o);
+          return bueck(0.38 * Math.sin(Math.PI * clamp(p, 0, 1)), p < 0.2 ? weg(vorn(SR), g, p / 0.2) : p < 0.85 ? g : weg(g, vorn(SR), (p - 0.85) / 0.15));
+        },
+        tick: (p) => { k.schrank = weich(clamp((p - 0.2) / 0.65, 0, 1)); } },
+      { was: "tasseHolen", dauer: 1.4,
+        pose: (p) => bueck(p < 0.7 ? 0.46 : 0.46 * (1 - weich((p - 0.7) / 0.3)), p < 0.5 ? weg(vorn(SR), O.schrankTasse, p / 0.45) : weg(O.schrankTasse, vorn(SR), (p - 0.5) / 0.5)),
+        tick: (p) => { if (p >= 0.5 && k.tasse === "keine") { k.tasse = "hand"; k.tasseFuell = 0; k.tasseMilch = false; } } },
+      { was: "schrankZu", dauer: 1.2,
+        pose: (p) => {
+          const o = 1 - weich(clamp((p - 0.15) / 0.65, 0, 1));
+          const g = schrankGriffPos(F, o);
+          return bueck(0.38 * (1 - weich((p - 0.7) / 0.3)), p < 0.15 ? weg(vorn(SR), g, p / 0.15) : p < 0.8 ? g : weg(g, vorn(SR), (p - 0.8) / 0.2));
+        },
+        tick: (p) => { k.schrank = 1 - weich(clamp((p - 0.15) / 0.65, 0, 1)); },
+        ende: () => { k.schrank = 0; } },
+
+      // 2) Tasse in die Nische, roten Knopf drücken, einen Schritt zur Seite und zuschauen
+      { was: "zumAutomat", x: MB, face: 1 },
+      { was: "tasseUnter", dauer: 1.05,
+        pose: (p) => ruecken(MB, null, p < 0.58 ? weg(ruheRechts(MB), nische, p / 0.55) : weg(nische, ruheRechts(MB), (p - 0.58) / 0.42), true),
+        tick: (p) => { if (p >= 0.58 && k.tasse === "hand") { k.tasse = "maschine"; sfx.tick(); } } },
+      { was: "knopf", dauer: 0.9,
+        pose: (p) => ruecken(MB, null, hinUndHer(ruheRechts(MB), A.knopf, p)),
+        tick: (p) => { if (p >= 0.5 && a.phase === "aus") { a.phase = "heizen"; a.p = 0; sfx.ui(); } } },
+      { was: "zurSeite", x: MS, face: 1 },
+      { was: "zuschauen", warten: () => a.phase === "fertig" || a.phase === "aus",
+        pose: () => stehen(null, 1, a.phase === "heizen" ? "think" : "surprised") },
+
+      // 3) Tasse nehmen, widerwillig trinken, Gesicht verziehen
+      { was: "zumAutomat2", x: MB, face: 1 },
+      { was: "tasseRaus", dauer: 1.0,
+        pose: (p) => ruecken(MB, null, hinUndHer(ruheRechts(MB), nische, p), true),
+        tick: (p) => { if (p >= 0.5 && k.tasse === "maschine") { k.tasse = "hand"; a.phase = "aus"; a.p = 0; } } },
+      { was: "zurTasse", x: TR, face: 1 },
+      { was: "zoegern", dauer: 1.4,
+        pose: (p) => stehen(weg(kappeTasse, [mundPkt[0] - 2, mundPkt[1] + 4], Math.min(1, p * 1.6)), 1, "annoyed") },
+      { was: "schluck", dauer: 2.2,
+        pose: (p) => {
+          const hub = p < 0.3 ? weich(p / 0.3) : p < 0.7 ? 1 : 1 - weich((p - 0.7) / 0.3);
+          return stehen(weg(kappeTasse, mundPkt, hub), 1, p < 0.7 ? "focus" : "annoyed");
+        },
+        ende: () => { k.tasseFuell = Math.max(0.3, k.tasseFuell - 0.25); } },
+      { was: "grimasse", dauer: 2.0,
+        pose: (p) => {
+          // Schütteln: der Kaffee schmeckt nicht.
+          const zitter = p < 0.6 ? Math.sin(p * 40) * 0.6 : 0;
+          return stehen([kappeTasse[0], kappeTasse[1] + 2], 1, p < 0.85 ? "annoyed" : "sad", zitter);
+        } },
+
+      // 4) Tasse zur Spüle
+      { was: "zurSpuele", x: H, face: 1 },
+      { was: "tasseWeg", dauer: 1.0,
+        pose: (p) => ruecken(H, hinUndHer([H - 8 * S, F - 21 * S], [O.spuelAblage[0], F - 46], p), null, false),
+        tick: (p) => { if (p >= 0.5 && k.tasse === "hand") { k.tasse = "keine"; k.tassenSpuele = Math.min(MAX_TASSEN_UNTEN, k.tassenSpuele + 1); sfx.tick(); } } },
+      { was: "fertig", x: MS, face: -1 },
+    ];
+  }
+
   private teeMitSchrank(zurueck: boolean) {
     const F = FLOOR_Y[1], O = KORT(F), S = LUNI_SCALE, k = this.kaffee;
     const weich = (v: number) => { const q = clamp(v, 0, 1); return q * q * (3 - 2 * q); };
@@ -11398,14 +11538,20 @@ export class House {
 
   /** Kaffee- und Küchendinge, die hinter Luni liegen (Senseo, Schranktüren, Tassen). */
   private drawKueche(c: C) {
-    if (!this.senseoHaus || !this.kaffee) return;
+    if (!this.kuecheHaus || !this.kaffee) return;
     const F = FLOOR_Y[1], k = this.kaffee, O = KORT(F);
     const festlich = this.festlich;
     drawKuehlOffen(c, F, k.kuehl, k.milch === "kuehl", festlich);
     drawMuell(c, F, k.muell, festlich);
     drawSchrankRechts(c, F, k.schrank, k, festlich);
-    drawSenseo(c, F, k, this.elapsed);
-    if (k.tasse === "maschine") drawTasse(c, O.tasseAuslauf[0], O.tasseAuslauf[1], k.tasseFuell, k.tasseMilch);
+    if (this.automatHaus) {
+      // Alter Kaffeeautomat samt Tasse in der Nische (Füllstand sichtbar).
+      const tf = automatTasse(this.automat);
+      drawAutomat(c, F, this.automat, this.elapsed, { da: k.tasse === "maschine", fuell: tf.fuell, milch: tf.milch });
+    } else {
+      drawSenseo(c, F, k, this.elapsed);
+      if (k.tasse === "maschine") drawTasse(c, O.tasseAuslauf[0], O.tasseAuslauf[1], k.tasseFuell, k.tasseMilch);
+    }
     if (k.tasse === "theke") drawTasse(c, O.tasseTheke[0], O.tasseTheke[1], k.tasseFuell, k.tasseMilch);
     if (k.dose === "theke") drawPadDose(c, O.doseTheke[0], O.doseTheke[1], k.doseOffen);
     drawTassenSpuele(c, F, k.tassenSpuele);
@@ -11424,13 +11570,16 @@ export class House {
   /** Was Luni gerade in den Händen hält (nach drawLuni, an den echten Handpositionen). */
   private drawKaffeeInHand(c: C, vorn: [number, number], hinten: [number, number], face: 1 | -1) {
     const k = this.kaffee;
-    if (!this.senseoHaus || !k) return;
+    if (!this.kuecheHaus || !k) return;
     const haupt = this.kPose?.rechtsHand ? hinten : vorn;
     const [x, y] = haupt;
     if (k.tank === "hand") drawTank(c, x, y - 1, k.tankWasser);
     if (k.padHand) drawPad(c, x, y + 1, k.padHand === "alt");
     if (k.dose === "hand") drawPadDose(c, x, y + 8, k.doseOffen);
-    if (k.tasse === "hand") drawTasse(c, x + face * 0.5, y + 4, k.tasseFuell, k.tasseMilch);
+    if (k.tasse === "hand") {
+      if (this.automatHaus) drawAutomatTasse(c, x + face * 0.5, y + 4, k.tasseFuell, k.tasseMilch);
+      else drawTasse(c, x + face * 0.5, y + 4, k.tasseFuell, k.tasseMilch);
+    }
     if (k.kanne === "hand") drawKanneKlein(c, x, y + 8);
     if (k.milch === "hand") {
       const giessen = this.kAblauf?.schritte[this.kAblauf.i]?.was === "eingiessen" && this.kAblauf.t > 0;
@@ -14485,6 +14634,7 @@ export class House {
       if (kp.hand) { saxHand = kp.hand; handElbow = kp.elbow ?? 1; }
       if (kp.hand2) { saxHand2 = kp.hand2; handElbow2 = kp.elbow2 ?? 1; }
       if (kp.hairAside !== undefined) hairAside = kp.hairAside;
+      if (kp.expr) expr = kp.expr;
     }
     if (kp?.trag || (this.kAblauf && this.cur && this.kTraegt())) {
       // Tragen: die Hand bleibt mit natürlichem Ellbogen (+1) vor dem Bauch, auch beim Gehen.
@@ -14758,14 +14908,16 @@ export class House {
     const [rx, ry, rw] = st.hits[0];
     c.save();
     c.font = '600 11px "Space Grotesk", sans-serif';
-    const tw = c.measureText(st.label).width + 16;
+    // Im Adventshaus heißt das Gerät vor der Senseo „Alter Kaffeeautomat“.
+    const label = st.id === "kaffee" && this.automatHaus ? "Alter Kaffeeautomat" : st.label;
+    const tw = c.measureText(label).width + 16;
     // Objekte am rechten Rand bekommen das Label nach links, damit es im Bild bleibt
     const centered = rx + rw / 2 - tw / 2;
     const lx = clamp(centered, 6, W - tw - 6);
     const ly = Math.max(ry - 8, 22);
     rrect(c, lx, ly - 14, tw, 20, 5, "rgba(8,20,26,.88)");
     c.fillStyle = "#eef7f2";
-    c.fillText(st.label, lx + 8, ly);
+    c.fillText(label, lx + 8, ly);
     c.restore();
   }
 }

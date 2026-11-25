@@ -65,7 +65,7 @@ export interface Tageswerte {
 
 /** Pro Berliner Kalendertag und Welt dieselbe Rechnung. */
 export function tageswerte(tag: number, welt: string): Tageswerte {
-  let saat = (Math.imul(tag, 2246822519) ^ (welt === "weihnacht" ? 0x9e3779b1 : 0x85ebca6b)) >>> 0;
+  let saat = (Math.imul(tag, 2246822519) ^ (welt === "weihnacht" || welt === "adventshaus" ? 0x9e3779b1 : 0x85ebca6b)) >>> 0;
   const w = () => {
     saat = (Math.imul(saat, 1664525) + 1013904223) >>> 0;
     return saat / 4294967296;
