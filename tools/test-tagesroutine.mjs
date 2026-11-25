@@ -60,16 +60,16 @@ for (const id of ["odin", "apollo"]) {
   assert.ok(ort.futterX > 560 && ort.futterX < 700, "Napf steht in der Küche");
 }
 
-// 6) Steine: Aufsteh-Stein und EZ-Aufsteh-Stein nur im normalen Haus und Weihnachtshaus
+// 6) Steine: Aufsteh und EZ-Aufsteh nur im normalen Haus und Weihnachtshaus
 const normal = G.steinSlots("normal");
 const traum = G.steinSlots("traum");
 const namen = (slots) => slots.map((s) => s.label);
-assert.ok(namen(normal).includes("Aufsteh-Stein"));
-assert.ok(namen(normal).includes("EZ-Aufsteh-Stein"));
-assert.ok(!namen(traum).includes("Aufsteh-Stein"));
-assert.ok(!namen(traum).includes("EZ-Aufsteh-Stein"));
-assert.equal(G.STEIN_NAMEN.aufsteh, "Aufsteh-Stein");
-assert.equal(G.STEIN_NAMEN.ezaufsteh, "EZ-Aufsteh-Stein");
+assert.ok(namen(normal).includes("Aufsteh"));
+assert.ok(namen(normal).includes("EZ-Aufsteh"));
+assert.ok(namen(traum).includes("Aufsteh"), "Aufsteh auch im Traumhaus sichtbar");
+assert.ok(namen(traum).includes("EZ-Aufsteh"), "EZ-Aufsteh auch im Traumhaus sichtbar");
+assert.equal(G.STEIN_NAMEN.aufsteh, "Aufsteh");
+assert.equal(G.STEIN_NAMEN.ezaufsteh, "EZ-Aufsteh");
 
 // 7) Steinflächen überschneiden sich nicht und bleiben im sicheren Bildbereich
 const boxen = normal.map((s) => s.hit);
@@ -164,7 +164,7 @@ let haus2, tick2;
   assert.equal(h.tagWas, "weste", "danach holt sie die Weste");
 }
 
-// 10) Aufsteh-Stein greift jederzeit: auch mitten im Abend, in der Dusche und beim Kaffee; Liegezeit bleibt erhalten
+// 10) Aufsteh greift jederzeit: auch mitten im Abend, in der Dusche und beim Kaffee; Liegezeit bleibt erhalten
 {
   for (const [stunde, art] of [[20, "aufsteh"], [22, "ezaufsteh"]]) {
     speicherLeer();
@@ -188,7 +188,7 @@ let haus2, tick2;
   k.command("kaffee"); tick2(k, 4);
   assert.ok(k.kAblauf, "Kaffee läuft");
   k.command("stein_aufsteh");
-  assert.ok(!k.kAblauf && k.asleep, "Aufsteh-Stein bricht den Kaffee ab und startet die Routine");
+  assert.ok(!k.kAblauf && k.asleep, "Aufsteh bricht den Kaffee ab und startet die Routine");
 }
 // 11) Aufwachen: genau die gewünschte Reihenfolge – aufsetzen (Decke schieben), Bettkante, gähnen/recken, erst dann aufstehen
 {
@@ -216,7 +216,7 @@ let haus2, tick2;
   assert.deepEqual(kurz, phasen, "dieselben Phasen in der Probe");
 }
 
-// 12) Der Aufsteh-Stein greift in jeder Lage – auch wenn Luni nicht im Bett ist
+// 12) Der Aufsteh greift in jeder Lage – auch wenn Luni nicht im Bett ist
 {
   const lagen = [
     ["im Keller beim Rauchen", (h) => { h.lf = 0; h.lx = 690; h.pack = 3; h.command("raucherstuhl"); tick2(h, 45); }],

@@ -228,7 +228,7 @@ weihnachtshaus-warmes-licht | src/game/house.ts | zeichneWeihnachtsAbendlicht
 weihnachtshaus-weihnachtsbaum | src/game/weihnachtshaus.ts | wohnzimmerWeihnachtsbaum
 weihnachtshaus-samtvorhaenge | src/game/weihnachtshaus.ts | goldstangeMitSamt
 weihnachtshaus-steppdecke | src/game/weihnachtshaus.ts | winterSteppdecke
-fenster-lichtbogen | src/game/house.ts | drawFensterBogen
+fenster-lichtbogen | src/game/house.ts | kerzenSchein
 lavalampe-modul | src/game/lavalampe.ts | drawLavaLampe
 lavalampe-station | src/game/house.ts | id: "lavalampe"
 lavalampe-tests | tools/test-lavalampe.mjs | Lavalampe-Tests bestanden
@@ -392,3 +392,6 @@ renovierung-muellsaecke-keller | src/game/muell.ts | export function drawKellerM
 renovierung-muelltonne-dienstag | src/game/muell.ts | export function istMuellTag
 renovierung-wohnen-mit-eingang | src/game/renovierung.ts | export function renoAuftragsRaeume
 renovierung-weihnachtsreferenz | src/game/house.ts | export function zeichneHausWaende
+haare-buecken-kurz | src/game/luni.ts | clamp01((r.bend - 0.22) / 0.5)
+steine-kieselform-einheitlich | src/game/steine.ts | Alle Orts- und Rufsteine: flacher Kiesel
+steine-thematisch-gruppiert | src/game/steine.ts | ROUTINEN_PLAETZE

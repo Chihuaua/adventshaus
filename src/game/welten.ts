@@ -37,7 +37,8 @@ export const WELT_NAMEN: Record<WeltId, string> = {
 
 /** URL-Hash je Welt. Das normale Haus liegt bewusst auf dem leeren Hash. */
 export const WELT_HASH: Record<WeltId, string> = {
-  normal: "",
+  // Das Adventshaus ist das Standardhaus; das normale Haus liegt jetzt auf "#haus".
+  normal: "#haus",
   traum: "#traumhaus",
   gruesel: "#gruselhaus",
   weihnacht: "#weihnachtshaus",
@@ -45,13 +46,13 @@ export const WELT_HASH: Record<WeltId, string> = {
 };
 
 export function weltAusHash(hash: string): WeltId | null {
+  // Standardhaus ist immer das Adventshaus (auch bei leerem oder unbekanntem Hash).
+  if (hash === "#haus") return "normal";
   if (hash === "#traumhaus") return "traum";
   if (hash === "#gruselhaus") return "gruesel";
   if (hash === "#weihnachtshaus") return "weihnacht";
-  // "#adventshaus" und "#adventshaus/12" (Vorschau einer Ausbaustufe)
   if (istAdventshausHash(hash)) return "adventshaus";
-  if (hash === "" || hash === "#") return "normal";
-  return null;
+  return "adventshaus";
 }
 
 /** Ein Klick: nur der Hash ändert sich, App und Ansichten reagieren darauf. */

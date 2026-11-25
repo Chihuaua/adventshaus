@@ -58,8 +58,8 @@ const AN_FAHRERTUER = PARK_X + 74;
 const GRIFF_ZU = PARK_X + 53;
 const GRIFF_AUF = PARK_X + 29;
 const GRIFF_ABSTAND = 7;
-const AN_SCHIEBETUER = GRIFF_ZU + GRIFF_ABSTAND;
-const AN_SCHIEBETUER_OFFEN = GRIFF_AUF + GRIFF_ABSTAND;
+const AN_SCHIEBETUER = GRIFF_ZU - GRIFF_ABSTAND;
+const AN_SCHIEBETUER_OFFEN = GRIFF_AUF - GRIFF_ABSTAND;
 /** Paket mitten im Laderaum */
 const AM_PAKET = PARK_X + 45;
 /** Vor der Motorhaube: hier kommt er von der Fahrerseite nach vorn. */
@@ -695,6 +695,18 @@ export class Postfrosch {
   }
 
   private zeichneWagen(c: C, x0: number, g: number, z: PostZeichnung) {
+    if (this.schiebe > 0.08) {
+      // Warmes Licht fällt aus dem geöffneten Laderaum; das Paket ist im Schein zu sehen.
+      const lx = x0 + PARK_X + 38, ly = FE + 2;
+      const gl = c.createRadialGradient(lx, ly, 2, lx, ly, 34);
+      gl.addColorStop(0, `rgba(255,226,150,${0.4 * this.schiebe})`);
+      gl.addColorStop(1, "rgba(255,226,150,0)");
+      c.fillStyle = gl; c.beginPath(); c.ellipse(lx, ly - 8, 26, 20, 0, 0, Math.PI * 2); c.fill();
+      if (this.paketImWagen) {
+        c.fillStyle = "#c99a5b"; c.fillRect(lx - 5, ly - 15, 11, 9);
+        c.fillStyle = "#e8c25a"; c.fillRect(lx - 0.5, ly - 15, 2, 9);
+      }
+    }
     zeichnePostwagen(c, x0, g, {
       schiebe: this.schiebe,
       fahrerTuer: this.fahrerTuer,

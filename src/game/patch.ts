@@ -2,7 +2,7 @@
    Patch-Dateien der aktuellen Sitzung (Inhalt der UFO-/Schlitten-Station)
 
    Dieses Modul wird von tools/ufo-bauen.mjs erzeugt. Das Menü oben rechts
-   bietet LCL-Tapete-Reste-Muelltonne-115.zip, die TXT-Datei und die Code-Vorschau an.
+   bietet LCL-Haare-Kieselgruppen-121.zip, die TXT-Datei und die Code-Vorschau an.
    ======================================================================= */
 
 export interface PatchDatei {
@@ -11,8 +11,8 @@ export interface PatchDatei {
   inhalt: string;
 }
 
-export const PATCH_KURZ = "Tapete-Reste-Muelltonne";
-export const PATCH_NUMMER = 115;
+export const PATCH_KURZ = "Haare-Kieselgruppen";
+export const PATCH_NUMMER = 121;
 export const PATCH_ZIP =
   `LCL-${PATCH_KURZ}-${String(PATCH_NUMMER).padStart(2, "0")}.zip`;
 export const PATCH_TXT =

@@ -14,7 +14,7 @@
 import { coughPulse, drawLuni, drawZzz, LUNI_COLORS, SITZ_HUB, SITZ_MUND, smokeCycle, type LuniExpr, type LuniState } from "./luni";
 import {
   ADVENT_NACH_DATUM, ADVENT_TAGE, ADVENT_WAND, adventFrei, adventHinweis, adventMischung,
-  adventOeffnen, adventRahmen, adventSternVerdient, adventTuer, adventTuerBei, adventTueren, adventWand,
+  adventOeffnen, adventRahmen, adventSternVerdient, adventTuer, adventTuerBei, adventTueren,
   ladeAdvent, RAHMEN, adventGruss, adventSchmuck, adventSchmuckGlanz, adventsSonntage, type AdventStand,
 } from "./advent";
 import { HundeWelt, type HundId } from "./hunde";
@@ -111,13 +111,13 @@ import { drawWetterStation, wetterStationHit, wetterStationLayout, type WetterBe
 import { drawKiesFeld, drawStein, steinAn, steinSlots, BETT_STEIN, EZ_BETT_STEIN, AUFSTEH_STEIN, EZ_AUFSTEH_STEIN, KAFFEE_STEIN, EZ_KAFFEE_STEIN, NIKOLAUS_STEIN, RAUM_STEINE, type SteinSlot } from "./steine";
 import {
   drawRenovierungVorn, drawRenovierungWand, drawTapetenDreck, gamingTeile, renoRaumInfo,
-  renoAuftragsRaeume, tapetenDreckAnteil, tapezierTakt,
+  renoAuftragsRaeume, tapetenDreckAnteil, tapezierTakt, TAPETE_NEU_AB,
   type RenoRaumId, type RenoStand, type RenoWand,
 } from "./renovierung";
 import { fegenPose, renovierungsPose, drawRenovierungsWerkzeug, type RenoLuniPose } from "./renovierung-luni";
 import {
-  KELLER_MUELL_STAND, MAX_KELLER_SAECKE, drawFegenSack, drawKellerMuellsaecke,
-  drawMuellHaustuer, drawMuellSack, drawMuellTonne, istMuellTag, muellEinwurfStand, muellTagNr,
+  KELLER_MUELL_STAND, MAX_KELLER_SAECKE, drawFegenSack, drawKellerMuellsaecke, drawMuellSack,
+  drawMuellHaustuer, drawMuellTonne, istMuellTag, muellEinwurfStand, muellTagNr,
 } from "./muell";
 import {
   NAPF_ORTE, TAGES_DAUERN, TAGES_PROBE, TAGES_ZEITEN, aufwachSekunde, drawEssTeller, drawNapfPaar, tageswerte,
@@ -139,6 +139,7 @@ import {
   tuerchenFrei as adventTuerchenFrei,
 } from "./adventshaus-ausbau";
 import { drawDeko, drawDekoLicht } from "./deko";
+import { drawKranzAufTisch, drawKranzPaket } from "./kranz";
 
 /** Adventshaus: Diese Stationen warten auf ihre Ausbaustufe (siehe adventshaus-ausbau.ts). */
 const STATION_SCHALTER: Record<string, string> = {
@@ -168,7 +169,6 @@ import { drawPixelText } from "./pixel";
 import { drawUfo, drawWeihnachtsschlitten, ufoTreffer, ufoZeileBei } from "./ufo";
 import { fensterReif, rundReif } from "./reif";
 import { fensterKranz, rundFensterKranz } from "./fensterkranz";
-import { adventWandWeihnacht } from "./advent-wand";
 import {
   drawLavaLampe, erstelleLavaLampe, ladeLavaLampe, lavaSnapshot,
   schalteLavaLampe, updateLavaLampe, type LavaLampeStand,
@@ -176,7 +176,7 @@ import {
 import { drawFroschDenkblase } from "./froschblase";
 import {
   WEIHNACHTS_FARBEN, WEIHNACHTS_ORTE, WEIHNACHTSBAUM_X, ZIMMER_TAPETEN,
-  esstischAdventskranz, wohnzimmerAdventskranz, wohnzimmerKranzlicht, festzweig, goldstangeMitSamt, kellerWinterdeko,
+  wohnzimmerKranzlicht, festzweig, goldstangeMitSamt, kellerWinterdeko,
   ruhigeWeihnachtswand, samtvorhangPfade, weihnachtsAbendlicht, weihnachtsBettgestell,
   weihnachtsKerzenflammen, weihnachtsLichtfleck, weihnachtsWandkranz, weihnachtsstrumpf,
   winterBadAblage, winterSteppdecke, wohnzimmerBuch, wohnzimmerWeihnachtsbaum,
@@ -184,6 +184,7 @@ import {
 } from "./weihnachtshaus";
 export { ZIMMER_TAPETEN, type ZimmerTapete } from "./weihnachtshaus";
 /** Für die Renovierungs-Vorschau (#studio-renovierung): Hauszeichnung, Dachschräge und alte Wand unter eigenen Namen. */
+export { esstischAdventskranz, wohnzimmerAdventskranz } from "./weihnachtshaus";
 export { drawHouse as zeichneHaus, atticCeil as dachschraege, wallBand as alteWand };
 import { PATCH_EINTRAEGE, PATCH_ZIP } from "./patch";
 import {
@@ -679,7 +680,7 @@ const EZ_KAFFEERUF: Station = {
   face: 1, state: "idle", expr: "neutral", hits: [EZ_KAFFEE_STEIN.hit],
 };
 const NIKOLAUSRUF: Station = {
-  id: "stein_nikolaus", label: "Nikolausstein", floor: 0, x: NIKOLAUS_STEIN.x,
+  id: "stein_nikolaus", label: "Nikolaus", floor: 0, x: NIKOLAUS_STEIN.x,
   face: 1, state: "idle", expr: "happy", hits: [NIKOLAUS_STEIN.hit],
 };
 /** Wandflächen für alle 9 Räume (Bahnzahl passend zur Breite, Dachfirst im Gaming-Zimmer, Bad mit Fliesenmaß). */
@@ -700,6 +701,10 @@ export const RENO_WAENDE: Record<RenoRaumId, RenoWand> = {
 const RAUM_STATION_ID: Record<string, RenoRaumId> = Object.fromEntries(
   RAUM_STEINE.map((r) => [`stein_${r.art}`, r.raum]),
 );
+const KRANZRUF: Station = {
+  id: "stein_kranz", label: "Kranz", floor: 0, x: 76,
+  face: 1, state: "idle", expr: "happy", hits: [[63, 463, 26, 24]],
+};
 const NIKOLAUS_EMPFANG: Station = {
   id: "nikolaus_empfang", label: "Nikolaus begrüßen", floor: 0, x: 791,
   face: 1, state: "idle", expr: "happy", hits: [],
@@ -2070,39 +2075,7 @@ const KERZEN_REICHWEITE = 28;
  * Dezenter, angenehm warmweißer Schein der fünf Kerzen.
  * Tagsüber bewusst zurückhaltend (`stark` klein), nachts warm und stimmungsvoll.
  */
-function kerzenSchein(c: C, x: number, F: number, stark: number) {
-  if (stark <= 0.01) return;
-  const mx = x + 22;
-  const y0 = F - 58;
-  const grenze = F - KERZEN_REICHWEITE;
-  c.save();
-  c.beginPath();
-  c.rect(0, 0, W, grenze);
-  c.clip();
-  c.globalCompositeOperation = "lighter";
-  // Kleiner, weicher warmweißer Halo um jede der fünf Flammen
-  for (const dx of BOGEN_KERZEN) {
-    const cx = mx + dx;
-    const cy = bogenAussenRandY(y0, dx) - 8.2;
-    const g = c.createRadialGradient(cx, cy, 0.8, cx, cy, 14);
-    g.addColorStop(0, `rgba(255,244,214,${(0.14 * stark).toFixed(3)})`);
-    g.addColorStop(0.5, `rgba(255,228,178,${(0.055 * stark).toFixed(3)})`);
-    g.addColorStop(1, "rgba(255,215,155,0)");
-    c.fillStyle = g;
-    c.beginPath();
-    c.arc(cx, cy, 14, 0, Math.PI * 2);
-    c.fill();
-  }
-  // Ganz zarter gemeinsamer Schimmer um den Bogen
-  const bank = c.createRadialGradient(mx, y0 - 8, 2, mx, y0 - 4, 30);
-  bank.addColorStop(0, `rgba(255,238,200,${(0.09 * stark).toFixed(3)})`);
-  bank.addColorStop(1, "rgba(255,220,165,0)");
-  c.fillStyle = bank;
-  c.beginPath();
-  c.arc(mx, y0 - 4, 30, 0, Math.PI * 2);
-  c.fill();
-  c.restore();
-}
+
 
 /**
  * Kerzenlicht der drei Kerzen. Es erhellt die Klavierfront und hebt Luni (wenn
@@ -3578,7 +3551,6 @@ function drawHouse(
   sofa(c, WEIHNACHTS_ORTE.sofa, FE, festlich);
   if (!gr) {
     couchtisch(c, COUCHTISCH.x, FE);
-    if (weihnachtsdeko) wohnzimmerAdventskranz(c, COUCHTISCH.x, FE - COUCHTISCH.h, COUCHTISCH.w);
   }
   if (festlich) {
     const links = WEIHNACHTS_ORTE.wohnzimmerLinks;
@@ -3612,7 +3584,6 @@ function drawHouse(
     tobaccoTin(c, 766, FE);
     chair(c, 732, FE, true);
     chair(c, 796, FE, false);
-    if (festlich) esstischAdventskranz(c, FE);
   }
 
   /* ---- 1. Stock ---- */
@@ -3905,6 +3876,17 @@ const TV_CYCLE = 60;
 const TV_RICK_AT = 30;
 const TV_STATIC_LEN = 0.6;
 
+function kerzenSchein(c: C, x: number, F: number, stark: number) {
+  if (stark <= 0.01) return;
+  c.save();
+  c.globalCompositeOperation = "lighter";
+  const g = c.createRadialGradient(x, F - 12, 2, x, F - 12, 26);
+  g.addColorStop(0, `rgba(255,214,140,${0.35 * stark})`);
+  g.addColorStop(1, "rgba(255,214,140,0)");
+  c.fillStyle = g; c.beginPath(); c.arc(x, F - 12, 26, 0, Math.PI * 2); c.fill();
+  c.restore();
+}
+
 export class House {
   private canvas: HTMLCanvasElement;
   private ctx: C;
@@ -4002,6 +3984,26 @@ export class House {
   private muellTuerOffen = 0;
   private muellDeckelOffen = 0;
   private muellPause = 0;
+  // --- Kranz per Post: 1. Advent nach 7 Minuten, Erinnerungen nach 3/7/10 Minuten ---
+  private startElapsed = 0;
+  private adventPostTag = 0;
+  private postVersuche = 0;
+  private postNaechster = -1;
+  private kranzJob: { phase: "weg" | "auspacken"; t: number; x: number } | null = null;
+  private kranzAufTisch = false;
+  private kranzBogenT = 0;
+  private renoGefegt: Set<RenoRaumId> = new Set();
+  private renoFegenPause: RenoRaumId | null = null;
+  private renoFegenT = 0;
+  private renoFegenWand: RenoWand | null = null;
+  private renoFegenIstRand = false;
+
+  /** Ist heute der 1. Advent? */
+  private get ersterAdvent(): boolean {
+    const d = new Date(Date.UTC(this.clock.year, this.clock.month - 1, this.clock.day, 12));
+    return d.getUTCDay() === 0 && ((this.clock.month === 11 && this.clock.day >= 27) || (this.clock.month === 12 && this.clock.day <= 3));
+  }
+
   private muellArbeit: {
     phase: "fegenWeg" | "fegen" | "kellerWeg" | "kellerHolen" | "zurTonne" | "einwurf";
     wand?: RenoWand;
@@ -4028,6 +4030,22 @@ export class House {
 
   /** Erst hinlaufen, dann Tapete entfernen (2 Durchgänge) und Bahn für Bahn neu tapezieren (Bad bleibt fix). */
   private updateRaumReno(dt: number) {
+    if (this.renoFegenPause) {
+      const raum = this.renoFegenPause;
+      this.renoFegenT += dt;
+      const w = this.renoFegenWand;
+      if (w) this.renoPose = fegenPose(this.lx, w.yBot, this.elapsed, clamp(this.renoFegenT / 2.6, 0, 1));
+      if (this.renoFegenT >= 2.6) {
+        if (this.renoFegenIstRand) this.randDreck = 0; else this.raumDreck[raum] = 0;
+        this.muellSaecke = Math.min(MAX_KELLER_SAECKE, this.muellSaecke + 1);
+        this.renoGefegt.add(raum);
+        this.renoFegenPause = null; this.renoFegenWand = null; this.renoFegenT = 0;
+        this.renoPose = null;
+        if (!this.raumRenoAktiv.has(raum)) this.raumRenoAktiv.add(raum);
+        this.speichern();
+      }
+      return;
+    }
     if (this.raumRenoAktiv.size === 0 || this.muellArbeit) return;
     if (!this.renoArbeit) {
       // Keine Sprünge von Treppen, aus der Dusche oder mitten aus einer Bettbewegung.
@@ -4058,6 +4076,24 @@ export class House {
       if (this.cur || this.path.length || this.pending || this.activity?.id !== a.ziel.id) return;
       a.phase = "arbeit";
     }
+    // Reihenfolge: erst alle Reste und den Boden aufräumen, dann tapezieren.
+    {
+      const lokalJetzt = clamp(((this.raumReno[a.raum] ?? a.von) - a.von) / (a.bis - a.von), 0, 1);
+      void tapezierTakt;
+      if (a.raum !== "badezimmer" && !this.renoGefegt.has(a.raum)
+        && lokalJetzt > TAPETE_NEU_AB + 0.005) {
+        const istRand = a.wand === GAMING_RAND_WAND;
+        this.raumReno[a.raum] = a.von + (a.bis - a.von) * TAPETE_NEU_AB;
+        this.renoFegenPause = a.raum;
+        this.renoFegenT = 0;
+        this.renoFegenWand = a.wand;
+        this.renoFegenIstRand = istRand;
+        this.renoArbeit = null;
+        this.activity = this.target = null;
+        this.renoPose = fegenPose(this.lx, a.wand.yBot, this.elapsed, 0);
+        return;
+      }
+    }
     const dauer = renoRaumInfo(a.raum).dauer * 1.4;
     const p = Math.min(a.bis, (this.raumReno[a.raum] ?? a.von) + dt / dauer);
     this.raumReno[a.raum] = p;
@@ -4068,11 +4104,14 @@ export class House {
       pose.x = lerp(this.renoPose.x, pose.x, k);
       pose.y = lerp(this.renoPose.y, pose.y, k);
     }
-    if (a.raum !== "badezimmer") {
-      // Abgekratzter Dreck bleibt voll am Boden liegen, bis er eingesammelt wird.
-      const dreck = tapetenDreckAnteil(a.wand, lokal);
-      if (a.wand === GAMING_RAND_WAND) this.randDreck = Math.max(this.randDreck, dreck);
-      else this.raumDreck[a.raum] = Math.max(this.raumDreck[a.raum] ?? 0, dreck);
+    if (a.raum !== "badezimmer" && !this.renoGefegt.has(a.raum)) {
+      const tk = tapezierTakt(a.wand, lokal);
+      if (tk.phase !== "tapezieren") {
+        // Abgekratzter Dreck bleibt am Boden liegen, bis er vor dem Tapezieren weggeräumt wird.
+        const dreck = tapetenDreckAnteil(a.wand, lokal);
+        if (a.wand === GAMING_RAND_WAND) this.randDreck = Math.max(this.randDreck, dreck);
+        else this.raumDreck[a.raum] = Math.max(this.raumDreck[a.raum] ?? 0, dreck);
+      }
     }
     this.advanceWalk(Math.abs(pose.x - this.lx));
     this.lx = pose.x;
@@ -4095,26 +4134,11 @@ export class House {
       this.renoArbeit = null;
       this.renoPose = null;
       this.activity = this.target = null;
-      // Nach jedem Tapeten-Raum (nicht Bad!) kehrt Luni die Reste in einen Müllsack.
-      if (fertigerRaum !== "badezimmer") {
-        this.muellFegenStarten(fertigerRaum, a.wand, istRand);
-      }
+      void fertigerRaum; void istRand;
     }
   }
 
-  /** Luni sammelt die abgekratzte Tapete am Boden in einen Müllsack ein. */
-  private muellFegenStarten(raum: RenoRaumId, wand: RenoWand, istRand: boolean) {
-    const floor = FLOOR_Y.indexOf(wand.yBot as (typeof FLOOR_Y)[number]);
-    if (floor < 0) return;
-    const [rMin, rMax] = RANGE[floor];
-    const zielX = clamp((wand.x0 + wand.x1) * 0.5 + 14, rMin, rMax);
-    this.muellArbeit = { phase: "fegenWeg", raum, wand, istRand, t: 0 };
-    const ziel: Station = {
-      id: "muell_fegen", label: "Tapetenreste zusammenkehren",
-      x: zielX, floor, face: -1, state: "bend", expr: "focus", hits: [],
-    };
-    this.command(ziel);
-  }
+
 
   /** Schickt Luni mit einem vollen Müllsack entweder direkt dienstags zur Tonne oder in den Keller. */
   private muellSackWegbringen() {
@@ -4271,6 +4295,7 @@ export class House {
         this.muellDeckelOffen = 0;
         this.muellArbeit = null;
         this.muellPause = 0.5;
+        if (this.renoFegenPause) { this.renoGefegt.add(this.renoFegenPause); this.renoFegenPause = null; }
         this.activity = this.target = null;
         if (this.renoDanach) {
           const d = this.renoDanach;
@@ -4278,6 +4303,63 @@ export class House {
           this.command(d);
         }
       }
+    }
+  }
+
+  /** Postfrosch-Start am 1. Advent 7 Minuten nach Spielstart; Erinnerungen 3/7/10 Minuten später. */
+  private updateAdventPost() {
+    if (!this.istMuellWelt || !this.ersterAdvent) return;
+    const tag = muellTagNr(this.clock);
+    if (this.adventPostTag !== tag) { this.adventPostTag = tag; this.postVersuche = 0; this.postNaechster = -1; }
+    if (this.post.aktiv) return;
+    const seitStart = this.elapsed - this.startElapsed;
+    if (this.postVersuche === 0) {
+      if (seitStart >= 420) {
+        this.postVersuche = 1;
+        this.postNaechster = this.elapsed + 180;
+        this.post.start();
+      }
+      return;
+    }
+    if (this.postVersuche < 4 && this.postNaechster > 0 && this.elapsed >= this.postNaechster && !this.post.paketVorTuer) {
+      this.postVersuche += 1;
+      this.postNaechster = this.elapsed + (this.postVersuche === 2 ? 420 : 600);
+      this.post.start();
+    }
+    // Beim letzten Versuch nimmt der Bote das Paket wieder mit.
+    if (this.postVersuche >= 4 && !this.post.aktiv && this.post.paketVorTuer && !this.luniTraegtPaket) {
+      this.post.paketVorTuer = false;
+      saveJson(this.postSchluessel, false);
+    }
+  }
+
+  /** Luni legt das Paket auf den Wohnzimmertisch und packt den Kranz aus. */
+  private updateKranz(dt: number) {
+    if (this.kranzAufTisch) { this.kranzBogenT += dt; return; }
+    if (!this.kranzJob) {
+      if (!this.luniTraegtPaket || this.lf !== 1) return;
+      this.kranzJob = { phase: "weg", t: 0, x: COUCHTISCH.x + COUCHTISCH.w / 2 };
+      this.command({ id: "kranz_tisch", label: "Paket auf den Tisch", floor: 1,
+        x: this.kranzJob.x, face: 1, state: "idle", expr: "happy", hits: [] });
+      return;
+    }
+    const j = this.kranzJob;
+    if (j.phase === "weg") {
+      if (this.cur || this.path.length || this.pending || this.activity?.id !== "kranz_tisch") return;
+      j.phase = "auspacken";
+      j.t = 0;
+      this.luniTraegtPaket = false;
+      this.activity = { id: "kranz_auspacken", label: "Kranz auspacken", floor: 1,
+        x: j.x, face: 1, state: "bend", expr: "happy", hits: [] };
+      return;
+    }
+    j.t += dt;
+    if (j.t >= 12) {
+      this.kranzAufTisch = true;
+      this.kranzJob = null;
+      this.activity = this.target = null;
+      this.renoPose = null;
+      sfx.ui();
     }
   }
 
@@ -4370,7 +4452,8 @@ export class House {
 
   /** Wetterstation: im Adventshaus erst ab Tuerchen 14. */
   private get wetterSichtbar(): boolean {
-    return this.istNormalHaus && this.hat("wetter");
+    // Wetter-Knopf in jedem Haus sichtbar; im Adventshaus erst ab Ausbaustufe.
+    return this.hat("wetter");
   }
 
   /** Stationen, die im Adventshaus erst mit ihrer Ausbaustufe nutzbar sind. */
@@ -4380,14 +4463,8 @@ export class House {
     return !schalter || this.hat(schalter);
   }
 
-  /** Rufsteine erscheinen im Adventshaus erst mit ihrer Ausbaustufe. */
-  private steinFrei(sl: SteinSlot): boolean {
-    if (this.welt !== "adventshaus") return true;
-    if (sl.aktion === "post") return this.hat("post");
-    if (sl.aktion === "nikolaus") return this.hat("nikolaus");
-    if (sl.aktion === "kaffee" || sl.aktion === "kaffeeEZ") return this.hat("kaffee");
-    if (sl.aktion === "abend" || sl.aktion === "abendEZ"
-      || sl.aktion === "aufsteh" || sl.aktion === "aufstehEZ") return this.hat("abend");
+  /** Alle Knöpfe und Steine sind in jedem Haus sichtbar (Ausbau regelt nur Funktionen). */
+  private steinFrei(_sl: SteinSlot): boolean {
     return true;
   }
 
@@ -4396,7 +4473,8 @@ export class House {
     this.steine = steinSlots(this.welt).filter((sl) => this.steinFrei(sl));
     this.steinStationen = this.steine.map((sl) => sl.aktion === "nikolaus" ? NIKOLAUSRUF : sl.aktion === "abend" ? BETTRUF : sl.aktion === "abendEZ" ? EZ_BETTRUF
       : sl.aktion === "aufsteh" ? AUFSTEHRUF : sl.aktion === "aufstehEZ" ? EZ_AUFSTEHRUF
-      : sl.aktion === "kaffee" ? KAFFEERUF : sl.aktion === "kaffeeEZ" ? EZ_KAFFEERUF : ({
+      : sl.aktion === "kaffee" ? KAFFEERUF : sl.aktion === "kaffeeEZ" ? EZ_KAFFEERUF
+      : sl.aktion === "kranz" ? KRANZRUF : ({
       id: `stein_${sl.art}`,
       label: sl.label,
       floor: 0,
@@ -5027,6 +5105,7 @@ export class House {
     this.fixedClock = opts.clock ?? null;
     this.welt = opts.welt ?? "normal";
     this.ausbauVorschau = typeof opts.ausbauVorschau === "number" ? opts.ausbauVorschau : null;
+    this.startElapsed = 0;
     // Adventshaus: Ausbaustand frueh laden, damit schon der Aufbau weiss, was im Haus ist.
     this.clock = this.fixedClock ?? berlinNow();
     this.adventStandPruefen();
@@ -5373,6 +5452,11 @@ export class House {
       }
       return;
     }
+    if (sl.aktion === "kranz") {
+      // Der Kranz löst die Postfrosch-Zustellung aus.
+      if (!this.post.aktiv) { sfx.ui(); this.post.start(); }
+      return;
+    }
     if (sl.aktion === "post") {
       // Poststein: Zustellung starten (läuft sie schon, wird nichts getan)
       if (!this.post.aktiv) {
@@ -5388,7 +5472,8 @@ export class House {
 
   /** Postzustellung gibt es nur im normalen Haus und im Weihnachtshaus. */
   private get postWelt() {
-    return this.welt === "normal" || this.welt === "weihnacht";
+    // Postfrosch und Paket sind in allen Häusern sichtbar und aktiv.
+    return true;
   }
 
   private get postSchluessel() {
@@ -5458,6 +5543,7 @@ export class House {
       saveJson(this.postEingangSchluessel, ++this.ungeoeffnetePost);
       saveJson(this.postSchluessel, this.post.paketVorTuer);
       this.luniTraegtPaket = anTuer;
+      if (anTuer) this.kranzJob = { phase: "weg", t: 0, x: COUCHTISCH.x + COUCHTISCH.w / 2 };
     }
     if (!anTuer || ev.luniFrei) this.luniTraegtPaket = false;
     if (ev.luniFrei && anTuer) {
@@ -6570,6 +6656,8 @@ export class House {
     this.updateHarvest(dt);
     this.updateRaumReno(dt);
     this.updateMuell(dt);
+    this.updateAdventPost();
+    this.updateKranz(dt);
     if (this.istNormalHaus) updateLavaLampe(this.lavaLampe, dt);
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) {
       this.kessel.update(dt);
@@ -8077,6 +8165,9 @@ export class House {
     this.bgc.setTransform(s, 0, 0, s, 0, 0);
     this.bgc.clearRect(0, 0, W, H);
     this.bgc.drawImage(this.sky, 0, 0, W, H);
+    // Die Hauszeichnung darf keinen Ausschnitt offen lassen: Kies und Steine
+    // liegen davor und müssen in jeder Welt sichtbar sein.
+    this.bgc.save();
     drawHouse(
       this.bgc,
       this.sky,
@@ -8090,6 +8181,7 @@ export class House {
       this.weihnachtsdeko,
       this.raumReno,
     );
+    this.bgc.restore();
     // Adventshaus: Die 24 Deko-Stuecke wachsen mit den Tuerchen in den Hintergrund.
     if (this.welt === "adventshaus") drawDeko(this.bgc, this.dekoMaske, this.elapsed);
     // Raum 02 wird als eigene Canvas-Szene über die frühere Musikzimmerfläche
@@ -8098,7 +8190,7 @@ export class House {
       drawMusikzimmer(this.bgc, atticCeil);
     }
     // Linkes 6-Platz-Kiesfeld (im normalen Haus und im Adventshaus).
-    if (this.welt === "normal" || this.welt === "adventshaus") drawKiesFeld(this.bgc);
+    drawKiesFeld(this.bgc);
     // Wechselsteine: jede Welt zeigt die Steine der anderen Welten.
     for (const sl of this.steine) drawStein(this.bgc, sl.art, 0, sl.x, sl.y);
 
@@ -8329,11 +8421,6 @@ export class House {
     }
     // Lichtbogen mittig auf der Fensterbank des Gaming-Zimmers (x=336 -> Mitte 358, y0=142) + Lavalampe auf dem Spieleregal.
     // Tagsüber dezenter Schein (0.22), mit zunehmender Dunkelheit bis 1.0 warme Abend-/Nachtwirkung.
-    const bogenLicht = 0.22 + 0.78 * clamp(this.night, 0, 1);
-    this.drawFensterBogen(ctx);
-    if (this.istNormalHaus && this.welt !== "gruesel" && this.kerzenAn && this.weihnachtsdeko) {
-      kerzenSchein(ctx, 336, FD, bogenLicht);
-    }
     if (this.istNormalHaus && this.welt !== "gruesel") {
       drawLavaLampe(ctx, 505, 126, this.lavaLampe);
     }
@@ -8346,6 +8433,7 @@ export class House {
     if (this.postWelt) wohnzimmerKranzlicht(ctx, COUCHTISCH.x, FE - COUCHTISCH.h, COUCHTISCH.w, this.elapsed, adventSonntage);
     if (weihnacht) weihnachtsKerzenflammen(ctx, FE, FO, FK, this.elapsed, adventSonntage);
 
+    if (this.istNormalHaus && this.kerzenAn && this.weihnachtsdeko) kerzenSchein(ctx, 336, FD, 0.2 + 0.8 * this.night);
     this.drawKellerDoor(ctx);
     cellarDoor(ctx, 590, FK - 80, 80, this.cellarDoorV);
     this.drawScreens(ctx);
@@ -8367,15 +8455,6 @@ export class House {
     this.drawStereo(ctx);
     this.drawCigPile(ctx);
     ashBucket(ctx, BUCKET_X, FK, this.bucketButts);
-    if (this.istNormalHaus && (this.weihnachtsdeko || this.welt === "adventshaus")) {
-      this.adventStandPruefen();
-      if (weihnacht) {
-        // Weihnachtshaus: der kleine Kalender trägt denselben Schmuck wie der große.
-        adventWandWeihnacht(ctx, this.adventStand.offen, this.adventStand.jahr || new Date().getFullYear(), adventSonntage);
-      } else {
-        adventWand(ctx, this.adventStand.offen, this.adventStand.jahr || new Date().getFullYear());
-      }
-    }
     this.drawAshtrayTray(ctx);
     // Zigarette im Aschenbecher liegt AUF der Platte: Luni geht davor vorbei
     // und verdeckt sie wie jedes andere Objekt auf dem Tisch.
@@ -8415,6 +8494,10 @@ export class House {
   if (this.handyAmKissen) handyAufDemKissen(ctx);
   if (this.handyOrt === "nachttisch") drawHandyAufTisch(ctx, 416, FLOOR_Y[2] - 26, this.handyDisplayT > 0);
    this.drawRaumDreck(ctx);
+   if (this.kranzAufTisch) drawKranzAufTisch(ctx, COUCHTISCH.x + COUCHTISCH.w / 2, FE - COUCHTISCH.h - 2, this.elapsed);
+   if (this.kranzJob?.phase === "auspacken") {
+     drawKranzPaket(ctx, this.kranzJob.x, FE - COUCHTISCH.h - 2, clamp(this.kranzJob.t / 12, 0, 1), this.elapsed);
+   }
    this.drawRaumRenoVorn(ctx);
    this.drawLuniLayered(ctx);
   // Sitzt Luni im normalen Haus / Weihnachtshaus mit dem Rücken zum Spieler am Klavier,
@@ -8469,8 +8552,6 @@ export class House {
       if (this.istNormalHaus && this.welt !== "gruesel" && this.kerzenAn && this.weihnachtsdeko && !this.tvZoom) {
         ctx.save();
         ctx.globalAlpha = clamp(this.night * 0.88, 0, 0.82);
-        pianoBogen(ctx, 336, FD, this.elapsed, 1, true);
-        kerzenSchein(ctx, 336, FD, clamp(this.night * 1.15, 0, 1));
         ctx.restore();
       }
       // Eingeschaltete Lavalampe leuchtet auch bei Nacht selbst aus dem Dunkeln heraus.
@@ -8931,10 +9012,7 @@ export class House {
   }
 
   /** Lichtbogen mittig auf der Fensterbank des Gaming-Zimmers (Fenster 330..386, Mitte 358). */
-  private drawFensterBogen(c: C) {
-    if (!this.istNormalHaus || this.welt === "gruesel") return;
-    if (this.weihnachtsdeko) pianoBogen(c, 336, FD, this.elapsed, 1, this.kerzenAn);
-  }
+
 
   private stopKlavier() {
     if (this.klavierSitzt || this.klavierSpielt) {

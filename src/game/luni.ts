@@ -3418,7 +3418,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
   // Beim Griff in den Schrank müssen auch diese Haare, Hose und Handtuch vor beiden Armen liegen.
   if (schrank) armeVonHinten();
   /* --- Haare hinten (beim Vorbeugen hängen sie am Kopf, siehe dort) --- */
-  if (r.bend < 0.7 && !klavierHaareVorn) upperLean(() => drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen, opts.zahnfrontal === true, pinsel));
+  if (r.bend < 0.7 && !klavierHaareVorn) upperLean(() => drawHairBack(ctx, opts.buerstenzeit !== undefined ? r.hairFlow : r.hairFlow * (1 - 0.72 * clamp01((r.bend - 0.22) / 0.5)), r.hairUp, (opts.buerstenzeit !== undefined ? 1 : 1 - 0.55 * clamp01((r.bend - 0.22) / 0.5)) * r.hairLen, opts.zahnfrontal === true, pinsel));
 
   /* Beine tauschen: das helle Bein steht jetzt hinten, das dunkle vorn. Jedes Bein behält
      Gelenk, Gangphase, Socke und Farbe; nur die Zeichenreihenfolge ändert sich. */
@@ -3570,7 +3570,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
     if (!schrank && !verdeckt) armeVonHinten();
     if (vampir?.umhang && oberteil === "dressed" && umhang > 0.01) drawUmhangRuecken(ctx, r, vampir.umhang, umhang);
     // Die langen Haare liegen über Rücken und Schultern.
-    if (!klavierHaareVorn) drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen * (wet > 0.3 ? 0.94 : 1), true, pinsel);
+    if (!klavierHaareVorn) drawHairBack(ctx, opts.buerstenzeit !== undefined ? r.hairFlow : r.hairFlow * (1 - 0.72 * clamp01((r.bend - 0.22) / 0.5)), r.hairUp, (opts.buerstenzeit !== undefined ? 1 : 1 - 0.55 * clamp01((r.bend - 0.22) / 0.5)) * r.hairLen * (wet > 0.3 ? 0.94 : 1), true, pinsel);
   } else {
     // Tanz: ein Arm, der hinter dem Körper durchschwingt (Floss), wird vor dem
     // Rumpf gezeichnet und dadurch von ihm verdeckt.
@@ -3690,58 +3690,74 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
       ctx.translate(0, HEAD_Y); pinsel.haar(ctx, "scheitel", HAIR_LEN * r.hairLen, r.hairFlow, 0);
     });
   } else if (r.bend >= 0.7) {
-    // Vorgebeugt: Gesicht zeigt zum Boden. Haare bedecken den Hinterkopf und
-    // hängen senkrecht herunter, bis knapp über den Boden.
-    drawFace(ctx, expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0, singOpen, pinsel);
-    ctx.fillStyle = LUNI_COLORS.hair;
-    ctx.beginPath();
-    ctx.arc(-1.4, HEAD_Y - 1.6, HEAD_R + 0.6, 0, Math.PI * 2);
-    ctx.fill();
+    // Vorgebeugt: Gesicht zeigt zum Boden. Nur beim Haarebürsten fällt der
+    // lange Haarfall bis zum Boden; sonst bleibt er kurz und verdeckt das
+    // Gesicht nicht. Beim kurzen Fall werden die Haare ZUERST gezeichnet,
+    // danach das Gesicht – so hängt nichts davor.
+    const bürstet = opts.buerstenzeit !== undefined;
     const neckX = (r.shoulderY - HEAD_Y) * Math.sin(r.neckBend);
     const neckY = r.shoulderY + (HEAD_Y - r.shoulderY) * Math.cos(r.neckBend);
     const headWorldY = r.rootY + r.hipY +
       neckX * Math.sin(r.bend) + (neckY - r.hipY) * Math.cos(r.bend);
-    const L = Math.max(8, -headWorldY - 1.6);
+    const frei = Math.max(6, -headWorldY - 1.6);
+    const L = bürstet ? Math.max(8, frei) : Math.min(13, frei);
     const sway = state === "labBrush" ? Math.sin(t * .95 * Math.PI * 2) * 1.2
       : Math.sin(t * 1.7) * 0.5;
-    ctx.save();
-    ctx.translate(0, HEAD_Y);
-    ctx.rotate(-(r.bend + r.neckBend + r.headTilt));
-    const w = HEAD_R + 1;
-    ctx.beginPath();
-    ctx.moveTo(-w, -2);
-    ctx.quadraticCurveTo(-w - 0.8, L * 0.5, -w + 1.6 + sway, L);
-    ctx.quadraticCurveTo(-3, L + 1.4, 0 + sway, L + 0.6);
-    ctx.quadraticCurveTo(3, L + 1.4, w - 1.6 + sway, L);
-    ctx.quadraticCurveTo(w + 0.8, L * 0.5, w, -2);
-    ctx.closePath();
-    ctx.fill();
-    // Strähnen
-    ctx.strokeStyle = LUNI_COLORS.hairSheen;
-    ctx.globalAlpha = 0.5;
-    ctx.lineWidth = 0.8;
-    ctx.lineCap = "round";
-    for (const dx of [-5.6, -2, 1.8, 5.4]) {
+    const haare = () => {
+      ctx.fillStyle = LUNI_COLORS.hair;
       ctx.beginPath();
-      ctx.moveTo(dx, 1);
-      ctx.quadraticCurveTo(dx + sway * 0.5, L * 0.55, dx * 0.82 + sway, L - 1);
-      ctx.stroke();
+      ctx.arc(-1.4, HEAD_Y - 1.6, HEAD_R + 0.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.save();
+      ctx.translate(0, HEAD_Y);
+      ctx.rotate(-(r.bend + r.neckBend + r.headTilt));
+      const w = HEAD_R + 1;
+      ctx.beginPath();
+      ctx.moveTo(-w, -2);
+      ctx.quadraticCurveTo(-w - 0.8, L * 0.5, -w + 1.6 + sway, L);
+      ctx.quadraticCurveTo(-3, L + 1.4, 0 + sway, L + 0.6);
+      ctx.quadraticCurveTo(3, L + 1.4, w - 1.6 + sway, L);
+      ctx.quadraticCurveTo(w + 0.8, L * 0.5, w, -2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = LUNI_COLORS.hairSheen;
+      ctx.globalAlpha = 0.5;
+      ctx.lineWidth = 0.8;
+      ctx.lineCap = "round";
+      for (const dx of [-5.6, -2, 1.8, 5.4]) {
+        ctx.beginPath();
+        ctx.moveTo(dx, 1);
+        ctx.quadraticCurveTo(dx + sway * 0.5, L * 0.55, dx * 0.82 + sway, L - 1);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    };
+    if (bürstet) {
+      drawFace(ctx, expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0, singOpen, pinsel);
+      haare();
+    } else {
+      // Kurzer Bob: Haare hinter den Kopf, dann Kopfhaut und Gesicht davor.
+      haare();
+      ctx.fillStyle = LUNI_COLORS.skin;
+      ctx.beginPath();
+      ctx.arc(0, HEAD_Y - 0.4, HEAD_R - 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      drawFace(ctx, expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0, singOpen, pinsel);
     }
-    ctx.globalAlpha = 1;
-    ctx.restore();
   } else {
     // Haare neben das Ohr: weich überblenden statt umzuschalten. Ein hartes
     // Umschalten würde die Seitensträhnen für einen Moment verschwinden lassen
     // und als Blitzen des Kopfes sichtbar sein.
     const k = clamp01(hairAside);
     if (k < 0.005) {
-      drawHairFront(ctx, r.hairFlow, r.hairUp, r.hairLen, pinsel);
+      drawHairFront(ctx, opts.buerstenzeit !== undefined ? r.hairFlow : r.hairFlow * (1 - 0.72 * clamp01((r.bend - 0.22) / 0.5)), r.hairUp, (opts.buerstenzeit !== undefined ? 1 : 1 - 0.55 * clamp01((r.bend - 0.22) / 0.5)) * r.hairLen, pinsel);
     } else if (k > 0.995) {
       drawHairAside(ctx, k);
     } else {
       ctx.save();
       ctx.globalAlpha *= 1 - k;
-      drawHairFront(ctx, r.hairFlow, r.hairUp, r.hairLen, pinsel);
+      drawHairFront(ctx, opts.buerstenzeit !== undefined ? r.hairFlow : r.hairFlow * (1 - 0.72 * clamp01((r.bend - 0.22) / 0.5)), r.hairUp, (opts.buerstenzeit !== undefined ? 1 : 1 - 0.55 * clamp01((r.bend - 0.22) / 0.5)) * r.hairLen, pinsel);
       ctx.restore();
       ctx.save();
       ctx.globalAlpha *= k;
@@ -3813,7 +3829,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
     ctx.rotate(r.headTilt + headShake * 0.12);
     ctx.translate(0, -r.headY);
     drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen, false, pinsel);
-    drawHairBack(ctx, r.hairFlow, r.hairUp, r.hairLen * (wet > 0.3 ? 0.94 : 1), true, pinsel);
+    drawHairBack(ctx, opts.buerstenzeit !== undefined ? r.hairFlow : r.hairFlow * (1 - 0.72 * clamp01((r.bend - 0.22) / 0.5)), r.hairUp, (opts.buerstenzeit !== undefined ? 1 : 1 - 0.55 * clamp01((r.bend - 0.22) / 0.5)) * r.hairLen * (wet > 0.3 ? 0.94 : 1), true, pinsel);
     ctx.restore();
   });
 

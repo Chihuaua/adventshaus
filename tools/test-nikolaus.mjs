@@ -70,16 +70,16 @@ assert(gast.bild().x < 830, "Begruessung im sichtbaren Haus");
 gast.schritt(10, true, true); gast.schritt(3, true, true); assert.equal(gast.bild().ansicht, "hinten");
 
 const station = G.STATIONS.find(s => s.id === "stein_nikolaus");
-assert.equal(station.label, "Nikolausstein");
+assert.equal(station.label, "Nikolaus");
 for (const welt of ["normal", "weihnacht", "traum", "gruesel"]) {
   const slots = G.steinSlots(welt), stein = slots.find(s => s.aktion === "nikolaus");
-  assert.equal(Boolean(stein), welt === "normal" || welt === "weihnacht");
+  assert.equal(Boolean(stein), true, `${welt}: Nikolaus sichtbar`);
   if (!stein) continue;
-  assert.deepEqual(stein.hit, station.hits[0]);
+  assert.deepEqual([...stein.hit], [...station.hits[0]], `${welt}: Nikolaus-Hit`);
   const [x, y, w, h] = stein.hit;
-  assert(x >= 96 && x + w <= 864 && y >= 30 && y + h <= 570 && w >= 24 && h >= 24);
+  assert(x >= 2 && x + w <= 864 && y >= 30 && y + h <= 570 && w >= 24 && h >= 24);
   assert.equal(G.steinAn(slots, x + w / 2, y + h / 2), stein);
-  // Drei klassische Wechselsteine; der Adventsstein kommt als vierter dazu.
+  // Drei klassische Wechselsteine; der Advent kommt als vierter dazu.
   assert.equal(slots.filter(s => !s.aktion && s.ziel !== "adventshaus").length, 3);
   for (const anderer of slots.filter(s => s !== stein)) {
     const [a, b, c, d] = anderer.hit; assert(!(x < a + c && x + w > a && y < b + d && y + h > b));
