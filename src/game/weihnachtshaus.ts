@@ -371,11 +371,61 @@ const KRANZ_KERZEN = [[-8, 8], [-3, 10.6], [3, 9.6], [8, 7.8]] as const;
 
 export function esstischAdventskranz(c: C, F: number) {
   const x = WEIHNACHTS_ORTE.adventskranz, y = F - 37.5;
-  ell(c, x, y + 1, 13.3, 2.7, P.holztief);
-  tannenreisig(c, x, y, 12.7, 2.85, true);
-  for (const [i, [dx, h]] of KRANZ_KERZEN.entries()) kerzenschaft(c, x + dx, y, h, i % 2 ? P.creme : P.bordeaux);
-  schleife(c, x - 1.8, y + 1.3, 0.68);
-  for (const dx of [-8.2, 5.2, 9.3]) kreis(c, x + dx, y + 1.6, 0.94, P.rosa);
+  // Weicher Tischschatten und profilierter Holzteller
+  ell(c, x, y + 2.1, 14.2, 3.1, "rgba(20,14,10,.34)");
+  ell(c, x, y + 1.35, 13.5, 2.8, P.holztief);
+  ell(c, x, y + 0.85, 12.9, 2.45, P.holz);
+  // Plastischer Tannentorus: dunkle Unterwölbung, hinterer Bogen, Kerzen, vorderer Wulst
+  ell(c, x, y + 0.9, 13.0, 3.35, "#193026");
+  ell(c, x, y - 0.35, 12.6, 3.1, P.blatttief);
+  const kranzPolster = (vorne: boolean) => {
+    for (let i = 0; i < 28; i++) {
+      const a = (i * TAU) / 28, s = Math.sin(a), k = Math.cos(a);
+      if ((s >= 0) !== vorne) continue;
+      const rx = 10.2 + rand(i + 11) * 1.1;
+      const bx = x + k * rx;
+      const by = y + (vorne ? 0.55 : -1.05) + s * 2.15;
+      // Tiefenschatten unter jedem Reisigbündel
+      ell(c, bx, by + 0.85, 2.8, 1.55, "#182e24");
+      ell(c, bx, by, 2.75, 1.5, i % 2 ? P.blatt : "#355d47");
+      // Oberlicht-Nadeln auf dem Kamm des Bündels
+      ell(c, bx - 0.35, by - 0.55, 1.85, 0.82, i % 3 === 0 ? "#7fa078" : P.blattlicht);
+      strich(c, bx - k * 1.4, by - 0.3, bx + k * 2.1, by - 0.95, "#89a880", 0.55);
+    }
+  };
+  kranzPolster(false);
+  // Vier plastische Kerzen mit Goldteller, Schattenseite, Glanzkante und Wachsmulde
+  const esstischKerzen: readonly [number, number, number, boolean][] = [
+    [KRANZ_KERZEN[0][0], -0.4, KRANZ_KERZEN[0][1], false],
+    [KRANZ_KERZEN[1][0], -0.9, KRANZ_KERZEN[1][1], true],
+    [KRANZ_KERZEN[2][0], -0.7, KRANZ_KERZEN[2][1], false],
+    [KRANZ_KERZEN[3][0], -0.2, KRANZ_KERZEN[3][1], true],
+  ];
+  for (const [dx, dy, h, hell] of esstischKerzen) {
+    const kx = x + dx, ky = y + dy;
+    ell(c, kx, ky + 0.65, 2.7, 0.95, "rgba(15,28,22,.5)");
+    ell(c, kx, ky + 0.3, 2.45, 0.8, P.goldtief);
+    ell(c, kx, ky, 2.1, 0.62, P.goldlicht);
+    const hEff = h + dy;
+    rund(c, kx - 1.85, y - h, 3.7, hEff, 0.9, hell ? "#cfc2ab" : "#6c2f3d");
+    rund(c, kx - 1.55, y - h, 2.7, hEff, 0.8, hell ? P.creme : P.bordeaux);
+    strich(c, kx - 0.75, y - h + 0.9, kx - 0.75, y + dy - 0.8, hell ? "#fffdf6" : "#cf7b73", 0.65);
+    ell(c, kx, y - h + 0.25, 1.7, 0.55, hell ? "#fff9eb" : "#d88f80");
+    strich(c, kx, y - h + 0.1, kx + 0.1, y - h - 1.55, P.holztief, 0.75);
+  }
+  kranzPolster(true);
+  // Plastische Zapfen, Beeren mit Glanzpunkt und gefütterte Schleife vorn
+  for (const [dx, dy] of [[-5.6, 1.3], [5.8, 1.15]]) {
+    ell(c, x + dx, dy + y + 0.35, 1.55, 1.15, "#3b261b");
+    ell(c, x + dx, dy + y, 1.4, 1.0, "#6c4b37");
+    kreis(c, x + dx - 0.35, dy + y - 0.25, 0.42, "#bb926a");
+  }
+  for (const [dx, dy] of [[-9.2, 0.9], [-1.2, -1.7], [2.4, 1.85], [9.4, 1.1]]) {
+    kreis(c, x + dx, y + dy + 0.35, 1.12, "rgba(18,30,24,.45)");
+    kreis(c, x + dx, y + dy, 1.08, "#9e343d");
+    kreis(c, x + dx - 0.3, y + dy - 0.32, 0.36, "#f7c7b0");
+  }
+  schleife(c, x - 1.8, y + 1.55, 0.74);
 }
 
 // Positionen auf dem ovalen Ring; die Vorderseite verdeckt die Kerzenfüße.
@@ -383,65 +433,168 @@ const WOHNKERZEN = [[-19.6, -1.8, 13.0], [12.6, -2.7, 14.7], [23.6, 0.7, 11.4], 
 
 export function wohnzimmerAdventskranz(c: C, links: number, oben: number, breite: number) {
   c.save(); c.translate(links + breite / 2, oben - 4.0); c.scale(breite / 70, breite / 70);
-  ell(c, 0, 3.7, 34.9, 2.5, "rgba(23,40,34,.28)");
+  // Gestufter Schlagschatten auf der Glasplatte für spürbare Standtiefe
+  ell(c, 0, 4.6, 34.9, 3.4, "rgba(14,26,22,.34)");
+  ell(c, 0, 3.8, 33.4, 2.7, "rgba(18,34,28,.26)");
   c.lineCap = "round";
-  // Ein wirklicher Ring: Durch die Mitte bleibt das Glas der Tischplatte sichtbar.
-  c.fillStyle = "#244435"; c.beginPath(); c.ellipse(0, 0, 32.9, 5.6, 0, 0, TAU);
-  c.moveTo(19.5, -.55); c.ellipse(0, -.55, 19.5, 2.1, 0, 0, TAU); c.fill("evenodd");
+
+  // Unterwölbung des Kranz-Torus (dunkler Bauch unten, durch die Mitte bleibt Glas sichtbar)
+  c.fillStyle = "#162c22"; c.beginPath(); c.ellipse(0, 1.85, 33.4, 6.2, 0, 0, TAU);
+  c.moveTo(17.8, 1.1); c.ellipse(0, 1.1, 17.8, 1.85, 0, 0, TAU); c.fill("evenodd");
+  // Mittlerer Körper des gebundenen Tannenrings (echtes Volumen statt flacher Scheibe)
+  c.fillStyle = "#234536"; c.beginPath(); c.ellipse(0, 0.25, 33.1, 6.0, 0, 0, TAU);
+  c.moveTo(18.6, -.2); c.ellipse(0, -.2, 18.6, 2.0, 0, 0, TAU); c.fill("evenodd");
+  // Hellere Oberwölbung auf dem Kamm des Rings
+  c.fillStyle = "#315b47"; c.beginPath(); c.ellipse(0, -1.05, 31.6, 5.1, 0, 0, TAU);
+  c.moveTo(19.8, -1.1); c.ellipse(0, -1.1, 19.8, 2.25, 0, 0, TAU); c.fill("evenodd");
+  // Innenschatten der Ringöffnung gibt dem Loch echte Wandstärke
+  c.strokeStyle = "#13261d"; c.lineWidth = 1.35;
+  c.beginPath(); c.ellipse(0, 0.35, 19.0, 2.15, 0, Math.PI * 1.05, Math.PI * 1.95); c.stroke();
+
+  const klammerX = (v: number) => Math.max(-35, Math.min(35, v));
   const zweige = (vorne: boolean) => {
-    for (let i = 0; i < 54; i++) {
-      const a = i * TAU / 54, s = Math.sin(a), k = Math.cos(a);
-      if ((i <= 27) !== vorne) continue;
-      const x = k * (25.6 + rand(i + 21) * 1.4), y = s * 3.4;
-      const dx = -s * 7.2 + k * 6.7, dy = k * 1.8 + s * 2.8 - .6 * rand(i + 41);
+    // Plastische Reisigpolster entlang des Torus (erst Schattengrund, dann Mittelgrün, dann Lichtkamm)
+    for (let i = 0; i < 36; i++) {
+      const a = (i * TAU) / 36, s = Math.sin(a), k = Math.cos(a);
+      if ((i <= 18) !== vorne) continue;
+      const radX = 25.8 + rand(i + 9) * 1.6;
+      const bx = k * radX;
+      const by = (vorne ? 0.65 : -1.55) + s * 3.85;
+      ell(c, bx, by + 1.35, 5.2, 2.45, vorne ? "#162b21" : "#14271e");
+      ell(c, bx, by + 0.2, 4.9, 2.25, i % 2 ? "#2b513e" : "#345e49");
+      ell(c, bx - k * 0.4, by - 0.85, 3.6, 1.35, vorne ? "#4b7458" : "#3f654c");
+    }
+    for (let i = 0; i < 60; i++) {
+      const a = (i * TAU) / 60, s = Math.sin(a), k = Math.cos(a);
+      if ((i <= 30) !== vorne) continue;
+      const wulstY = (vorne ? 0.35 : -1.45) + s * 3.75 - 0.9 * Math.abs(s);
+      const x = k * (25.4 + rand(i + 21) * 1.6), y = wulstY;
+      const dx = -s * 7.4 + k * 6.8, dy = k * 1.5 + s * 2.9 - .85 * rand(i + 41);
       const laenge = Math.hypot(dx, dy), nx = -dy / laenge, ny = dx / laenge;
-      const gruen = ["#3f654c", "#52765a", "#315c46", "#617e61"][i % 4];
-      strich(c, x, y, x + dx, y + dy, gruen, .65);
+      const schatten = vorne ? "#1d392b" : "#183024";
+      const gruen = ["#3a6249", "#4e7558", "#2e5641", "#5d7f5f"][i % 4];
+      // Schattennadel darunter für echte Tiefenstaffelung
+      strich(c, klammerX(x), y + .65, klammerX(x + dx), y + dy + .65, schatten, .85);
+      strich(c, klammerX(x), y, klammerX(x + dx), y + dy, gruen, .72);
       for (let n = 0; n < 5; n++) for (const seite of [-1, 1]) {
-        const u = .05 + n * .16, f = (1.5 + rand(i * 7 + n) * 1.8) * (1 - .48 * u);
-        const bx = x + dx * u, by = y + dy * u;
-        const spitze = Math.max(-35, Math.min(35, bx + dx * .31 + nx * seite * f));
-        poly(c, [[bx, by - .3], [bx + dx * .13 + nx * seite * f * .4, by + dy * .1 + ny * seite * f * .29],
-          [spitze, by + dy * .31 + ny * seite * f * .59], [bx + .28, by + .25]],
-        seite > 0 && i % 4 === 0 ? "#839c78" : gruen);
+        const u = .05 + n * .16, f = (1.65 + rand(i * 7 + n) * 1.85) * (1 - .46 * u);
+        const bx = klammerX(x + dx * u), by = y + dy * u;
+        const spitze = klammerX(bx + dx * .31 + nx * seite * f);
+        const mittelX = klammerX(bx + dx * .13 + nx * seite * f * .4);
+        const endX = klammerX(bx + .28);
+        const lichtNadel = seite < 0 ? "#8da882" : i % 3 === 0 ? "#7d9a74" : gruen;
+        poly(c, [[bx, by - .34], [mittelX, by + dy * .1 + ny * seite * f * .29],
+          [spitze, by + dy * .31 + ny * seite * f * .59], [endX, by + .28]],
+        seite < 0 && n < 3 ? lichtNadel : seite > 0 && i % 4 === 0 ? "#254736" : gruen);
       }
     }
-    if (vorne) for (const s of [-1,1]) poly(c, [[31.4*s,-.5],[35*s,-1.1],[33.1*s,.65],[30.5*s,1.1]], "#466c51");
+    if (vorne) {
+      for (const s of [-1, 1]) {
+        poly(c, [[31.2 * s, .35], [34.8 * s, .05], [33.2 * s, 1.65], [30.4 * s, 1.85]], "#1c3629");
+        poly(c, [[31.4 * s, -.5], [35 * s, -1.1], [33.1 * s, .65], [30.5 * s, 1.1]], "#4a7155");
+        strich(c, 31.2 * s, -.55, 34.4 * s, -.95, "#8aa67f", .55);
+      }
+    }
   };
+
+  // Sortierung nach Tiefe (hinten -> vorne), damit hintere Kerzen vor den hinteren Zweigen
+  // und vordere Kerzen natürlich im dichten Vorderreisig eingebettet stehen
+  const zeichneKerze = ([x, y, h]: readonly [number, number, number]) => {
+    // Einsink-Schatten im Reisig + plastischer Messingteller mit Glanzlippe
+    ell(c, x, y + 1.15, 5.1, 1.65, "rgba(12,24,18,.55)");
+    ell(c, x, y + .55, 4.65, 1.4, P.goldtief);
+    ell(c, x, y + .18, 4.35, 1.18, P.gold);
+    ell(c, x - .45, y + .05, 3.5, .78, P.goldlicht);
+    ell(c, x, y - .05, 3.1, .68, "#5d4324");
+    // Zylindrischer Wachskörper mit Rundungsschatten, Kernlicht und Kantenreflex
+    const wachs = c.createLinearGradient(x - 3.05, 0, x + 3.05, 0);
+    wachs.addColorStop(0, "#5c2533");
+    wachs.addColorStop(.26, "#c16a63");
+    wachs.addColorStop(.48, "#d98279");
+    wachs.addColorStop(.82, "#8f3f49");
+    wachs.addColorStop(1, "#4e1e2b");
+    c.fillStyle = wachs; c.beginPath(); c.roundRect(x - 3.05, y - h, 6.1, h + .35, 1.15); c.fill();
+    // Eingesunkene Wachsmulde oben mit heller Außenkante und warmem Schmelzspiegel
+    ell(c, x, y - h + .35, 2.95, 1.02, "#ebb09d");
+    ell(c, x + .15, y - h + .45, 2.15, .68, "#9c4950");
+    // Plastische Wachsträne an der Lichtseite
+    strich(c, x - 1.55, y - h + .75, x - 1.55, y - h + 4.4, "#efb3a0", .92);
+    kreis(c, x - 1.55, y - h + 4.65, .62, "#e59f8c");
+    strich(c, x - 2.25, y - h + 1.2, x - 2.25, y - 1.1, "rgba(255,228,214,.28)", .55);
+    // Docht
+    strich(c, x, y - h + .25, x + .12, y - h - 1.65, "#33261d", .78);
+  };
+
   zweige(false);
-  for (const [x, y, h] of WOHNKERZEN) {
-    ell(c, x, y + .4, 4.45, 1.3, P.gold); ell(c, x, y, 3.8, .92, P.goldtief);
-    const wachs = c.createLinearGradient(x - 2.9, 0, x + 2.9, 0);
-    wachs.addColorStop(0, "#733646"); wachs.addColorStop(.32, "#c16a63"); wachs.addColorStop(1, "#87424a");
-    c.fillStyle = wachs; c.beginPath(); c.roundRect(x - 2.9, y - h, 5.8, h + .25, 1); c.fill();
-    ell(c, x, y - h + .3, 2.75, .9, "#df9c88");
-    strich(c, x - 1.6, y - h + .7, x - 1.6, y - h + 3.15, "#d58b7b", .77);
-    strich(c, x, y - h + .25, x + .12, y - h - 1.65, "#43362b", .75);
-  }
+  // Hintere Kerzen zuerst, dann Vorderreisig, dann vordere Kerzen mit einzelnen Decknadeln davor
+  for (const k of WOHNKERZEN) if (k[1] < 0) zeichneKerze(k);
   zweige(true);
-  // Schuppen auf den kleinen Zapfen, dazwischen Beeren mit einem einzelnen Glanzpunkt.
-  for (const [x, y, d] of [[-25.6, 1.35, -.44], [10.2, 2.7, .35]]) {
+  for (const k of WOHNKERZEN) {
+    if (k[1] < 0) continue;
+    zeichneKerze(k);
+    // Einzelne Tannenspitzen schmiegen sich von vorn über den Kerzenteller
+    for (const dx of [-3.4, -1.1, 1.5, 3.2]) {
+      strich(c, k[0] + dx * 1.15, k[1] + 1.55, k[0] + dx * .65, k[1] + .35, dx < 0 ? "#6f8f6b" : "#3d664c", .72);
+    }
+  }
+
+  // Plastische Tannenzapfen mit Schlagschatten und geschichteten Schuppen
+  for (const [x, y, d] of [[-25.6, 1.35, -.44], [10.2, 2.7, .35], [-4.2, -2.55, .22]]) {
     c.save(); c.translate(x, y); c.rotate(d);
-    ell(c, 0, 0, 2.7, 1.85, "#624534");
-    for (let n = 0; n < 5; n++) strich(c, -1.7 + (n % 3) * 1.4, -.7 + Math.floor(n / 3), -1.25 + (n % 3) * 1.4, -.3 + Math.floor(n / 3), "#bb926a", .68);
+    ell(c, .2, .65, 3.0, 2.05, "rgba(14,24,19,.52)");
+    ell(c, 0, 0, 2.85, 1.95, "#4c3325");
+    for (let n = 0; n < 6; n++) {
+      const sx = -1.75 + (n % 3) * 1.45, sy = -.75 + Math.floor(n / 3) * 1.05;
+      ell(c, sx + .2, sy + .1, .85, .58, "#7d5840");
+      strich(c, sx, sy, sx + .5, sy + .35, "#cfa47a", .68);
+    }
     c.restore();
   }
+  // Kugeln & Beeren mit Schlagschatten, Rundung und Glanzpunkt
   for (const [x, y] of [[-29.8, .5], [-14, 2.8], [4.8, -2.6], [19.1, 2.7], [30.1, .9]]) {
-    kreis(c, x - 1.15, y - .65, 1.05, "#934049"); kreis(c, x + .7, y, 1.25, "#b45550");
-    kreis(c, x + .3, y - .4, .35, "#efb593");
+    kreis(c, x - 1.05, y - .25, 1.2, "rgba(14,26,20,.48)");
+    kreis(c, x + .8, y + .42, 1.4, "rgba(14,26,20,.48)");
+    kreis(c, x - 1.15, y - .65, 1.18, "#7c2934");
+    kreis(c, x - 1.28, y - .78, .82, "#b54850");
+    kreis(c, x - 1.48, y - .98, .3, "#f7c9b0");
+    kreis(c, x + .7, y, 1.38, "#8c323c");
+    kreis(c, x + .52, y - .16, 1.02, "#cc5b54");
+    kreis(c, x + .24, y - .46, .38, "#fde0cc");
   }
+  // Kleine goldene Ziernüsse für warme Tiefe
+  for (const [x, y] of [[-21.8, 2.1], [15.6, 1.85], [-11.5, -2.4]]) {
+    kreis(c, x, y + .35, 1.05, "rgba(14,26,20,.45)");
+    kreis(c, x, y, .98, P.goldtief);
+    kreis(c, x - .22, y - .22, .62, P.goldlicht);
+  }
+
+  // Voluminöse Samtschleife vorn mit Schattenwurf, Innenfalte und Goldkante
   c.save(); c.translate(1.7, 3.2);
-  for (const s of [-1,1]) {
-    c.save(); c.scale(s,1); c.fillStyle = s < 0 ? P.bordeaux : "#a15251";
-    c.beginPath(); c.moveTo(.45,-.2); c.bezierCurveTo(3.1,-2.6,7.9,-3.25,7.7,-.55);
-    c.bezierCurveTo(7.55,2.3,4.9,2.2,.45,.55); c.fill();
-    c.fillStyle = "#69353e"; c.beginPath(); c.moveTo(1.1,.03); c.quadraticCurveTo(4.45,-.85,6.8,-.45);
-    c.quadraticCurveTo(4.8,1.13,1.1,.03); c.fill(); c.restore();
+  ell(c, 0, 1.35, 8.2, 2.1, "rgba(12,22,18,.46)");
+  poly(c, [[-.7, .65], [-2.9, 5.35], [-4.0, 4.05], [-5.35, 4.45], [-2.7, .95]], "#3b1720");
+  poly(c, [[.5, .7], [3.1, 5.05], [4.3, 3.85], [5.55, 4.05], [2.4, .65]], "#3b1720");
+  poly(c, [[-.7, .5], [-2.7, 4.9], [-3.8, 3.7], [-5.15, 4.1], [-2.6, .8]], P.bordeaux);
+  poly(c, [[.5, .55], [2.9, 4.6], [4.1, 3.45], [5.35, 3.7], [2.3, .5]], P.rot);
+  for (const s of [-1, 1]) {
+    c.save(); c.scale(s, 1);
+    c.fillStyle = "#4d1f29";
+    c.beginPath(); c.moveTo(.45, .15); c.bezierCurveTo(3.2, -2.2, 8.1, -2.85, 7.9, -.15);
+    c.bezierCurveTo(7.7, 2.65, 5.0, 2.55, .45, .85); c.fill();
+    c.fillStyle = s < 0 ? P.bordeaux : "#b45755";
+    c.beginPath(); c.moveTo(.45, -.25); c.bezierCurveTo(3.1, -2.85, 7.95, -3.45, 7.75, -.6);
+    c.bezierCurveTo(7.55, 2.25, 4.9, 2.15, .45, .5); c.fill();
+    // Helle Samtwölbung oben auf der Schlaufe
+    strich(c, 1.5, -1.35, 6.2, -1.85, s < 0 ? "#b85a58" : "#d88078", .75);
+    // Dunkle Innenfalte der Schlaufe
+    c.fillStyle = "#55222c"; c.beginPath(); c.moveTo(1.1, .03); c.quadraticCurveTo(4.45, -.95, 6.8, -.45);
+    c.quadraticCurveTo(4.8, 1.25, 1.1, .03); c.fill();
+    c.restore();
   }
-  poly(c, [[-.7,.5],[-2.7,4.9],[-3.8,3.7],[-5.15,4.1],[-2.6,.8]], P.bordeaux);
-  poly(c, [[.5,.55],[2.9,4.6],[4.1,3.45],[5.35,3.7],[2.3,.5]], P.rot);
-  strich(c, -6.7, -1.8, -1, .2, P.gold, .52); strich(c, 1, .2, 6.4, -1.65, P.gold, .52);
-  ell(c, 0, .1, 1.65, 1.45, P.goldlicht); c.restore(); c.restore();
+  strich(c, -6.7, -1.85, -1, .15, P.gold, .58); strich(c, 1, .15, 6.4, -1.7, P.gold, .58);
+  ell(c, 0, .35, 1.85, 1.55, P.goldtief);
+  ell(c, -.2, .05, 1.55, 1.3, P.goldlicht);
+  kreis(c, -.5, -.25, .45, "#fff4d2");
+  c.restore(); c.restore();
 }
 
 export function wohnzimmerKranzlicht(c: C, links: number, oben: number, breite: number, t: number, sonntage: number) {

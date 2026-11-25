@@ -27,7 +27,7 @@ import { WaschbeckenKlang } from "./audio/waschbecken";
 import {
   KAFFEE_PROBE, KAFFEE_ZEIT, KORT, KSTAND, MAX_TASSEN_UNTEN, PROBE_GRIFF, SenseoKlang, TASSE_VERGESSEN,
   drawKanneKlein, drawKuehlOffen, drawMilch, drawMuell, drawPad, drawPadDose, drawSchrankRechts, drawSenseo,
-  drawTank, drawTasse, drawTassenSpuele, neuerKaffeeStand, type KaffeeStand,
+  drawTank, drawTasse, drawTassenSpuele, kuehlGriffPos, muellGriffPos, neuerKaffeeStand, schrankGriffPos, type KaffeeStand,
 } from "./kaffee";
 import { DuschKlang } from "./audio/dusche";
 import { augenZu, duschBild, duschProbeDauer, flascheAufAblage, type DuschBild } from "./duschprogramm";
@@ -573,13 +573,26 @@ const [FK, FE, FO, FD] = FLOOR_Y;
 /** Kaffee-/Tee-Ablauf: Haltung und Hände in einem Augenblick. */
 type KPose = {
   state?: LuniState; phase?: number; hand?: Pt | null; hand2?: Pt | null; face?: 1 | -1;
+  /** Mit dem Rücken zum Spieler an Arbeitsplatte, Spüle oder Senseo stehen. */
+  back?: boolean;
+  /** Sitzversatz (z. B. -12 auf dem Küchenstuhl beim Stopfen). */
+  yOff?: number;
+  /** Leichte Oberkörpervorbeuge (0..1). */
+  lean?: number;
+  /** Ellbogenrichtung für hand / hand2 (Standard in Seitenansicht: +1 = natürlich nach unten). */
+  elbow?: 1 | -1;
+  elbow2?: 1 | -1;
+  /** In Rückenansicht hält die rechte Hand (saxHands.rear) den Gegenstand. */
+  rechtsHand?: boolean;
   /** Hand vor dem Bauch, wie beim Tragen (relativ zum Körper, auch auf der Treppe). */
   trag?: boolean;
+  /** Strähnen neben das Ohr legen (0 = vorne, 1 = hinten). */
+  hairAside?: number;
 };
 interface KSchritt {
   was: string;
   /** Hingehen (Erdgeschoss = 1, Keller = 0). */
-  x?: number; floor?: 0 | 1; face?: 1 | -1; yOff?: number;
+  x?: number; floor?: 0 | 1 | 2; face?: 1 | -1; yOff?: number;
   /** Feste Griffdauer (wird in der Probe verkürzt) oder eigene Zeit (Senseo, Wasser). */
   dauer?: number | (() => number);
   warten?: () => boolean;
@@ -595,7 +608,12 @@ type TagTermin = "weste" | "essen" | "fuettern" | "spielen" | "auslass" | "rauch
 /** Erledigte Termine im Kalender: aufwachen gehört dazu, ist aber kein Schritt der Folge. */
 type TagErledigtKey = TagTermin | "aufwachen" | "kaffee";
 /** Diese Tätigkeiten unterbricht der Tagesablauf nicht: die Pause wartet. */
-const TAG_GESCHUETZT = ["dusche", "herd", "esstisch", "bett", "tee", "kaffee", "wc"] as const;
+const TAG_GESCHUETZT = ["dusche", "herd", "esstisch", "bett", "tee", "kaffee", "tabak", "wc"] as const;
+/** Weste am Schrank: Tür weich auf, Weste nehmen, fließend überziehen, zurechtrücken, Tür weich zu. */
+const WESTE_TAKT = { auf: 0.14, nehmen: 0.28, anziehen: 0.78, zu: 0.86 } as const;
+/** Sobald das fließende Überziehen abgeschlossen ist, bleibt westeAn dauerhaft aktiv. */
+const WESTE_AN = WESTE_TAKT.anziehen;
+
 /** So oft vergisst Luni, eine Tür hinter sich zu schließen. */
 const TUER_VERGESSEN = 0.03;
 
@@ -641,7 +659,7 @@ function baseKessel(): Station {
 
 export const STATIONS: Station[] = [
   /* ---- Erdgeschoss ---- */
-  { id: "haustuer", label: "Haustür", floor: 1, x: 161, face: -1, state: "think", expr: "think", hits: [[131, 362, 60, 86]] },
+  { id: "haustuer", label: "Haustür", floor: 1, x: 161, face: -1, state: "think", expr: "neutral", hits: [[131, 362, 60, 86]] },
   { id: "garderobe", label: "Garderobe", floor: 1, x: 220, face: 1, state: "act", expr: "neutral", hits: [[196, 372, 48, 76]] },
   { id: "buecher", label: "Bücherregal", floor: 1, x: 278, face: 1, state: "act", expr: "happy", prop: "book", hits: [[258, 356, 40, 92]] },
   {
@@ -679,7 +697,7 @@ export const STATIONS: Station[] = [
   /* ---- 1. Stock ---- */
   { id: "bett", label: "Bett", floor: 2, x: 345, face: 1, state: "lie", expr: "sleep", yOff: -20, zzz: true, blanket: true, hits: [[282, 272, 114, 52]] },
   { id: "nachttisch", label: "Nachttisch", floor: 2, x: 409, face: -1, state: "act", expr: "neutral", hits: [[396, 284, 28, 40]] },
-  { id: "kleiderschrank", label: "Kleiderschrank", floor: 2, x: 458, face: 1, state: "act", expr: "think", hits: [[434, 240, 48, 84]] },
+  { id: "kleiderschrank", label: "Kleiderschrank", floor: 2, x: 458, face: 1, state: "act", expr: "neutral", hits: [[434, 240, 48, 84]] },
   { id: "brille", label: "Brille", floor: 2, x: 632, face: 1, state: "act", expr: "happy", hits: [[631, 272, 26, 24]] },
   { id: "spiegelschrank", label: "Spiegelschrank", floor: 2, x: 636, face: 1, state: "act", expr: "happy", hits: [[633, 242, 34, 34]] },
   { id: "buerste", label: "Haarbürste", floor: 2, x: 636, face: 1, state: "act", expr: "happy", hits: [[635, 252, 30, 24]] },
@@ -712,7 +730,7 @@ export const STATIONS: Station[] = [
     id: "lavalampe", label: "Lavalampe", floor: 3, x: 496, face: 1, state: "reachUp", expr: "happy",
     hits: [[492, 99, 26, 26]],
   },
-  { id: "spielregal", label: "Spieleregal", floor: 3, x: 504, face: 1, state: "act", expr: "think", hits: [[486, 126, 38, 74]] },
+  { id: "spielregal", label: "Spieleregal", floor: 3, x: 504, face: 1, state: "act", expr: "neutral", hits: [[486, 126, 38, 74]] },
   {
     id: "gol_game", label: "Spiel des Lebens", floor: 3, x: 490, face: 1, state: "act", expr: "focus",
     // Oberste Regalebene, innerhalb des Schranks – nicht im Laufweg davor.
@@ -733,11 +751,11 @@ export const STATIONS: Station[] = [
     id: "zimmertuer", label: "Schleusentür", floor: 0, x: 618, face: -1, state: "idle",
     expr: "neutral", hits: [[582, 486, 22, 88]],
   },
-  { id: "krempel", label: "Krempel-Regale", floor: 0, x: 384, face: -1, state: "think", expr: "think", hits: [[354, 466, 56, 106], [528, 480, 60, 92]] },
+  { id: "krempel", label: "Krempel-Regale", floor: 0, x: 384, face: -1, state: "think", expr: "neutral", hits: [[354, 466, 56, 106], [528, 480, 60, 92]] },
   { id: "xmaskiste", label: "Weihnachtskiste", floor: 0, x: 548, face: 1, state: "act", expr: "happy", hits: [[526, 540, 44, 32]] },
   {
     // Osterei: der Datenkoffer steht auf den Kartons im Krempelraum.
-    id: "datenkoffer", label: "Datenkoffer", floor: 0, x: 461, face: 1, state: "act", expr: "think",
+    id: "datenkoffer", label: "Datenkoffer", floor: 0, x: 461, face: 1, state: "act", expr: "neutral",
     hits: [[440, 516, 40, 34]],
   },
   { id: "leinen", label: "Jacken & Hundeleinen", floor: 0, x: 640, face: 1, state: "act", expr: "neutral", hits: [[604, 486, 66, 58]] },
@@ -1090,12 +1108,16 @@ function drawBedScene(
  * gezeichnet und behält damit ihre organische, wellige Kante unverändert.
  * Der Kopf bleibt links der Nahkante sichtbar.
  */
-function clipBedCover(c: C, links: number, oben: number) {
+function clipBedCover(c: C, links: number, oben: number, liegt = 1) {
   c.save();
   c.beginPath();
   c.rect(0, 0, W, H);
   // Rechts der Nahkante und oberhalb des Stoffes: Loch in der Zeichenfläche.
-  c.rect(links + 3, 0, 386 - links - 3, Math.max(0, oben + 2.5));
+  // Solange sie noch aufrecht sitzt (liegt < 0.6), beginnt das Loch erst rechts
+  // von ihrem Oberkörper – sonst schnitte es Rücken und Haare weg, und dahinter
+  // schiene das Fenster durch.
+  const frei = 16 * (1 - sanft(clamp(liegt / 0.6, 0, 1)));
+  c.rect(links + 3 + frei, 0, Math.max(0, 386 - links - 3 - frei), Math.max(0, oben + 2.5));
   c.clip("evenodd");
 }
 
@@ -2752,6 +2774,23 @@ function handyGriff(p: HandyPose): Pt {
     : punktMischen(schoss, tasche, weich(p.oben / HANDY_TASCHE_SICHTBAR));
 }
 
+/** Handy auf dem Nachttisch: flach abgelegt; das Display erlischt 2 s nach dem Ablegen. */
+function drawHandyAufTisch(c: C, x: number, y: number, displayAn: boolean) {
+  if (displayAn) {
+    c.save();
+    const g = c.createRadialGradient(x, y - 2.4, 0.5, x, y - 2.4, 8);
+    g.addColorStop(0, "rgba(160, 216, 250, 0.34)");
+    g.addColorStop(1, "rgba(160, 216, 250, 0)");
+    c.fillStyle = g;
+    c.fillRect(x - 9, y - 10, 18, 11);
+    c.restore();
+  }
+  rrect(c, x - 4, y - 3.4, 8, 3.4, 0.9, "#1b1e26");
+  rect(c, x - 3.3, y - 3, 6.6, 1.8, displayAn ? "#a0d8fa" : "#252c35");
+  if (displayAn) rect(c, x - 2.4, y - 2.6, 3.2, 0.6, "#eaf7ff");
+  rect(c, x - 4, y - 1, 8, 1, "#424b56");
+}
+
 function drawHandy(c: C, [x, y]: Pt, face: 1 | -1, p: HandyPose, t: number) {
   if (!p.sichtbar) return;
   const griff: Pt = [lerp(1.9, -1.4, p.ohr), -0.5];
@@ -3881,6 +3920,8 @@ export class House {
   private cellarDoorWant = 0;
   /** Rauch, der durch die offene Tür in den Krempelraum zieht (0..1) */
   private smokeSpill = 0;
+  /** Rauchdichte in den übrigen Räumen des Hauses (füllt sich nur, solange Luni mit brennender Zigarette im Raum ist). */
+  private raumRauch: Record<string, number> = {};
   /** kurzer, kräftiger Rauchstoß beim Öffnen der vollen Tür (Sekunden) */
   private smokeGust = 0;
   private gustMax = 2.8;
@@ -4049,7 +4090,15 @@ export class House {
   private abendNachlauf = 0;
   private abendStill = false;
   private bettHandy: BettHandy | null = null;
-  private handyAmKissen = false;
+  /** Wo das Handy gerade ist. Das Kopfkissen-Flag bleibt erhalten (Abendroutine). */
+  private handyOrt: "kissen" | "hand" | "nachttisch" | "tasche" = "tasche";
+  /** Nach dem Ablegen leuchtet das Display noch genau 2 Sekunden und geht dann aus. */
+  private handyDisplayT = 0;
+  private get handyAmKissen(): boolean { return this.handyOrt === "kissen"; }
+  private set handyAmKissen(v: boolean) {
+    if (v) this.handyOrt = "kissen";
+    else if (this.handyOrt === "kissen") this.handyOrt = "tasche";
+  }
   private hahnKlang = new WaschbeckenKlang();
   private duschKlang = new DuschKlang();
   /** Bett-Stein = kurze Probe; EZ-Bett-Stein und die Uhr = Echtzeit. */
@@ -4078,6 +4127,8 @@ export class House {
   /** Kommt der Befehl gerade vom Spieler (Klick, Taste)? */
   private nutzerEingabe = false;
   private kRauchBegonnen = false;
+  /** Was nach dem Ende eines Ablaufs folgt (z. B. die Weste nach der Brille). */
+  private kNachher: (() => void) | null = null;
   private kSchluckT = 0;
   private kSchluckWarte = 0;
   private kAusT = 0;
@@ -4111,6 +4162,8 @@ export class House {
   private napfT = 0;
   /** Tagessekunde, zu der sie eingeschlafen ist. */
   private einschlafSek = 0;
+  /** Kalendertag (Tage seit 1970), an dem sie eingeschlafen ist. */
+  private einschlafTagNr = 0;
   /** Tagessekunde der nächsten eigenen Rauchpause. */
   private rauchNaechste = -1;
   /** Lüften nach Rauch im Krempelraum: Restzeit der offenen Gartentür. */
@@ -4127,6 +4180,11 @@ export class House {
   private sleepPhaseT = 0;
   /** kurze Aufwachpose nach „Aufwachen“ */
   private wakeT = 0;
+  /** Langes Aufwachen am Morgen: aufsetzen, Decke schieben, auf die Bettkante, gähnen und recken, aufstehen. */
+  private bedWach: "aufsetzen" | "schieben" | "umsetzen" | "strecken" | "aufstehen" | null = null;
+  private bedWachT = 0;
+  private bedWachProbe = false;
+  private bedWachDanach: "weste" | null = null;
   /** Befehl, der erst nach der sichtbaren Aufwachpose gestartet wird */
   private wakeNext: LuniCommand | null = null;
   /* Gruselhaus, Raum 03: Sarg, Outfits, Brille, Kronleuchter */
@@ -4282,6 +4340,7 @@ export class House {
   private smoke = 0; // Rauch in der Raucherecke, 0 = klar, 1 = undurchsichtig
   private cigs = 0; // gedrehte Zigaretten auf dem Küchentisch
   private rollT = 0;
+  private rollCount = 0;
   /** Restbrennzeit der aktuellen Zigarette in Sekunden (3,5–5 Minuten) */
   private burnLeft = 0;
   private doorT = 0;
@@ -4576,6 +4635,7 @@ export class House {
       napfFutter: { ...this.napfFutter },
       tagErledigt: { ...this.tagErledigt },
       einschlafSek: this.einschlafSek,
+      einschlafTag: this.einschlafTagNr,
     };
   }
 
@@ -4609,6 +4669,12 @@ export class House {
     };
     this.tagErledigt = s.tagErledigt ?? {};
     this.einschlafSek = Number.isFinite(s.einschlafSek) ? s.einschlafSek! : 0;
+    {
+      const jetzt = this.fixedClock ?? berlinNow();
+      // Alter Stand ohne Tag: eingeschlafen ist sie vor der jetzigen Uhrzeit (gestern oder heute).
+      this.einschlafTagNr = Number.isFinite(s.einschlafTag) ? s.einschlafTag!
+        : this.tagNr(jetzt) - (this.einschlafSek > tagessekunde(jetzt) ? 1 : 0);
+    }
     this.glassesOn = s.glassesOn;
     this.glassesInSink = s.glassesInSink;
     this.abendBegonnenAm = Number.isInteger(s.abendBegonnenAm) ? s.abendBegonnenAm! : 0;
@@ -4979,8 +5045,9 @@ export class House {
       ? "pointer" : this.walkTargetAt(x, y) ? "crosshair" : "default";
   };
 
-  /** Loslassen beendet das lange Kraulen. */
+  /** Loslassen beendet das lange Kraulen und gibt in strengen Browsern Audio frei. */
   private onUp = () => {
+    sfx.ensure();
     this.flauschiHaelt = false;
   };
 
@@ -5004,10 +5071,11 @@ export class House {
     const id = typeof request === "string" ? request : request.id;
     // Ein Klick des Spielers beendet den Kaffee- bzw. Tee-Ablauf; alles kommt an seinen Platz.
     if (this.kAblauf && this.nutzerEingabe && !this.kIntern) this.kaffeeAbbrechen();
+    if (this.bedWach && this.nutzerEingabe && !this.kIntern) this.bedWachBeenden();
     if (this.senseoHaus && !this.kIntern) {
-      // Klick auf die Senseo: 1 Kaffee, 1 Zigarette. Steine: die Morgenroutine (2 Runden).
-      if (id === "kaffee") { this.kaffeeStart(1, false); return; }
-      if (id === KAFFEERUF.id || id === EZ_KAFFEERUF.id) { this.kaffeeStart(2, id === KAFFEERUF.id); return; }
+      // Klick auf die Senseo: 1 Kaffee, 1–2 Schluck trinken, dann (ohne andere Anweisung) Gartentür auf & Zigarette.
+      if (id === "kaffee") { this.kaffeeStart(1, false, true); return; }
+      if (id === KAFFEERUF.id || id === EZ_KAFFEERUF.id) { this.laufendesBeenden(); this.kaffeeStart(2, id === KAFFEERUF.id); return; }
       if (id === "tee" && this.kaffee.kanne === "schrank" && !this.kAblauf) { this.teeMitSchrank(false); return; }
     }
     if (id === EZ_BETTRUF.id) {
@@ -5016,6 +5084,11 @@ export class House {
       this.abendWunsch = "echt";
       this.abendIntern = true;
       try { this.command(BETTRUF.id); } finally { this.abendIntern = false; }
+      return;
+    }
+    if (id === AUFSTEHRUF.id || id === EZ_AUFSTEHRUF.id) {
+      if (!abendWelt(this.welt)) return;
+      this.aufstehStart(id === AUFSTEHRUF.id);
       return;
     }
     if (id === BETTRUF.id && !this.abendIntern && !this.abendAktiv) this.abendWunsch = "probe";
@@ -5030,11 +5103,6 @@ export class House {
       }
       if (this.abendBeschaeftigt()) { this.abendWartet = true; return; }
       this.abendWartet = false;
-    }
-    if (id === AUFSTEHRUF.id || id === EZ_AUFSTEHRUF.id) {
-      if (this.tagAktiv || !abendWelt(this.welt)) return;
-      this.aufstehStart(id === AUFSTEHRUF.id);
-      return;
     }
     if (id === NIKOLAUSRUF.id) {
       if (this.postWelt) this.steinWechsel(NIKOLAUSRUF);
@@ -5720,9 +5788,31 @@ export class House {
   private wcTarget: 0 | 1 | null = null;
   private smoking = false;
 
+  /** Welcher Raum des Hauses Luni gerade aufnimmt (null nur in der geschlossenen Kellertür-Blende). */
+  aktuellerRaum(): string | null {
+    if (this.cur?.step.k === "stair") {
+      if (this.cur.phase !== "climb") return null;
+      const sid = this.cur.step.s.id;
+      if (sid === "keller") return this.cur.t < 0.5 ? "krempel" : "wohnzimmer";
+      if (sid === "eg_og") return "treppenhaus_rechts";
+      return "treppenhaus_links";
+    }
+    if (this.lf === 0) return this.lx >= 590 ? "raucher" : "krempel";
+    if (this.lf === 1) return this.lx < 250 ? "flur" : this.lx < 560 ? "wohnzimmer" : this.lx < OG_X1 ? "kueche" : "treppenhaus_rechts";
+    if (this.lf === 2) return this.lx < 270 ? "treppenhaus_links" : this.lx < 490 ? "schlafzimmer" : "bad";
+    return this.lx < 530 ? "gaming" : "musik";
+  }
+
   /** Testzugriffe */
   getSmoke() {
     return this.smoke;
+  }
+  getRaumRauch(raum?: string): number {
+    const r = raum ?? this.aktuellerRaum();
+    if (!r) return 0;
+    if (r === "raucher") return this.smoke;
+    if (r === "krempel") return this.smokeSpill;
+    return this.raumRauch[r] ?? 0;
   }
   getGardenDoor() {
     return this.gardenDoor;
@@ -6157,6 +6247,11 @@ export class House {
       this.sitIdleT = 0;
     }
 
+    if (this.handyDisplayT > 0) this.handyDisplayT = Math.max(0, this.handyDisplayT - dt);
+
+    // --- Langes Aufwachen am Morgen ---
+    this.updateBedWach(dt);
+
     // --- Kaffee mit der Senseo / Tee aus dem Schrank ---
     this.updateKaffee(dt);
 
@@ -6165,9 +6260,9 @@ export class House {
       this.tagT += dt;
       if (!this.tagWach && this.tagT >= this.tagDauer) {
         this.tagWach = true;
-        this.aufwachen();
-        // Nach dem Aufstehen die Weste aus dem Kleiderschrank über den Schlafanzug.
-        this.tagStart("weste", this.tagProbe);
+        // Aufsetzen, Decke schieben, auf die Bettkante, gähnen und recken, aufstehen –
+        // danach (bedWachFertig) die Weste aus dem Kleiderschrank über den Schlafanzug.
+        this.bedWachStart(this.tagProbe, null);
       }
       return;
     }
@@ -6198,7 +6293,8 @@ export class House {
         if (amOrt) this.tagT += dt;
         if (this.tagWas === "weste" && amOrt) {
           this.westeT += dt;
-          if (!this.westeAn && this.westeT >= (this.tagProbe ? 2 : 9)) { this.westeAn = true; sfx.ui(); }
+          // Wie beim Schlafanzug: Schrank auf, Weste nehmen, über den Kopf/die Arme ziehen.
+          if (!this.westeAn && this.tagT / this.tagDauer >= WESTE_AN) { this.westeAn = true; sfx.ui(); }
         } else if (this.tagWas === "fuettern") {
           this.napfT = clamp(this.tagT / Math.max(1, this.tagDauer * .6), 0, 1);
         } else if (this.tagWas === "essen") {
@@ -6206,9 +6302,8 @@ export class House {
         }
         // Schrank bleibt offen, solange die Weste herausgenommen wird.
         if (this.tagWas === "weste") {
-          const auf = clamp(this.westeT / 2, 0, 1);
-          const zu = clamp((this.tagDauer - this.tagT) / 2, 0, 1);
-          this.wardrobeOpen = this.westeAn ? Math.min(auf, zu) : auf;
+          const q = this.tagT / this.tagDauer;
+          this.wardrobeOpen = sanft(clamp(q / WESTE_TAKT.auf, 0, 1)) * (1 - sanft(clamp((q - WESTE_TAKT.zu) / (1 - WESTE_TAKT.zu), 0, 1)));
         }
         if (this.tagT >= this.tagDauer) {
           const fertig = this.tagWas;
@@ -6289,19 +6384,32 @@ export class House {
     this.prevGardenDoor = this.gardenDoor;
     if (this.ventGust > 0) this.ventGust = Math.max(0, this.ventGust - dt);
 
-    // Rauch: füllt den Raum langsam, aber stetig. Die Zigarette qualmt auch
-    // im Aschenbecher weiter – nur langsamer. Offene Außentür lüftet.
-    const glowing = (this.holding || this.cigButt) && this.burnLeft > 0;
+    // Jeder Raum füllt sich NUR dann mit Rauch, wenn Luni mit einer brennenden
+    // Zigarette in genau diesem Raum ist – nie mehr, nachdem sie ihn verlassen hat.
+    const aktRaum = this.aktuellerRaum();
+    const brenntInHand = this.holding && this.burnLeft > 0;
+    const raucherQuelle = aktRaum === "raucher" && (brenntInHand || (this.cigButt && this.burnLeft > 0));
+    const krempelQuelle = aktRaum === "krempel" && brenntInHand;
+
     if (this.gardenDoor > 0.5) {
       this.smoke = clamp(this.smoke - dt * 0.4, 0, 1);
-    } else if (glowing) {
-      // Kräftig genug, um sichtbar zu füllen: ununterbrochenes Rauchen
-      // braucht rund 45 Sekunden bis zur vollen Dichte (mit Pausen länger);
-      // die abgelegte Zigarette qualmt mit gut der Hälfte weiter und füllt
-      // den Raum in etwa 77 Sekunden, solange sie glüht.
+    } else if (raucherQuelle) {
       this.smoke = clamp(this.smoke + dt * (this.smoking ? 0.022 : 0.013), 0, 1);
     } else {
       this.smoke = clamp(this.smoke - dt * 0.02, 0, 1);
+    }
+
+    if (krempelQuelle) {
+      this.smokeSpill = clamp(this.smokeSpill + dt * 0.013, 0, 1);
+    }
+
+    for (const r of ["flur", "wohnzimmer", "kueche", "treppenhaus_rechts", "treppenhaus_links", "schlafzimmer", "bad", "gaming", "musik"] as const) {
+      const vor = this.raumRauch[r] ?? 0;
+      if (aktRaum === r && brenntInHand) {
+        this.raumRauch[r] = clamp(vor + dt * 0.013, 0, 1);
+      } else if (vor > 0) {
+        this.raumRauch[r] = clamp(vor - dt * 0.02, 0, 1);
+      }
     }
 
     if (this.quenchPuff > 0) this.quenchPuff = Math.max(0, this.quenchPuff - dt);
@@ -6319,19 +6427,13 @@ export class House {
     // --- Schleusentür: beide Räume gleichen ihre Dichte an ---
     const doorAjar = this.cellarDoorV;
     if (doorAjar > 0.2) {
-      // Symmetrischer Austausch: dieselbe Menge verlässt einen Raum und
-      // kommt im anderen an. Dadurch kann der linke Raum den rechten nicht
-      // mehr überholen; beide nähern sich derselben Dichte.
       const diff = this.smoke - this.smokeSpill;
       const exchange = diff * 0.16 * doorAjar * dt;
       this.smoke = clamp(this.smoke - exchange, 0, 1);
       this.smokeSpill = clamp(this.smokeSpill + exchange, 0, 1);
-      // Ohne aktive Rauchquelle verflüchtigt sich der Dunst in beiden
-      // verbundenen Räumen gleich schnell. So bleibt links nichts länger
-      // stehen, während rechts bereits klar wird.
-      if (!glowing) this.smokeSpill = clamp(this.smokeSpill - dt * 0.02, 0, 1);
-    } else if (doorAjar < 0.12) {
-      // Tür zu: der Rauch im Krempelraum verzieht sich langsam
+      if (!raucherQuelle && !krempelQuelle) this.smokeSpill = clamp(this.smokeSpill - dt * 0.02, 0, 1);
+    } else if (doorAjar < 0.12 && !krempelQuelle) {
+      // Tür zu und Luni raucht nicht im Krempelraum: Dunst verzieht sich langsam
       this.smokeSpill = clamp(this.smokeSpill - dt * 0.035, 0, 1);
     }
     // Offene Außentür zieht auch den Rauch aus dem Nebenraum ab
@@ -6340,7 +6442,6 @@ export class House {
     // Voller Raum + Tür öffnet sich -> kräftiger Rauchstoß nach draußen
     if (this.prevCellarDoor < 0.4 && doorAjar >= 0.4 && this.smoke > 0.7 && this.smokeGust <= 0) {
       this.smokeGust = this.gustMax;
-      // der erste Schwung verlässt den Raum sofort sichtbar
       const firstPuff = Math.min(this.smoke, 0.06);
       this.smoke = clamp(this.smoke - firstPuff, 0, 1);
       this.smokeSpill = clamp(this.smokeSpill + firstPuff, 0, 1);
@@ -6348,17 +6449,14 @@ export class House {
     this.prevCellarDoor = doorAjar;
     if (this.smokeGust > 0) {
       this.smokeGust = Math.max(0, this.smokeGust - dt);
-      // Während des Stoßes fliegt dieselbe Menge in den Nebenraum.
       const gustMoved = Math.min(this.smoke, dt * 0.05);
       this.smoke = clamp(this.smoke - gustMoved, 0, 1);
       this.smokeSpill = clamp(this.smokeSpill + gustMoved, 0, 1);
     }
 
-    // Rauchvergiftung: im verqualmten Keller wird ihr übel. Frische Luft
-    // durch die offene Tür und ein Gesundheitstee bringen sie wieder hoch.
-    // Im Krempelraum zählt der Rauch, der dorthin gezogen ist.
-    const exposure = this.lf === 0 ? (this.lx > 590 ? this.smoke : this.smokeSpill) : 0;
-    if (this.lf === 0 && exposure > 0.5) {
+    // Rauchvergiftung: in einem verqualmten Raum wird ihr übel.
+    const exposure = aktRaum ? this.getRaumRauch(aktRaum) : 0;
+    if (exposure > 0.5) {
       this.sick = clamp(this.sick + dt * 0.075 * (exposure - 0.5) * 2, 0, 1);
     } else if (this.lf === 0 && this.gardenDoor > 0.5) {
       this.sick = clamp(this.sick - dt * 0.03, 0, 1);
@@ -6431,7 +6529,8 @@ export class House {
       this.teaT += dt;
       const t = this.teaT;
       const teeX = teeStandX(t);
-      this.walkP += Math.abs(teeX - this.lx) * 0.31;
+      const teeWeg = Math.abs(teeX - this.lx);
+      if (teeWeg > 0.001) this.advanceWalk(teeWeg * 2.06);
       this.lx = teeX;
       const getrunken = teeSchluck(t).getrunken;
       this.teaSetzeZeile(t >= 1.1 && t < 4.4, t >= 0.4 && t < TEE_ABGESETZT, teeFuellstand(t, getrunken));
@@ -6801,7 +6900,7 @@ export class House {
         if (this.packT >= 1.1) {
           this.packMove = false;
           this.packT = 0;
-          if (this.pack >= PACK_MAX) this.finishActivity(); // Schachtel voll
+          if (this.pack >= PACK_MAX || this.rollCount >= 2) this.finishActivity();
         }
         return;
       }
@@ -6809,9 +6908,10 @@ export class House {
       this.rollT += dt;
       if (this.rollT >= 1.35) {
         this.rollT -= 1.35;
+        this.rollCount += 1;
         if (this.chain.length && this.pack <= 0 && this.cigs <= 0 && this.smokeRequested) {
-          // Nur eine Zigarette für sich selbst stopfen: sie wandert direkt in
-          // die Hand und geht mit nach unten – nichts bleibt auf dem Küchentisch liegen.
+          // Nach 2 kurzen Stopfwiederholungen wandert die Zigarette direkt in die Hand.
+          if (this.rollCount < 2) return;
           this.pack = 1;
           sfx.ui();
           this.finishActivity();
@@ -6823,10 +6923,11 @@ export class House {
         if (this.cigs >= PILE_MAX && this.pack < PACK_MAX) {
           this.packMove = true;
           this.packT = 0;
+          if (this.rollCount >= 2) this.rollCount = 2;
           return;
         }
-        // Nach der ersten Runde weiterdrehen, außer es wartet ein Befehl
-        if (this.chain.length) this.finishActivity();
+        // Auf höchstens 2 Wiederholungen reduziert, statt endlos weiterzustopfen
+        if (this.chain.length || this.rollCount >= 2) this.finishActivity();
       }
       return;
     }
@@ -6953,6 +7054,9 @@ export class House {
     if (this.sitIdleT >= (this.smokeRequested ? 20 : 1.2)) {
       this.sitIdleT = 0;
       this.handy = new HandyAblauf();
+      // Die Handysitzung zeichnet ihr eigenes Handy; es kommt aus der Tasche.
+      this.handyOrt = "tasche";
+      this.dirty = true;
     }
   }
 
@@ -6967,6 +7071,7 @@ export class House {
     this.handyDanach = null;
     this.sitIdleT = 0;
     this.rollT = 0;
+    this.rollCount = 0;
     this.doorT = 0;
     this.wcT = 0;
     this.runChain();
@@ -7002,7 +7107,13 @@ export class House {
     this.path = path;
   }
 
+  /** Ist Luni gerade barfuß (im Schlafanzug oder im Handtuch/unbekleidet)? */
+  private istBarfuss(): boolean {
+    return this.outfit !== "dressed" || (!!this.pyjama && !this.gruselSarg && abendWelt(this.welt));
+  }
+
   private beginStep(step: Step) {
+    if (!this.cur) this.stepAcc = Math.max(this.stepAcc, Math.PI * 0.55);
     if (step.k === "walk" || step.dir === 1) this.cur = { step, t: 0, phase: "climb", timer: 0 };
     else this.cur = step.s.warp ? { step, t: 1, phase: "enter", timer: 0 } : { step, t: 1, phase: "climb", timer: 0 };
   }
@@ -7013,7 +7124,7 @@ export class House {
     this.stepAcc += d;
     if (this.stepAcc >= Math.PI) {
       this.stepAcc -= Math.PI;
-      sfx.step(this.lf === 0 ? 0.8 : this.lf === 1 ? 1 : 1.2);
+      sfx.step(this.lf === 0 ? 0.85 : this.lf === 1 ? 1 : 1.15, this.istBarfuss());
     }
   }
 
@@ -7206,6 +7317,7 @@ export class House {
       const move = SPEED * dt;
       const prevX = this.lx;
       if (Math.abs(dx) <= move) {
+        if (Math.abs(dx) > 0.01) this.advanceWalk(Math.abs(dx));
         this.lx = a.step.x;
         this.cur = null;
       } else {
@@ -7500,7 +7612,7 @@ export class House {
     const bettBelegt = this.welt === "normal" || this.welt === "weihnacht"
       ? (this.lf === 2 && !this.cur && !this.pending
         && this.path.length === 0 && (this.lieDown || !!this.sleepPhase || this.asleep || !!this.bettHandy ||
-          (this.bedEinstieg !== null && this.bedEinstieg !== "anfahrt")))
+          (this.bedEinstieg !== null && this.bedEinstieg !== "anfahrt") || this.bedWach !== null))
       : false;
     if (bettBelegt !== this.bettRendered) {
       this.bettRendered = bettBelegt;
@@ -7626,18 +7738,23 @@ export class House {
     // Auch der animierte Ofen steht hinter Luni, nicht vor ihrem Laufweg.
     if (this.welt === "gruesel" && GRUSELRAEUME.kueche) this.drawHexenofen(ctx);
     this.drawSargPass(ctx, false);
-  // Rauch im Keller: nur Wand und Boden verschwimmen – Regale, Lichterketten,
-  // Koffer und Luni bleiben davor sichtbar.
-  this.drawSmoke(ctx);
+  // Rauch im Keller: der graue Schleicher liegt HINTER Regalen, Kartons,
+  // Garderobe, Koffer und Luni – nie darüber. Der Raucherraum selbst bleibt
+  // wie gehabt über allem sichtbar.
+  this.drawSpillHinterMöbeln(ctx);
   this.drawKellerVorRauch(ctx);
+  this.drawRauchRaum(ctx);
   // Osterei: der Datenkoffer steht hinter Luni, nicht vor ihrem Laufweg.
   this.drawKoffer(ctx);
   // Hundenäpfe am Küchenboden und der Teller beim Essen vor dem Fernseher.
   this.drawNaepfe(ctx);
   // Senseo, offene Schranktüren, Kühlschrank, Tassen.
   this.drawKueche(ctx);
+  // Rauch in oberen Räumen (falls Luni mit brennender Zigarette dort ist/war)
+  this.drawObenRauch(ctx);
   if (this.bettRendered) drawBedFront(ctx, 282, FO, weihnacht);
   if (this.handyAmKissen) handyAufDemKissen(ctx);
+  if (this.handyOrt === "nachttisch") drawHandyAufTisch(ctx, 416, FLOOR_Y[2] - 26, this.handyDisplayT > 0);
   this.drawLuniLayered(ctx);
   // Sitzt Luni im normalen Haus / Weihnachtshaus mit dem Rücken zum Spieler am Klavier,
   // steht der Hocker vor ihrem Gesäß und ihren Beinen.
@@ -8785,6 +8902,56 @@ export class House {
   }
 
   /** Hundenäpfe am Küchenboden; beim Essen steht der Teller auf dem Couchtisch. */
+  /** Zeichnet Rauchschwaden in oberen Räumen, streng auf den jeweiligen Raum begrenzt. */
+  private drawObenRauch(c: C) {
+    const flaechen: readonly [string, number, number, number, number, boolean][] = [
+      ["flur", HL, FO + SLAB + 2, 250 - 2, FE - 2, false],
+      ["wohnzimmer", 252, FO + SLAB + 2, 560 - 2, FE - 2, false],
+      ["kueche", 562, FO + SLAB + 2, OG_X1, FE - 2, false],
+      ["treppenhaus_rechts", OG_X1 + 2, FD + SLAB + 2, HR, FE - 2, false],
+      ["treppenhaus_links", HL, 30, 270 - 2, FO - 2, true],
+      ["schlafzimmer", 272, FD + SLAB + 2, 490 - 2, FO - 2, false],
+      ["bad", 492, FD + SLAB + 2, OG_X1, FO - 2, false],
+      ["gaming", DG_X0, 30, 530 - 2, FD - 2, true],
+      ["musik", 532, 30, HR, FD - 2, true],
+    ];
+    for (const [key, x0, y0, x1, y1, dach] of flaechen) {
+      const s = this.raumRauch[key] ?? 0;
+      if (s < 0.012) continue;
+      const w = x1 - x0, h = y1 - y0;
+      c.save();
+      c.beginPath();
+      if (dach) {
+        c.moveTo(x0, y1);
+        c.lineTo(x0, atticCeil(x0) + 2);
+        if (x0 < 470 && x1 > 470) c.lineTo(470, atticCeil(470) + 2);
+        c.lineTo(x1, atticCeil(x1) + 2);
+        c.lineTo(x1, y1);
+        c.closePath();
+      } else {
+        c.rect(x0, y0, w, h);
+      }
+      c.clip();
+      for (let i = 0; i < 8; i++) {
+        const ph = (this.elapsed * 0.12 + i * 0.17) % 1;
+        const cx = x0 + 18 + ((i * 53) % Math.max(24, w - 36)) + Math.sin(this.elapsed * 0.3 + i * 1.3) * 10;
+        const cy = y1 - ph * h * 0.75 - 10;
+        const r = 28 + (i % 3) * 14;
+        const a = s * (0.36 + 0.24 * Math.sin(this.elapsed * 0.45 + i)) * (1 - ph * 0.35);
+        if (a <= 0.004) continue;
+        const g = c.createRadialGradient(cx, cy, 2, cx, cy, r);
+        g.addColorStop(0, `rgba(212,220,226,${Math.min(0.85, a)})`);
+        g.addColorStop(0.6, `rgba(204,213,220,${Math.min(0.62, a * 0.7)})`);
+        g.addColorStop(1, "rgba(204,213,220,0)");
+        c.fillStyle = g;
+        c.beginPath();
+        c.arc(cx, cy, r, 0, Math.PI * 2);
+        c.fill();
+      }
+      c.restore();
+    }
+  }
+
   private drawNaepfe(c: C) {
     if (!this.istNormalHaus) return;
     for (const hid of ["odin", "apollo"] as const) {
@@ -8812,10 +8979,17 @@ export class House {
   }
 
   /** Rauch in der Raucherecke */
-  private drawSmoke(c: C) {
-    // Rauch im Krempelraum (durch die offene Schleusentür) zuerst zeichnen,
-    // damit der Rauch im Rauchzimmer darüber liegt.
+  /** Rauch im Krempelraum: hinter allen Kellermöbeln und hinter Luni. */
+  private drawSpillHinterMöbeln(c: C) {
     this.drawSpillSmoke(c);
+  }
+
+  /** Raucherraum (rechts der Trennwand): wie bisher über allem sichtbar. */
+  private drawRauchRaum(c: C) {
+    this.drawSmokeOhneKrempelraum(c);
+  }
+
+  private drawSmokeOhneKrempelraum(c: C) {
     const s = this.smoke;
     if (s < 0.012) return;
     // nur die Raucherecke: rechts der Kellertrennwand, unter der EG-Decke
@@ -8909,10 +9083,12 @@ export class House {
     const gust = this.smokeGust / this.gustMax; // 1 -> 0
     if (spill < 0.012 && gust <= 0) return;
 
+    // Nur der Krempelraum: links die Kellerwand (CEL_X0), rechts die Trennwand (590),
+    // oben die Kellerdecke (462) und unten der Kellerboden (FK) – kein Erdreich daneben.
     const x0 = CEL_X0 + 2;
     const y0 = 462;
     const w = 590 - x0 - 2;
-    const h = 110;
+    const h = Math.max(0, FLOOR_Y[0] - 2 - y0);
 
     c.save();
     c.beginPath();
@@ -9398,6 +9574,7 @@ export class House {
     queueMicrotask(() => { this.nutzerEingabe = false; });
     const ziel = e.target as HTMLElement | null;
     if (ziel !== this.canvas && ziel?.closest?.("input, textarea, select, button, a, [contenteditable='true']")) return;
+    sfx.ensure();
     if (e.code === "KeyM") this.musikzimmer?.unlock();
     if (this.adventFullscreen) {
       // Der Weihnachtsgruß wird mit Enter, Leertaste oder Esc weggeklickt.
@@ -9680,7 +9857,7 @@ export class House {
 
   /** Dauer eines Termins: Echtzeit oder die kurze Probe über den Tag-Stein. */
   private tagDauerVon(was: TagTermin): number {
-    if (was === "aufstehen") return this.tagProbe ? 3 : 10;
+    if (was === "aufstehen") return this.tagProbe ? 2 : 5;
     if (was === "weste") return this.tagProbe ? TAGES_PROBE.weste : TAGES_DAUERN.weste;
     if (was === "essen") return this.tagProbe ? TAGES_PROBE.essen : TAGES_DAUERN.essen;
     if (was === "fuettern") return this.tagProbe ? TAGES_PROBE.fuettern : TAGES_DAUERN.fuettern;
@@ -9743,8 +9920,9 @@ export class House {
    * Kleiderschrank. Die Probe verkürzt nur die Wartezeiten, nicht die Abläufe.
    */
   private aufstehStart(probe: boolean) {
-    // Mitten in Dusche oder Bett-Einstieg lässt sich der Test nicht ansetzen.
-    if (this.shPhase || this.bedEinstieg || this.sargPhase || this.sleepPhase || this.wcInside) return;
+    // Der Test greift immer: Abend, Dusche, Kaffee oder Bett-Einstieg werden sauber beendet.
+    if (this.wcInside) return;
+    this.laufendesBeenden();
     this.chain = [];
     this.smokeRequested = false;
     this.pending = null;
@@ -9774,7 +9952,7 @@ export class House {
     this.glassesRest = { x: gx, y: gy, rot: .1, scale: .45 };
     this.bedPyjama = pyjamaStoff(this.pyjama, this.fixedClock ?? this.clock ?? berlinNow(), this.welt);
     this.asleep = true;
-    if (this.clock) this.einschlafSek = tagessekunde(this.clock);
+    this.einschlafMerken();
     // Routine starten: erst kurz liegen, dann aufwachen.
     this.tagAktiv = true;
     this.tagProbe = probe;
@@ -9798,7 +9976,7 @@ export class House {
 
   /** Ist Luni frei für einen Termin? Dusche, Herd, Essen und Bett sind geschützt. */
   private tagesFrei(): boolean {
-    if (this.kAblauf) return false;
+    if (this.kAblauf || this.bedWach) return false;
     if (this.asleep || this.sleepPhase || this.lieDown || this.sargPhase || this.wcInside) return false;
     if (this.shPhase || this.abendAktiv || this.abendWartet) return false;
     if (this.cur || this.pending || this.bedEinstieg) return false;
@@ -9807,6 +9985,48 @@ export class House {
     if (act.id === "sofa") return !this.tagEssen;
     if (act.id === "gaming") return true;
     return !(TAG_GESCHUETZT as readonly string[]).includes(act.id);
+  }
+
+  /** Kalendertag als fortlaufende Nummer (Tage seit 1970). */
+  private tagNr(d: { year: number; month: number; day: number }): number {
+    return Math.floor(Date.UTC(d.year, d.month - 1, d.day) / 86400000);
+  }
+
+  private einschlafMerken() {
+    if (!this.clock) return;
+    this.einschlafSek = tagessekunde(this.clock);
+    this.einschlafTagNr = this.tagNr(this.clock);
+  }
+
+  /**
+   * Alles, was Luni gerade tut, sauber beenden – damit ein Stein (Test) immer
+   * greift, auch mitten im Abend, unter der Dusche oder beim Kaffee.
+   */
+  private laufendesBeenden() {
+    if (this.kAblauf) this.kaffeeAbbrechen();
+    if (this.tagAktiv) this.tagBeenden();
+    this.bedWach = null; this.bedWachT = 0; this.bedWachDanach = null;
+    this.abendAktiv = false; this.abendProbe = false; this.abendWartet = false; this.abendWunsch = null;
+    this.abendNachlauf = 0; this.bettHandy = null;
+    if (this.shPhase) this.cancelShower();
+    this.shPhase = null; this.shT = 0;
+    this.bedEinstieg = null; this.bedEinstiegT = 0; this.bedPhase = null;
+    this.lieDown = false; this.sleepPhase = null; this.sleepPhaseT = 0; this.wakeT = 0;
+    this.water = false; this.curtain = 0; this.wardrobeOpen = 0; this.cabinetOpen = 0;
+    this.glassesFly = null; this.wet = 0; this.towelOnRod = false;
+    // Auch alles andere, was sie gerade tut: Musik, Spiele, Fernseher, Zigarette, Tür.
+    if (this.saxPhase) this.stopSax();
+    if (this.plattenPhase) this.stopPlatten();
+    if (this.singPhase) this.stopSing();
+    if (this.golPhase) { this.golPhase = null; if (!this.golInserted) this.golOnShelf = true; }
+    if (this.flauschiPhase) { this.flauschiPhase = null; if (!this.flauschiInserted) this.flauschiOnShelf = true; }
+    this.tvZoom = null; this.adventFullscreen = false;
+    this.standing = false; this.ashMove = null; this.lightT = null; this.holding = false; this.smoking = false;
+    this.cigButt = false; this.burnLeft = 0; this.smokeRequested = false;
+    this.packMove = false; this.takeMove = false; this.handy = null; this.handyDanach = null;
+    this.doorHand = null; this.doorHandT = -1; this.doorHandOpen = null; this.doorIntent = null;
+    this.petHund = null; this.petT = 0; this.kerzenLauft = false; this.lavaLauft = false;
+    this.pending = null; this.target = null; this.activity = null; this.cur = null; this.path = []; this.chain = [];
   }
 
   /** Termine, die die Uhr auslöst – einmal pro Kalendertag. */
@@ -9822,11 +10042,14 @@ export class House {
     const plan = this.tagPlan;
     const sek = tagessekunde(this.clock);
     if (this.asleep) {
+      // Läuft gerade eine Probe (Aufsteh-Stein), bestimmt die Probe das Aufwachen.
+      if (this.tagAktiv) return;
       // Aufwachen: sechs bis acht Stunden nach dem Einschlafen, meist 6:00 bis 7:30.
-      if (this.tagErledigt.aufwachen !== tag && sek >= aufwachSekunde(this.einschlafSek, plan)) {
+      // Gerechnet wird über Mitternacht hinweg ab dem Einschlaftag.
+      const seit = (this.tagNr(this.clock) - this.einschlafTagNr) * 86400 + sek;
+      if (this.tagErledigt.aufwachen !== tag && seit >= aufwachSekunde(this.einschlafSek, plan)) {
         this.tagErledigt.aufwachen = tag;
-        this.aufwachen();
-        this.tagStart("weste", false);
+        this.bedWachStart(false, "weste");
       }
       return;
     }
@@ -9891,20 +10114,27 @@ export class House {
   }
 
   /** Startet Kaffee (runden = 2 morgens und über die Steine, 1 per Klick auf die Maschine). */
-  private kaffeeStart(runden: number, probe: boolean) {
+  private kaffeeStart(runden: number, probe: boolean, perKlick = false) {
     if (!this.senseoHaus || this.kAblauf) return;
     if (this.asleep) this.aufwachen();
     const schritte: KSchritt[] = [];
-    // Keine Zigaretten mehr: erst zwei stopfen, damit der Kaffee nicht kalt wird.
-    if (this.pack <= 0 && this.cigs <= 0) schritte.push(...this.kStopfen());
-    for (let i = 0; i < runden; i++) schritte.push(...this.kaffeeRunde());
+    // Zigaretten auf Vorrat: erst wenn Schachtel und Tischstapel leer sind,
+    // wird neu gestopft – so viele, wie für die Runden fehlen.
+    const fehlt = Math.max(0, runden - (this.pack + this.cigs));
+    if (fehlt > 0) schritte.push(...this.kStopfen(fehlt));
+    for (let i = 0; i < runden; i++) schritte.push(...this.kaffeeRunde(i, perKlick));
     this.kAblaufStarten(schritte, probe);
   }
 
   private kAblaufStarten(schritte: KSchritt[], probe: boolean) {
     this.chain = [];
     this.smokeRequested = false;
+    // Ein laufender Weg oder eine Tätigkeit wird sauber abgebrochen.
     this.pending = null;
+    this.target = null;
+    this.activity = null;
+    this.cur = null;
+    this.path = [];
     this.kAblauf = { schritte, i: 0, t: 0, geht: false, angekommen: false, gestartet: false, probe };
   }
 
@@ -9919,6 +10149,8 @@ export class House {
     if (k.kanne === "hand") k.kanne = "schrank";
     if (this.target?.id === "kweg") this.target = null;
     if (this.activity?.id === "kweg") this.activity = null;
+    if (this.glassesInHand && this.bedPhase !== "toss") { this.glassesInHand = false; this.glassesOn = true; }
+    this.kNachher = null;
     this.kAblauf = null;
     this.kPose = null;
     this.kSchluckT = 0;
@@ -9940,9 +10172,10 @@ export class House {
   private updateKaffee(dt: number) {
     const k = this.kaffee;
     this.kPose = null;
-    // Senseo: aufheizen bis Klick und rote Lampe, brühen, nach 30 min von selbst aus.
+    // Senseo: aufheizen bis Klick und rote Lampe (~60 s kalt, ~30 s wenn vor kurzem noch warm), brühen 30 s.
     if (k.an && !k.bereit) {
-      k.heiz = Math.min(1, k.heiz + dt / this.kZeit("aufheizen"));
+      const heizDauer = this.kZeit("aufheizen") * (this.kAusT > 0 && this.kAusT < 900 ? 0.5 : 1);
+      k.heiz = Math.min(1, k.heiz + dt / heizDauer);
       if (k.heiz >= 1) { k.bereit = true; sfx.tick(); }
     }
     if (k.laeuft) {
@@ -9976,7 +10209,15 @@ export class House {
     if (a.probe && this.holding && this.burnLeft > 14) { this.burnLeft = 14; this.burnTotal = 14; }
     let s = a.schritte[a.i];
     while (s && s.wenn && !a.gestartet && !a.geht && !a.angekommen && !s.wenn()) { this.kWeiter(); s = a.schritte[a.i]; }
-    if (!s) { this.kAblauf = null; this.speichern(); return; }
+    if (!s) {
+      this.kAblauf = null;
+      if (this.activity?.id === "kweg") this.activity = null;
+      const nachher = this.kNachher;
+      this.kNachher = null;
+      this.speichern();
+      nachher?.();
+      return;
+    }
     if (s.x !== undefined && !a.angekommen) {
       if (!a.geht) {
         a.geht = true;
@@ -10005,153 +10246,320 @@ export class House {
 
   /** Hält Luni gerade etwas in der Hand (Trage-Haltung beim Gehen)? */
   private kTraegt(): boolean {
+    if (this.handyOrt === "hand") return true;
     const k = this.kaffee;
     if (!k) return false;
     return k.tank === "hand" || k.padHand !== null || k.dose === "hand" || k.tasse === "hand" || k.milch === "hand" || k.kanne === "hand" || k.tragUnten > 0;
   }
 
-  /** Zwei Zigaretten am Küchentisch stopfen. */
-  private kStopfen(): KSchritt[] {
+  /** Zigaretten am Küchentisch mit genau 2 Stopfwiederholungen (2 × 1,35 s) stopfen. */
+  private kStopfen(anzahl = 2): KSchritt[] {
     return [
       { was: "zumTisch", x: KSTAND.tisch, face: 1, yOff: -12 },
-      { was: "stopfen", dauer: () => 2 * this.kZeit("stopfen"), pose: () => ({ state: "roll" }),
-        ende: () => { this.pack = Math.min(PACK_MAX, this.pack + 2); sfx.ui(); } },
+      { was: "stopfen",
+        dauer: () => KAFFEE_ZEIT.stopfen,
+        pose: () => ({ state: "roll", yOff: -12, face: 1 }),
+        ende: () => { this.pack = Math.min(PACK_MAX, this.pack + Math.max(1, anzahl)); sfx.ui(); } },
     ];
   }
 
   /** Eine Runde: Senseo befüllen, Pad wechseln, brühen, Milch, mit der Tasse rauchen gehen. */
-  private kaffeeRunde(): KSchritt[] {
+  private kaffeeRunde(runde = 0, perKlick = false): KSchritt[] {
     const F = FLOOR_Y[1], O = KORT(F), S = LUNI_SCALE, k = this.kaffee;
     const weich = (v: number) => { const q = clamp(v, 0, 1); return q * q * (3 - 2 * q); };
     const weg = (a: Pt, b: Pt, v: number): Pt => { const e = weich(v); return [lerp(a[0], b[0], e), lerp(a[1], b[1], e)]; };
     const vorn = (x: number, face: 1 | -1 = 1): Pt => [x + face * 7 * S, F - 31 * S];
-    /** Hin, kurz halten, zurück (Mitte bei p = .5). */
     const hinUndHer = (ruhe: Pt, ziel: Pt, p: number): Pt => (p < 0.5 ? weg(ruhe, ziel, p / 0.42) : weg(ziel, ruhe, (p - 0.58) / 0.42));
-    const stehen = (hand: Pt | null, face: 1 | -1 = 1, hand2: Pt | null = null): KPose => ({ state: "idle", hand, hand2, face });
-    const bueck = (b: number, hand: Pt | null, face: 1 | -1 = 1): KPose => ({ state: "bend", phase: b, hand, face });
-    const M = KSTAND.maschine, SR = KSTAND.schrank, H = KSTAND.hahn, MU = KSTAND.muell, KU = KSTAND.kuehl;
-    const tankHand: Pt = [O.tankUnterHahn[0], F - 51];
+    // Seitenansicht mit natürlichem Ellbogen nach unten (+1)
+    const stehen = (hand: Pt | null, face: 1 | -1 = 1, hand2: Pt | null = null): KPose => ({
+      state: "idle", hand, hand2, face, elbow: 1, elbow2: 1,
+    });
+    // Rücken zum Spieler an Arbeitsplatte, Spüle und Senseo: linke Hand (hand) arbeitet links, rechte Hand (hand2) rechts!
+    const ruecken = (standX: number, links: Pt | null, rechts: Pt | null, rechtsHand = false): KPose => {
+      const rL: Pt = [standX - 8 * S, F - 21 * S];
+      const rR: Pt = [standX + 8 * S, F - 21 * S];
+      const l = links ?? rL, r = rechts ?? rR;
+      const sy = F - 34 * S;
+      return {
+        state: "idle", back: true, face: 1,
+        hand: l, hand2: r,
+        elbow: l[1] < sy ? -1 : 1,
+        elbow2: r[1] < sy ? 1 : -1,
+        rechtsHand,
+      };
+    };
+    const bueck = (b: number, hand: Pt | null, face: 1 | -1 = 1): KPose => ({
+      state: "bend", phase: clamp(b * 0.68, 0, 0.32), hand, face, elbow: 1, elbow2: 1, hairAside: 1,
+    });
+    const MB = KSTAND.maschine, MS = KSTAND.maschineSeite, SR = KSTAND.schrank, H = KSTAND.hahn, MU = KSTAND.muell, KU = KSTAND.kuehl;
+    const tankAmHahn: Pt = [O.tankUnterHahn[0], F - 50];
+    const ruheLinks = (x: number): Pt => [x - 7.5 * S, F - 24 * S];
+    const ruheRechts = (x: number): Pt => [x + 7.5 * S, F - 24 * S];
     let tankStart = 0;
     const tasseKeller: Pt = [SIDE_X + 6, SIDE_TOP];
+
+    const tankNoetig = () => runde === 0 || k.tankWasser < 0.4;
+    const kuecheSchlucke = 1 + (Math.random() < 0.5 ? 1 : 0);
+    const mundPkt: Pt = [640 + 4.2 * S, F - 42 * S];
+    const kappeTasse: Pt = [640 + 7 * S, F - 31 * S];
+    let gartenTuerGezielt = false;
+
     return [
-      // 1) Wassertank holen, am Hahn mit 1,4 l füllen, zurück in die Senseo
-      { was: "zurMaschine", x: M, face: 1 },
-      { was: "tankNehmen", dauer: 1.8, pose: (p) => stehen(p < 0.5 ? weg(vorn(M), O.tankGriff, p / 0.45) : weg(O.tankGriff, [M + 9, F - 40], (p - 0.5) / 0.5)),
+      // 1) Wassertank mit rechter Hand nehmen, am Hahn (Rücken zum Spieler) mit 1,4 l füllen, zurück in die Senseo
+      // (beim 2. Kaffee sind noch > 1,2 l im Tank – kein unnötiges Neufüllen!)
+      { was: "zurMaschine", x: MS, face: 1, wenn: tankNoetig },
+      { was: "tankNehmen", dauer: 1.6, wenn: tankNoetig,
+        pose: (p) => stehen(p < 0.5 ? weg(vorn(MS), O.tankGriff, p / 0.45) : weg(O.tankGriff, [MS + 9, F - 42], (p - 0.5) / 0.5)),
         tick: (p) => { if (p >= 0.5 && k.tank === "maschine") { k.tank = "hand"; sfx.ui(); } } },
-      { was: "zumHahn", x: H, face: 1 },
-      { was: "hahnAuf", dauer: 1.1, pose: (p) => stehen(weg([H + 8, F - 40], tankHand, p / 0.5), 1, hinUndHer([H + 5, F - 30], [634, F - 47], p)),
-        tick: (p) => { if (p >= 0.6) k.hahnKueche = true; } },
-      { was: "fuellen", dauer: () => this.kZeit("fuellen"), pose: () => stehen(tankHand),
-        start: () => { tankStart = k.tankWasser; }, tick: (p) => { k.tankWasser = lerp(tankStart, 1, p); } },
-      { was: "hahnZu", dauer: 0.9, pose: (p) => stehen(tankHand, 1, hinUndHer([H + 5, F - 30], [634, F - 47], p)),
+      { was: "zumHahn", x: H, face: 1, wenn: tankNoetig },
+      { was: "hahnAuf", dauer: 1.1, wenn: tankNoetig,
+        pose: (p) => ruecken(H, hinUndHer(ruheLinks(H), O.hahn, p), weg([H + 8, F - 42], tankAmHahn, p / 0.5), true),
+        tick: (p) => { if (p >= 0.55) k.hahnKueche = true; } },
+      { was: "fuellen", dauer: () => this.kZeit("fuellen"), wenn: tankNoetig,
+        pose: () => ruecken(H, null, tankAmHahn, true),
+        start: () => { tankStart = k.tankWasser; },
+        tick: (p) => { k.tankWasser = lerp(tankStart, 1, p); } },
+      { was: "hahnZu", dauer: 0.9, wenn: tankNoetig,
+        pose: (p) => ruecken(H, hinUndHer(ruheLinks(H), O.hahn, p), tankAmHahn, true),
         tick: (p) => { if (p >= 0.5) k.hahnKueche = false; } },
-      { was: "zurueckZurMaschine", x: M, face: 1 },
-      { was: "tankEinsetzen", dauer: 1.6, pose: (p) => stehen(p < 0.6 ? weg([M + 9, F - 40], O.tankGriff, p / 0.55) : weg(O.tankGriff, vorn(M), (p - 0.6) / 0.4)),
+      { was: "zurueckZurMaschine", x: MS, face: 1, wenn: tankNoetig },
+      { was: "tankEinsetzen", dauer: 1.5, wenn: tankNoetig,
+        pose: (p) => stehen(p < 0.6 ? weg([MS + 9, F - 42], O.tankGriff, p / 0.55) : weg(O.tankGriff, vorn(MS), (p - 0.6) / 0.4)),
         tick: (p) => { if (p >= 0.6 && k.tank === "hand") { k.tank = "maschine"; sfx.tick(); } } },
-      // 2) Rechten Unterschrank öffnen (Schritt zur Seite), Pad-Dose auf die Arbeitsfläche
+
+      // 2) Rechten Unterschrank seitlich öffnen (Tür gleitet flüssig auf), Pad-Dose auf die Arbeitsfläche stellen
       { was: "zumSchrank", x: SR, face: 1 },
-      { was: "schrankAuf", dauer: 1.3, pose: (p) => bueck(0.42 * weich(p / 0.3), p < 0.3 ? weg(vorn(SR), O.schrankGriff, p / 0.3) : p < 0.85 ? weg(O.schrankGriff, [676, F - 24], (p - 0.3) / 0.55) : weg([676, F - 24], vorn(SR), (p - 0.85) / 0.15)),
-        tick: (p) => { k.schrank = weich((p - 0.3) / 0.55); } },
-      { was: "doseNehmen", dauer: 1.6, pose: (p) => bueck(p < 0.7 ? 0.48 : 0.48 * (1 - weich((p - 0.7) / 0.3)), p < 0.5 ? weg(vorn(SR), O.schrankDose, p / 0.45) : weg(O.schrankDose, [O.doseTheke[0], F - 50], (p - 0.5) / 0.5)),
+      { was: "schrankAuf", dauer: 1.2,
+        pose: (p) => {
+          const o = weich(clamp((p - 0.2) / 0.65, 0, 1));
+          const g = schrankGriffPos(F, o);
+          return bueck(0.38 * Math.sin(Math.PI * clamp(p, 0, 1)), p < 0.2 ? weg(vorn(SR), g, p / 0.2) : p < 0.85 ? g : weg(g, vorn(SR), (p - 0.85) / 0.15));
+        },
+        tick: (p) => { k.schrank = weich(clamp((p - 0.2) / 0.65, 0, 1)); } },
+      { was: "doseNehmen", dauer: 1.5,
+        pose: (p) => bueck(p < 0.7 ? 0.44 : 0.44 * (1 - weich((p - 0.7) / 0.3)), p < 0.5 ? weg(vorn(SR), O.schrankDose, p / 0.45) : weg(O.schrankDose, [SR + 9, F - 44], (p - 0.5) / 0.5)),
         tick: (p) => { if (p >= 0.5 && k.dose === "zuhause") k.dose = "hand"; } },
-      { was: "doseAbstellen", dauer: 0.9, pose: (p) => stehen(p < 0.6 ? [O.doseTheke[0], F - 49] : weg([O.doseTheke[0], F - 49], vorn(SR), (p - 0.6) / 0.4)),
+
+      // An der Arbeitsplatte mit dem Rücken zum Spieler: links die Pad-Dose, rechts die Senseo
+      { was: "zurMaschine2", x: MB, face: 1 },
+      { was: "doseAbstellen", dauer: 0.9,
+        pose: (p) => ruecken(MB, p < 0.55 ? weg(ruheLinks(MB), [O.doseTheke[0], F - 46], p / 0.5) : weg([O.doseTheke[0], F - 46], ruheLinks(MB), (p - 0.55) / 0.45), null, false),
         tick: (p) => { if (p >= 0.5 && k.dose === "hand") { k.dose = "theke"; sfx.tick(); } } },
-      { was: "doseAuf", dauer: 0.9, pose: (p) => stehen(hinUndHer(vorn(SR), [O.doseTheke[0], F - 50], p)), tick: (p) => { if (p >= 0.5) k.doseOffen = true; } },
-      // 3) Deckel auf, altes Pad heraus und in den Mülleimer unter der Spüle
-      { was: "zurMaschine2", x: M, face: 1 },
-      { was: "deckelAuf", dauer: 1.2, pose: (p) => stehen(p < 0.35 ? weg(vorn(M), O.hebel, p / 0.35) : p < 0.8 ? weg(O.hebel, [O.hebel[0] - 3, F - 77], (p - 0.35) / 0.45) : weg([O.hebel[0] - 3, F - 77], vorn(M), (p - 0.8) / 0.2)),
-        tick: (p) => { k.deckel = weich((p - 0.35) / 0.45); } },
-      { was: "padRaus", dauer: 1.3, pose: (p) => stehen(hinUndHer(vorn(M), [O.padSchacht[0], F - 66], p)),
+      { was: "doseAuf", dauer: 0.85,
+        pose: (p) => ruecken(MB, hinUndHer(ruheLinks(MB), [O.doseTheke[0], F - 48], p), null),
+        tick: (p) => { if (p >= 0.5) k.doseOffen = true; } },
+
+      // 3) Deckel der Senseo mit rechts öffnen, altes Pad herausnehmen und unter der Spüle in den Müll werfen
+      { was: "deckelAuf", dauer: 1.1,
+        pose: (p) => {
+          const o = weich(clamp((p - 0.25) / 0.55, 0, 1));
+          const ziel: Pt = [O.hebel[0] - o * 2, O.hebel[1] - o * 4];
+          return ruecken(MB, null, p < 0.25 ? weg(ruheRechts(MB), O.hebel, p / 0.25) : p < 0.8 ? ziel : weg(ziel, ruheRechts(MB), (p - 0.8) / 0.2));
+        },
+        tick: (p) => { k.deckel = weich(clamp((p - 0.25) / 0.55, 0, 1)); } },
+      { was: "padRaus", dauer: 1.1,
+        pose: (p) => ruecken(MB, null, hinUndHer(ruheRechts(MB), O.padSchacht, p), true),
         tick: (p) => { if (p >= 0.5 && k.padAlt) { k.padAlt = false; k.padHand = "alt"; } } },
       { was: "zumMuell", x: MU, face: -1 },
-      { was: "muellAuf", dauer: 1.2, pose: (p) => bueck(0.42 * weich(p / 0.3), p < 0.3 ? weg(vorn(MU, -1), O.muellGriff, p / 0.3) : weg(O.muellGriff, [628, F - 24], (p - 0.3) / 0.6), -1),
-        tick: (p) => { k.muell = weich((p - 0.3) / 0.6); } },
-      { was: "padWeg", dauer: 1.0, pose: (p) => bueck(0.5, hinUndHer([630, F - 26], O.muellEimer, p), -1),
+      { was: "muellAuf", dauer: 1.1,
+        pose: (p) => {
+          const o = weich(clamp((p - 0.2) / 0.65, 0, 1));
+          const g = muellGriffPos(F, o);
+          return bueck(0.38 * weich(p / 0.3), p < 0.2 ? weg(vorn(MU, -1), g, p / 0.2) : g, -1);
+        },
+        tick: (p) => { k.muell = weich(clamp((p - 0.2) / 0.65, 0, 1)); } },
+      { was: "padWeg", dauer: 0.95,
+        pose: (p) => bueck(0.46, hinUndHer([MU - 9, F - 28], O.muellEimer, p), -1),
         tick: (p) => { if (p >= 0.5 && k.padHand) { k.padHand = null; sfx.tick(); } } },
-      { was: "muellZu", dauer: 0.9, pose: (p) => bueck(0.42 * (1 - weich((p - 0.6) / 0.4)), weg([628, F - 24], O.muellGriff, p / 0.6), -1),
-        tick: (p) => { k.muell = 1 - weich(p / 0.6); } },
-      // 4) Neues Pad aus der Dose einlegen, Deckel zu (Klick), Dose zu und zurück
-      { was: "zurMaschine3", x: M, face: 1 },
-      { was: "padNehmen", dauer: 1.1, pose: (p) => stehen(hinUndHer(vorn(M), [O.doseTheke[0], F - 50], p)),
+      { was: "muellZu", dauer: 0.95,
+        pose: (p) => {
+          const o = 1 - weich(clamp(p / 0.75, 0, 1));
+          const g = muellGriffPos(F, o);
+          return bueck(0.38 * (1 - weich((p - 0.65) / 0.35)), p < 0.75 ? g : weg(g, vorn(MU, -1), (p - 0.75) / 0.25), -1);
+        },
+        tick: (p) => { k.muell = 1 - weich(clamp(p / 0.75, 0, 1)); },
+        ende: () => { k.muell = 0; } },
+
+      // 4) Frisches Pad an der Arbeitsplatte (Rücken zum Spieler) einlegen, Deckel zu, Dose schließen
+      { was: "zurMaschine3", x: MB, face: 1 },
+      { was: "padNehmen", dauer: 1.0,
+        pose: (p) => ruecken(MB, hinUndHer(ruheLinks(MB), [O.doseTheke[0], F - 48], p), null, false),
         tick: (p) => { if (p >= 0.5 && !k.padHand) k.padHand = "neu"; } },
-      { was: "padEinlegen", dauer: 1.1, pose: (p) => stehen(hinUndHer(vorn(M), [O.padSchacht[0], F - 66], p)),
+      { was: "padEinlegen", dauer: 1.0,
+        pose: (p) => ruecken(MB, null, hinUndHer(ruheRechts(MB), O.padSchacht, p), true),
         tick: (p) => { if (p >= 0.55 && k.padHand === "neu") { k.padHand = null; k.padNeu = true; } } },
-      { was: "deckelZu", dauer: 1.0, pose: (p) => stehen(p < 0.25 ? weg(vorn(M), [O.hebel[0] - 3, F - 77], p / 0.25) : p < 0.7 ? weg([O.hebel[0] - 3, F - 77], O.hebel, (p - 0.25) / 0.45) : weg(O.hebel, vorn(M), (p - 0.7) / 0.3)),
-        tick: (p) => { k.deckel = 1 - weich((p - 0.25) / 0.45); }, ende: () => sfx.tick() },
-      { was: "doseZu", dauer: 0.8, pose: (p) => stehen(hinUndHer(vorn(M), [O.doseTheke[0], F - 50], p)), tick: (p) => { if (p >= 0.5) k.doseOffen = false; } },
+      { was: "deckelZu", dauer: 0.95,
+        pose: (p) => {
+          const o = 1 - weich(clamp((p - 0.2) / 0.55, 0, 1));
+          const ziel: Pt = [O.hebel[0] - o * 2, O.hebel[1] - o * 4];
+          return ruecken(MB, null, p < 0.2 ? weg(ruheRechts(MB), ziel, p / 0.2) : p < 0.75 ? ziel : weg(O.hebel, ruheRechts(MB), (p - 0.75) / 0.25));
+        },
+        tick: (p) => { k.deckel = 1 - weich(clamp((p - 0.2) / 0.55, 0, 1)); },
+        ende: () => { k.deckel = 0; sfx.tick(); } },
+      { was: "doseZu", dauer: 0.8,
+        pose: (p) => ruecken(MB, hinUndHer(ruheLinks(MB), [O.doseTheke[0], F - 48], p), null),
+        tick: (p) => { if (p >= 0.5) k.doseOffen = false; } },
+
+      // 5) Dose in den rechten Unterschrank zurück, Tasse holen, unter den Auslauf, Power drücken, Schrank schließen
       { was: "zumSchrank2", x: SR, face: 1 },
-      { was: "doseZurueck", dauer: 1.8, pose: (p) => bueck(0.48 * weich((p - 0.3) / 0.3) * (1 - weich((p - 0.85) / 0.15)), p < 0.3 ? weg(vorn(SR), [O.doseTheke[0], F - 50], p / 0.3) : p < 0.75 ? weg([O.doseTheke[0], F - 50], O.schrankDose, (p - 0.3) / 0.45) : weg(O.schrankDose, vorn(SR), (p - 0.75) / 0.25)),
+      { was: "doseZurueck", dauer: 1.6,
+        pose: (p) => bueck(
+          0.44 * weich((p - 0.3) / 0.3) * (1 - weich((p - 0.85) / 0.15)),
+          p < 0.3 ? weg(vorn(SR), [O.doseTheke[0], F - 46], p / 0.3)
+            : p < 0.75 ? weg([O.doseTheke[0], F - 46], O.schrankDose, (p - 0.3) / 0.45)
+            : weg(O.schrankDose, vorn(SR), (p - 0.75) / 0.25),
+        ),
         tick: (p) => { if (p >= 0.3 && p < 0.75 && k.dose === "theke") k.dose = "hand"; if (p >= 0.75 && k.dose === "hand") k.dose = "zuhause"; } },
-      // 5) Tasse aus dem Schrank unter den Auslauf, Power drücken, Schrank zu während des Aufheizens
-      { was: "tasseHolen", dauer: 1.6, pose: (p) => bueck(p < 0.7 ? 0.5 : 0.5 * (1 - weich((p - 0.7) / 0.3)), p < 0.5 ? weg(vorn(SR), O.schrankTasse, p / 0.45) : weg(O.schrankTasse, vorn(SR), (p - 0.5) / 0.5)),
+      { was: "tasseHolen", dauer: 1.4,
+        pose: (p) => bueck(p < 0.7 ? 0.46 : 0.46 * (1 - weich((p - 0.7) / 0.3)), p < 0.5 ? weg(vorn(SR), O.schrankTasse, p / 0.45) : weg(O.schrankTasse, vorn(SR), (p - 0.5) / 0.5)),
         tick: (p) => { if (p >= 0.5 && k.tasse === "keine") { k.tasse = "hand"; k.tasseFuell = 0; k.tasseMilch = false; } } },
-      { was: "zurMaschine4", x: M, face: 1 },
-      { was: "tasseUnter", dauer: 1.2, pose: (p) => stehen(p < 0.6 ? weg(vorn(M), [O.tasseAuslauf[0], F - 47], p / 0.55) : weg([O.tasseAuslauf[0], F - 47], vorn(M), (p - 0.6) / 0.4)),
-        tick: (p) => { if (p >= 0.6 && k.tasse === "hand") { k.tasse = "maschine"; sfx.tick(); } } },
-      { was: "power", dauer: 0.9, pose: (p) => stehen(hinUndHer(vorn(M), O.knopfPower, p)),
+      { was: "zurMaschine4", x: MB, face: 1 },
+      { was: "tasseUnter", dauer: 1.05,
+        pose: (p) => ruecken(MB, null, p < 0.58 ? weg(ruheRechts(MB), [O.tasseAuslauf[0], F - 46], p / 0.55) : weg([O.tasseAuslauf[0], F - 46], ruheRechts(MB), (p - 0.58) / 0.42), true),
+        tick: (p) => { if (p >= 0.58 && k.tasse === "hand") { k.tasse = "maschine"; sfx.tick(); } } },
+      { was: "power", dauer: 0.85,
+        pose: (p) => ruecken(MB, null, hinUndHer(ruheRechts(MB), O.knopfPower, p)),
         tick: (p) => { if (p >= 0.5 && !k.an) { k.an = true; k.heiz = 0; k.bereit = false; sfx.ui(); } } },
       { was: "zumSchrank3", x: SR, face: 1 },
-      { was: "schrankZu", dauer: 1.3, pose: (p) => bueck(0.42 * (1 - weich((p - 0.7) / 0.3)), p < 0.3 ? weg(vorn(SR), [676, F - 24], p / 0.3) : weg([676, F - 24], O.schrankGriff, (p - 0.3) / 0.45)),
-        tick: (p) => { k.schrank = 1 - weich((p - 0.3) / 0.45); } },
-      { was: "zurMaschine5", x: M, face: 1 },
+      { was: "schrankZu", dauer: 1.2,
+        pose: (p) => {
+          const o = 1 - weich(clamp((p - 0.15) / 0.65, 0, 1));
+          const g = schrankGriffPos(F, o);
+          return bueck(0.38 * (1 - weich((p - 0.7) / 0.3)), p < 0.15 ? weg(vorn(SR), g, p / 0.15) : p < 0.8 ? g : weg(g, vorn(SR), (p - 0.8) / 0.2));
+        },
+        tick: (p) => { k.schrank = 1 - weich(clamp((p - 0.15) / 0.65, 0, 1)); },
+        ende: () => { k.schrank = 0; } },
+      { was: "zurMaschine5", x: MS, face: 1 },
       { was: "aufheizen", warten: () => k.bereit, pose: () => stehen(null) },
-      // 6) Bei roter Lampe den linken Knopf (1 Tasse): der Kaffee läuft durch
-      { was: "knopfLinks", dauer: 0.9, pose: (p) => stehen(hinUndHer(vorn(M), O.knopfLinks, p)),
+
+      // 6) Bei roter Lampe an die Maschine treten (Rücken zum Spieler) und links (1 Tasse) drücken
+      { was: "zurMaschine6", x: MB, face: 1 },
+      { was: "knopfLinks", dauer: 0.85,
+        pose: (p) => ruecken(MB, null, hinUndHer(ruheRechts(MB), O.knopfLinks, p)),
         tick: (p) => { if (p >= 0.5 && !k.laeuft && k.tasseFuell < 0.05) { k.laeuft = true; sfx.ui(); } } },
+      { was: "beimBruehen", x: MS, face: 1 },
       { was: "durchlaufen", warten: () => !k.laeuft, pose: () => stehen(null) },
-      { was: "tasseRaus", dauer: 1.2, pose: (p) => stehen(hinUndHer(vorn(M), [O.tasseAuslauf[0], F - 47], p)),
+      { was: "zurMaschine7", x: MB, face: 1 },
+      { was: "tasseRaus", dauer: 1.0,
+        pose: (p) => ruecken(MB, null, hinUndHer(ruheRechts(MB), [O.tasseAuslauf[0], F - 46], p), true),
         tick: (p) => { if (p >= 0.5 && k.tasse === "maschine") k.tasse = "hand"; } },
-      { was: "tasseAbstellen", dauer: 1.0, pose: (p) => stehen(hinUndHer(vorn(M), [O.tasseTheke[0], F - 44], p)),
+      { was: "tasseAbstellen", dauer: 0.95,
+        pose: (p) => ruecken(MB, hinUndHer(ruheLinks(MB), [O.tasseTheke[0], F - 44], p), null, false),
         tick: (p) => { if (p >= 0.5 && k.tasse === "hand") { k.tasse = "theke"; sfx.tick(); } } },
-      // 7) Bio-Milch aus dem Kühlschrank, einen Schluck in den Kaffee, zurückstellen
+
+      // 7) Bio-Milch aus dem Kühlschrank (fließende Türanimation), einen Schluck in den Kaffee, zurückstellen
       { was: "zumKuehl", x: KU, face: -1 },
-      { was: "kuehlAuf", dauer: 1.3, pose: (p) => stehen(p < 0.3 ? weg(vorn(KU, -1), O.kuehlGriff, p / 0.3) : p < 0.85 ? weg(O.kuehlGriff, [617, F - 56], (p - 0.3) / 0.55) : weg([617, F - 56], vorn(KU, -1), (p - 0.85) / 0.15), -1),
-        tick: (p) => { k.kuehl = weich((p - 0.3) / 0.55); } },
-      { was: "milchNehmen", dauer: 1.2, pose: (p) => stehen(hinUndHer(vorn(KU, -1), O.milchTuer, p), -1),
+      { was: "kuehlAuf", dauer: 1.25,
+        pose: (p) => {
+          const o = weich(clamp((p - 0.2) / 0.65, 0, 1));
+          const g = kuehlGriffPos(F, o);
+          return stehen(p < 0.2 ? weg(vorn(KU, -1), g, p / 0.2) : p < 0.85 ? g : weg(g, vorn(KU, -1), (p - 0.85) / 0.15), -1);
+        },
+        tick: (p) => { k.kuehl = weich(clamp((p - 0.2) / 0.65, 0, 1)); } },
+      { was: "milchNehmen", dauer: 1.1,
+        pose: (p) => stehen(hinUndHer(vorn(KU, -1), O.milchTuer, p), -1),
         tick: (p) => { if (p >= 0.5 && k.milch === "kuehl") k.milch = "hand"; } },
-      { was: "kuehlZu", dauer: 1.0, pose: (p) => stehen(null, -1, hinUndHer([KU - 5, F - 30], [614, F - 58], p)),
-        tick: (p) => { k.kuehl = 1 - weich(p / 0.5); }, ende: () => sfx.tick() },
-      { was: "zurTasse", x: M, face: 1 },
-      { was: "eingiessen", dauer: 2.4, pose: (p) => stehen(p < 0.25 ? weg(vorn(M), [O.tasseTheke[0] - 2, F - 52], p / 0.25) : p < 0.8 ? [O.tasseTheke[0] - 2, F - 52] : weg([O.tasseTheke[0] - 2, F - 52], vorn(M), (p - 0.8) / 0.2)),
+      { was: "kuehlZu", dauer: 1.05,
+        pose: (p) => {
+          const o = 1 - weich(clamp(p / 0.75, 0, 1));
+          const g = kuehlGriffPos(F, o);
+          return stehen([KU - 7, F - 34], -1, p < 0.75 ? g : weg(g, [KU - 5, F - 26], (p - 0.75) / 0.25));
+        },
+        tick: (p) => { k.kuehl = 1 - weich(clamp(p / 0.75, 0, 1)); },
+        ende: () => { k.kuehl = 0; sfx.tick(); } },
+      { was: "zurTasse", x: 640, face: 1 },
+      { was: "eingiessen", dauer: 2.2,
+        pose: (p) => stehen(p < 0.25 ? weg(vorn(640), [O.tasseTheke[0] - 2.5, F - 48], p / 0.25) : p < 0.8 ? [O.tasseTheke[0] - 2.5, F - 48] : weg([O.tasseTheke[0] - 2.5, F - 48], vorn(640), (p - 0.8) / 0.2), 1),
         tick: (p) => { if (p >= 0.55) k.tasseMilch = true; } },
       { was: "zumKuehl2", x: KU, face: -1 },
-      { was: "kuehlAuf2", dauer: 1.1, pose: (p) => stehen(null, -1, p < 0.3 ? weg([KU - 5, F - 30], O.kuehlGriff, p / 0.3) : weg(O.kuehlGriff, [617, F - 56], (p - 0.3) / 0.55)),
-        tick: (p) => { k.kuehl = weich((p - 0.3) / 0.55); } },
-      { was: "milchZurueck", dauer: 1.0, pose: (p) => stehen(hinUndHer(vorn(KU, -1), O.milchTuer, p), -1),
+      { was: "kuehlAuf2", dauer: 1.15,
+        pose: (p) => {
+          const o = weich(clamp((p - 0.2) / 0.65, 0, 1));
+          const g = kuehlGriffPos(F, o);
+          return stehen([KU - 7, F - 34], -1, p < 0.2 ? weg([KU - 5, F - 26], g, p / 0.2) : g);
+        },
+        tick: (p) => { k.kuehl = weich(clamp((p - 0.2) / 0.65, 0, 1)); } },
+      { was: "milchZurueck", dauer: 1.0,
+        pose: (p) => stehen(hinUndHer(vorn(KU, -1), O.milchTuer, p), -1),
         tick: (p) => { if (p >= 0.5 && k.milch === "hand") { k.milch = "kuehl"; sfx.tick(); } } },
-      { was: "kuehlZu2", dauer: 1.0, pose: (p) => stehen(null, -1, hinUndHer([KU - 5, F - 30], [614, F - 58], p)),
-        tick: (p) => { k.kuehl = 1 - weich(p / 0.5); }, ende: () => sfx.tick() },
-      { was: "zurTasse2", x: M, face: 1 },
-      { was: "tasseNehmen", dauer: 1.0, pose: (p) => stehen(hinUndHer(vorn(M), [O.tasseTheke[0], F - 44], p)),
+      { was: "kuehlZu2", dauer: 1.05,
+        pose: (p) => {
+          const o = 1 - weich(clamp(p / 0.75, 0, 1));
+          const g = kuehlGriffPos(F, o);
+          return stehen(p < 0.75 ? g : weg(g, vorn(KU, -1), (p - 0.75) / 0.25), -1);
+        },
+        tick: (p) => { k.kuehl = 1 - weich(clamp(p / 0.75, 0, 1)); },
+        ende: () => { k.kuehl = 0; sfx.tick(); } },
+      { was: "zurTasse2", x: 640, face: 1 },
+      { was: "tasseNehmen", dauer: 0.95,
+        pose: (p) => stehen(hinUndHer(vorn(640), [O.tasseTheke[0], F - 44], p), 1),
         tick: (p) => { if (p >= 0.5 && k.tasse === "theke") k.tasse = "hand"; } },
+      // Bei Klick auf die Senseo: direkt 1 bis 2 Schluck Kaffee trinken; kommt dazwischen
+      // keine andere Anweisung, öffnet Luni unten zuerst die Tür zum Garten und raucht eine Zigarette.
+      { was: "kaffeeSchluck", dauer: 1.9 * kuecheSchlucke, wenn: () => perKlick,
+        pose: (p) => {
+          const u = (p * kuecheSchlucke) % 1;
+          const hub = u < 0.35 ? weich(u / 0.35) : u < 0.72 ? 1 : 1 - weich((u - 0.72) / 0.28);
+          return stehen(weg(kappeTasse, mundPkt, hub), 1);
+        },
+        ende: () => { k.tasseFuell = Math.max(0.2, k.tasseFuell - 0.14 * kuecheSchlucke); } },
+      { was: "kurzWarten", dauer: 0.8, wenn: () => perKlick,
+        pose: () => ({ trag: true }) },
+      { was: "zurGartentuer", x: 818, floor: 0, face: 1,
+        wenn: () => perKlick && this.gardenWant < 0.5,
+        start: () => { gartenTuerGezielt = false; } },
+      { was: "gartentuerAuf", dauer: 1.5,
+        wenn: () => perKlick && !gartenTuerGezielt && this.gardenWant < 0.5,
+        pose: (p) => {
+          const knauf = this.gardenKnob();
+          const halte: Pt = [818 + 5 * S, FK - 31 * S];
+          const ruhe2: Pt = [818 + 6 * S, FK - 23 * S];
+          const griff2 = p < 0.32 ? weg(ruhe2, knauf, p / 0.32) : p < 0.82 ? knauf : weg(knauf, ruhe2, (p - 0.82) / 0.18);
+          return stehen(halte, 1, griff2);
+        },
+        tick: (p) => {
+          if (p >= 0.38 && !gartenTuerGezielt) {
+            gartenTuerGezielt = true;
+            this.gardenWant = 1;
+            sfx.ui();
+          }
+        } },
+
       // 8) Mit dem Kaffee in die Schleuse: Tasse aufs Tischchen, rauchen, schluckweise trinken
       { was: "zumRaucherraum", x: ASH_STAND_X + 8, floor: 0, face: 1 },
-      { was: "tasseKeller", dauer: 1.0, pose: (p) => stehen(hinUndHer(vorn(ASH_STAND_X + 8), [tasseKeller[0], tasseKeller[1] - 4], p)),
+      { was: "tasseKeller", dauer: 1.0,
+        pose: (p) => stehen(hinUndHer(vorn(ASH_STAND_X + 8), [tasseKeller[0], tasseKeller[1] - 4], p)),
         tick: (p) => { if (p >= 0.5 && k.tasse === "hand") { k.tasse = "keller"; sfx.tick(); } } },
       { was: "rauchen", warten: () => this.kRauchFertig(),
         start: () => { this.kRauchBegonnen = false; this.kSchluckWarte = 0; this.kIntern_(() => this.command("aschenbecher")); } },
       { was: "zumTischchen", x: ASH_STAND_X + 8, floor: 0, face: 1 },
-      { was: "tassenHolen", dauer: 1.2, pose: (p) => stehen(hinUndHer(vorn(ASH_STAND_X + 8), [tasseKeller[0], tasseKeller[1] - 4], p)),
+      { was: "tassenHolen", dauer: 1.2,
+        pose: (p) => stehen(hinUndHer(vorn(ASH_STAND_X + 8), [tasseKeller[0], tasseKeller[1] - 4], p)),
         tick: (p) => {
           if (p < 0.5 || k.tasse !== "keller") return;
-          // In 23 % der Fälle bleibt die Tasse unten – nie mehr als drei.
           if (Math.random() < TASSE_VERGESSEN && k.tassenUnten < MAX_TASSEN_UNTEN) {
             k.tassenUnten += 1; k.tasse = "keine";
           } else {
             k.tasse = "hand";
             if (k.tassenUnten > 0 && (k.tassenUnten >= MAX_TASSEN_UNTEN || Math.random() < 0.5)) { k.tragUnten = k.tassenUnten; k.tassenUnten = 0; }
           }
-          // Spätestens bei drei vergessenen Tassen nimmt sie alle mit.
           if (k.tassenUnten >= MAX_TASSEN_UNTEN && k.tasse === "keine") { k.tragUnten = k.tassenUnten; k.tassenUnten = 0; }
           sfx.tick();
         } },
-      // 9) Oben kurz ausspülen und neben die Spüle stellen
+
+      // 9) Oben an der Spüle (Rücken zum Spieler) kurz ausspülen und links neben die Spüle stellen
       { was: "zurSpuele", x: H, floor: 1, face: 1, wenn: () => k.tasse === "hand" || k.tragUnten > 0 },
-      { was: "spuelHahnAuf", dauer: 0.9, wenn: () => k.tasse === "hand" || k.tragUnten > 0, pose: (p) => stehen([641, F - 47], 1, hinUndHer([H + 5, F - 30], [634, F - 47], p)), tick: (p) => { if (p >= 0.6) k.hahnKueche = true; } },
+      { was: "spuelHahnAuf", dauer: 0.9, wenn: () => k.tasse === "hand" || k.tragUnten > 0,
+        pose: (p) => ruecken(H, hinUndHer(ruheLinks(H), O.hahn, p), [642, F - 46], true),
+        tick: (p) => { if (p >= 0.6) k.hahnKueche = true; } },
       { was: "ausspuelen", dauer: () => this.kZeit("ausspuelen") * (1 + 0.5 * this.kaffee.tragUnten), wenn: () => k.tasse === "hand" || k.tragUnten > 0,
-        pose: (p) => stehen([641 + Math.sin(p * 18) * 1.2, F - 46]), start: () => { k.tasseFuell = 0; k.tasseMilch = false; } },
-      { was: "spuelHahnZu", dauer: 0.9, wenn: () => k.tasse === "hand" || k.tragUnten > 0, pose: (p) => stehen([641, F - 47], 1, hinUndHer([H + 5, F - 30], [634, F - 47], p)), tick: (p) => { if (p >= 0.5) k.hahnKueche = false; } },
-      { was: "nebenSpuele", dauer: 1.0, wenn: () => k.tasse === "hand" || k.tragUnten > 0, pose: (p) => stehen(hinUndHer(vorn(H), [O.spuelAblage[0], F - 45], p)),
+        pose: (p) => ruecken(H, null, [642 + Math.sin(p * 18) * 1.2, F - 46], true),
+        start: () => { k.tasseFuell = 0; k.tasseMilch = false; } },
+      { was: "spuelHahnZu", dauer: 0.9, wenn: () => k.tasse === "hand" || k.tragUnten > 0,
+        pose: (p) => ruecken(H, hinUndHer(ruheLinks(H), O.hahn, p), [642, F - 46], true),
+        tick: (p) => { if (p >= 0.5) k.hahnKueche = false; } },
+      { was: "nebenSpuele", dauer: 1.0, wenn: () => k.tasse === "hand" || k.tragUnten > 0,
+        pose: (p) => ruecken(H, hinUndHer(ruheLinks(H), [O.spuelAblage[0] + 2, F - 45], p), null, false),
         tick: (p) => {
           if (p < 0.5 || (k.tasse !== "hand" && k.tragUnten === 0)) return;
           k.tassenSpuele = Math.min(3, k.tassenSpuele + (k.tasse === "hand" ? 1 : 0) + k.tragUnten);
@@ -10164,7 +10572,6 @@ export class House {
   private kRauchFertig(): boolean {
     if (this.holding && this.burnLeft > 0) this.kRauchBegonnen = true;
     if (!this.kRauchBegonnen) {
-      // Keine Zigarette zu bekommen: nicht ewig warten.
       return this.pack <= 0 && this.cigs <= 0 && !this.holding && this.activity?.id !== "tabak" && !this.pending && !this.cur;
     }
     return !this.holding && !this.ashMove && !this.cigButt;
@@ -10176,30 +10583,52 @@ export class House {
     const weich = (v: number) => { const q = clamp(v, 0, 1); return q * q * (3 - 2 * q); };
     const weg = (a: Pt, b: Pt, v: number): Pt => { const e = weich(v); return [lerp(a[0], b[0], e), lerp(a[1], b[1], e)]; };
     const SR = KSTAND.schrank;
-    const vorn: Pt = [SR + 7 * S, F - 31 * S];
-    const bueck = (b: number, hand: Pt | null): KPose => ({ state: "bend", phase: b, hand, face: 1 });
-    const auf: KSchritt = { was: "schrankAuf", dauer: 1.3, pose: (p) => bueck(0.42 * weich(p / 0.3), p < 0.3 ? weg(vorn, O.schrankGriff, p / 0.3) : weg(O.schrankGriff, [676, F - 24], (p - 0.3) / 0.55)),
-      tick: (p) => { k.schrank = weich((p - 0.3) / 0.55); } };
-    const zu: KSchritt = { was: "schrankZu", dauer: 1.3, pose: (p) => bueck(0.42 * (1 - weich((p - 0.7) / 0.3)), p < 0.3 ? weg(vorn, [676, F - 24], p / 0.3) : weg([676, F - 24], O.schrankGriff, (p - 0.3) / 0.45)),
-      tick: (p) => { k.schrank = 1 - weich((p - 0.3) / 0.45); } };
+    const vornR: Pt = [SR + 7 * S, F - 31 * S];
+    const vornL: Pt = [SR - 7 * S, F - 31 * S];
+    const bueck = (b: number, hand: Pt | null): KPose => ({
+      state: "bend", phase: clamp(b * 0.68, 0, 0.32), hand, face: 1, elbow: 1, hairAside: 1,
+    });
+    const auf: KSchritt = {
+      was: "schrankAuf", dauer: 1.2,
+      pose: (p) => {
+        const o = weich(clamp((p - 0.2) / 0.65, 0, 1));
+        const g = schrankGriffPos(F, o);
+        return bueck(0.38 * Math.sin(Math.PI * clamp(p, 0, 1)), p < 0.2 ? weg(vornR, g, p / 0.2) : g);
+      },
+      tick: (p) => { k.schrank = weich(clamp((p - 0.2) / 0.65, 0, 1)); },
+    };
+    const zu: KSchritt = {
+      was: "schrankZu", dauer: 1.2,
+      pose: (p) => {
+        const o = 1 - weich(clamp((p - 0.15) / 0.65, 0, 1));
+        const g = schrankGriffPos(F, o);
+        return bueck(0.38 * (1 - weich((p - 0.7) / 0.3)), p < 0.8 ? g : weg(g, vornR, (p - 0.8) / 0.2));
+      },
+      tick: (p) => { k.schrank = 1 - weich(clamp((p - 0.15) / 0.65, 0, 1)); },
+      ende: () => { k.schrank = 0; },
+    };
     const kanneSchrank: Pt = [O.schrankKanne[0], F - 14];
-    const kanneTheke: Pt = [O.kanneTheke[0], F - 49];
+    const kanneTheke: Pt = [O.kanneTheke[0], F - 48];
     const schritte: KSchritt[] = zurueck ? [
-      { was: "zurKanne", x: SR, face: 1 },
-      { was: "kanneNehmen", dauer: 1.0, pose: (p) => ({ state: "idle", hand: p < 0.5 ? weg(vorn, kanneTheke, p / 0.45) : weg(kanneTheke, vorn, (p - 0.5) / 0.5), face: 1 }),
+      { was: "zurKanne", x: SR, face: -1 },
+      { was: "kanneNehmen", dauer: 1.0,
+        pose: (p) => ({ state: "idle", face: -1, elbow: 1, hand: p < 0.5 ? weg(vornL, kanneTheke, p / 0.45) : weg(kanneTheke, vornL, (p - 0.5) / 0.5) }),
         tick: (p) => { if (p >= 0.5 && k.kanne === "theke") { k.kanne = "hand"; this.dirty = true; } } },
       auf,
-      { was: "kanneRein", dauer: 1.5, pose: (p) => bueck(p < 0.7 ? 0.55 : 0.55 * (1 - weich((p - 0.7) / 0.3)), p < 0.5 ? weg(vorn, kanneSchrank, p / 0.45) : weg(kanneSchrank, vorn, (p - 0.5) / 0.5)),
+      { was: "kanneRein", dauer: 1.5,
+        pose: (p) => bueck(p < 0.7 ? 0.48 : 0.48 * (1 - weich((p - 0.7) / 0.3)), p < 0.5 ? weg(vornR, kanneSchrank, p / 0.45) : weg(kanneSchrank, vornR, (p - 0.5) / 0.5)),
         tick: (p) => { if (p >= 0.5 && k.kanne === "hand") { k.kanne = "schrank"; sfx.tick(); } } },
       zu,
     ] : [
       { was: "zumSchrank", x: SR, face: 1 },
       auf,
-      { was: "kanneHolen", dauer: 1.5, pose: (p) => bueck(p < 0.7 ? 0.55 : 0.55 * (1 - weich((p - 0.7) / 0.3)), p < 0.5 ? weg(vorn, kanneSchrank, p / 0.45) : weg(kanneSchrank, vorn, (p - 0.5) / 0.5)),
+      { was: "kanneHolen", dauer: 1.5,
+        pose: (p) => bueck(p < 0.7 ? 0.48 : 0.48 * (1 - weich((p - 0.7) / 0.3)), p < 0.5 ? weg(vornR, kanneSchrank, p / 0.45) : weg(kanneSchrank, vornR, (p - 0.5) / 0.5)),
         tick: (p) => { if (p >= 0.5 && k.kanne === "schrank") k.kanne = "hand"; } },
-      { was: "kanneAbstellen", dauer: 1.0, pose: (p) => ({ state: "idle", hand: p < 0.55 ? weg(vorn, kanneTheke, p / 0.5) : weg(kanneTheke, vorn, (p - 0.55) / 0.45), face: 1 }),
-        tick: (p) => { if (p >= 0.5 && k.kanne === "hand") { k.kanne = "theke"; this.dirty = true; sfx.tick(); } } },
       zu,
+      { was: "kanneAbstellen", dauer: 1.0,
+        pose: (p) => ({ state: "idle", face: -1, elbow: 1, hand: p < 0.55 ? weg(vornL, kanneTheke, p / 0.5) : weg(kanneTheke, vornL, (p - 0.55) / 0.45) }),
+        tick: (p) => { if (p >= 0.5 && k.kanne === "hand") { k.kanne = "theke"; this.dirty = true; sfx.tick(); } } },
       { was: "tee", start: () => this.kIntern_(() => this.command("tee")) },
     ];
     this.kAblaufStarten(schritte, false);
@@ -10209,22 +10638,22 @@ export class House {
   private drawKueche(c: C) {
     if (!this.senseoHaus || !this.kaffee) return;
     const F = FLOOR_Y[1], k = this.kaffee, O = KORT(F);
-    drawKuehlOffen(c, F, k.kuehl, k.milch === "kuehl");
-    drawMuell(c, F, k.muell);
-    drawSchrankRechts(c, F, k.schrank, k);
+    const festlich = this.welt === "weihnacht";
+    drawKuehlOffen(c, F, k.kuehl, k.milch === "kuehl", festlich);
+    drawMuell(c, F, k.muell, festlich);
+    drawSchrankRechts(c, F, k.schrank, k, festlich);
     drawSenseo(c, F, k, this.elapsed);
     if (k.tasse === "maschine") drawTasse(c, O.tasseAuslauf[0], O.tasseAuslauf[1], k.tasseFuell, k.tasseMilch);
     if (k.tasse === "theke") drawTasse(c, O.tasseTheke[0], O.tasseTheke[1], k.tasseFuell, k.tasseMilch);
     if (k.dose === "theke") drawPadDose(c, O.doseTheke[0], O.doseTheke[1], k.doseOffen);
     drawTassenSpuele(c, F, k.tassenSpuele);
     if (k.hahnKueche) {
-      // Wasserstrahl aus dem Küchenhahn
-      c.fillStyle = "rgba(170,215,240,.8)";
-      c.fillRect(O.auslaufHahn[0] - 0.5, O.auslaufHahn[1], 1.2, 8 + Math.sin(this.elapsed * 30) * 0.4);
+      c.fillStyle = "rgba(155,212,235,.78)";
+      const w = Math.sin(this.elapsed * 26) * 0.25;
+      c.fillRect(O.auslaufHahn[0] - 0.6 + w, O.auslaufHahn[1], 1.3, 11);
     }
-    // Tassen auf dem Tischchen im Raucherraum (die aktuelle und vergessene)
-    const n = (k.tasse === "keller" && this.kSchluckT <= 0 ? 1 : 0) + k.tassenUnten;
-    for (let i = 0; i < n; i++) {
+    const unten = k.tassenUnten + (k.tasse === "keller" && this.kSchluckT <= 0 ? 1 : 0);
+    for (let i = 0; i < Math.min(unten, 3); i++) {
       const aktuell = k.tasse === "keller" && this.kSchluckT <= 0 && i === 0;
       drawTasse(c, SIDE_X + 6 + i * 4.5, SIDE_TOP, aktuell ? k.tasseFuell : 0, aktuell && k.tasseMilch);
     }
@@ -10234,7 +10663,8 @@ export class House {
   private drawKaffeeInHand(c: C, vorn: [number, number], hinten: [number, number], face: 1 | -1) {
     const k = this.kaffee;
     if (!this.senseoHaus || !k) return;
-    const [x, y] = vorn;
+    const haupt = this.kPose?.rechtsHand ? hinten : vorn;
+    const [x, y] = haupt;
     if (k.tank === "hand") drawTank(c, x, y - 1, k.tankWasser);
     if (k.padHand) drawPad(c, x, y + 1, k.padHand === "alt");
     if (k.dose === "hand") drawPadDose(c, x, y + 8, k.doseOffen);
@@ -10243,8 +10673,8 @@ export class House {
     if (k.milch === "hand") {
       const giessen = this.kAblauf?.schritte[this.kAblauf.i]?.was === "eingiessen" && this.kAblauf.t > 0;
       const kipp = giessen ? face * 1.9 : 0;
-      drawMilch(c, x, y + (kipp ? 2 : 9), kipp);
-      if (giessen) { c.fillStyle = "rgba(250,248,240,.9)"; c.fillRect(x + face * 3, y + 2, 0.9, 5); }
+      drawMilch(c, vorn[0], vorn[1] + (kipp ? 2 : 9), kipp);
+      if (giessen) { c.fillStyle = "rgba(250,248,240,.9)"; c.fillRect(vorn[0] + face * 3, vorn[1] + 2, 0.9, 6); }
     }
     if (k.tragUnten > 0) for (let i = 0; i < k.tragUnten; i++) drawTasse(c, hinten[0], hinten[1] + 4 - i * 5.6, 0, false);
     if (this.kSchluckT > 0) drawTasse(c, hinten[0], hinten[1] + 4, k.tasseFuell, k.tasseMilch);
@@ -10367,7 +10797,7 @@ export class House {
   }
 
   private abendBeschaeftigt() {
-    return !!(this.shPhase || this.bedEinstieg || this.bedPhase || this.sleepPhase || this.lieDown || this.wakeT > 0
+    return !!(this.shPhase || this.bedEinstieg || this.bedPhase || this.sleepPhase || this.lieDown || this.wakeT > 0 || this.bedWach
       || this.cur?.step.k === "stair" || this.wcInside || this.luniTraegtPaket || this.post?.anDerTuer
       || this.nikolaus?.aktiv || this.golPhase === "insert" || this.golPhase === "press" || this.flauschiPhase === "insert");
   }
@@ -11411,6 +11841,242 @@ export class House {
     this.wakeT = 1.2;
   }
 
+  /* ---------------------- Langes Aufwachen am Morgen ---------------------- */
+
+  private bedWachDauer(ph: NonNullable<typeof this.bedWach>): number {
+    const d = { aufsetzen: 2.6, schieben: 1.8, umsetzen: 1.6, strecken: 4.4, aufstehen: 1.4 }[ph];
+    return this.bedWachProbe ? d * 0.62 : d;
+  }
+
+  /** Aus dem Schlaf: aufsetzen, Decke zum Fußende schieben, auf die Bettkante setzen, gähnen, recken, aufstehen. */
+  private bedWachStart(probe: boolean, danach: "weste" | null) {
+    this.bedWach = "aufsetzen";
+    this.bedWachT = 0;
+    this.bedWachProbe = probe;
+    this.bedWachDanach = danach;
+    this.asleep = false; this.sleepT = 0; this.sleepPhase = null; this.lieDown = false; this.bedEinstieg = null;
+    this.activity = null; this.target = null; this.cur = null; this.path = []; this.pending = null;
+    // Das Handy bleibt auf dem Kissen liegen; sie holt es sich nach dem Aufstehen.
+    if (this.handyOrt === "kissen") this.handyOrt = "kissen";
+    this.lf = 2; this.lx = BETT_STAND_X; this.lface = 1;
+    this.bedKleidungAn = this.outfit;
+    this.bedPyjama = pyjamaStoff(this.pyjama, this.clock, this.welt);
+    this.dirty = true;
+  }
+
+  private updateBedWach(dt: number) {
+    const ph = this.bedWach;
+    if (!ph) return;
+    this.bedWachT += dt;
+    if (this.bedWachT < this.bedWachDauer(ph)) return;
+    this.bedWachT = 0;
+    if (ph === "aufsetzen") { this.bedWach = "schieben"; this.bedSitHair = 0; }
+    else if (ph === "schieben") this.bedWach = "umsetzen";
+    else if (ph === "umsetzen") this.bedWach = "strecken";
+    else if (ph === "strecken") this.bedWach = "aufstehen";
+    else this.bedWachFertig();
+  }
+
+  private bedWachFertig() {
+    this.bedWach = null;
+    this.bedWachT = 0;
+    this.lf = 2; this.lx = BETT_STAND_X; this.lface = 1;
+    this.dirty = true;
+    const danach = this.bedWachDanach;
+    this.bedWachDanach = null;
+    const probe = this.tagAktiv && this.tagWas === "aufstehen" ? this.tagProbe : false;
+    const weste = (this.tagAktiv && this.tagWas === "aufstehen") || danach === "weste";
+    if (this.tagAktiv) this.tagBeenden();
+    const weiter = () => { if (weste) this.tagStart("weste", probe); };
+    this.morgenAmBett(probe, weiter);
+  }
+
+  /**
+   * Nach dem Aufstehen: erst zum Kopfende und das Handy vom Kissen nehmen,
+   * dann das Handy auf den Nachttisch legen (Display geht 2 s danach aus) und
+   * erst danach die Brille vom Nachttisch nehmen und aufsetzen.
+   */
+  private morgenAmBett(probe: boolean, danach: () => void) {
+    const F = FLOOR_Y[2], S = LUNI_SCALE;
+    const weich = (v: number) => { const q = clamp(v, 0, 1); return q * q * (3 - 2 * q); };
+    const weg = (a: Pt, b: Pt, v: number): Pt => { const e = weich(v); return [lerp(a[0], b[0], e), lerp(a[1], b[1], e)]; };
+    const KOPF_STAND = 310, TISCH_STAND = 386;
+    const schritte: KSchritt[] = [];
+    const hatHandy = this.handyOrt === "kissen" || this.handyOrt === "hand";
+    const brauchtBrille = !!(this.glassesRest && !this.glassesOn && !this.glassesInSink && !this.gruselSarg);
+
+    if (this.handyOrt === "kissen") {
+      const ruheL: Pt = [KOPF_STAND - 7 * S, F - 23 * S];
+      const kissen: Pt = [303.8, 295.9];
+      const tragL: Pt = [KOPF_STAND - 7 * S, F - 31 * S];
+      schritte.push(
+        { was: "zumKopfende", x: KOPF_STAND, floor: 2, face: -1 },
+        { was: "handyNehmen", dauer: 1.5,
+          pose: (p) => ({ state: "idle", face: -1,
+            hand: p < 0.5 ? weg(ruheL, kissen, p / 0.45) : weg(kissen, tragL, (p - 0.55) / 0.45) }),
+          tick: (p) => {
+            if (p >= 0.5 && this.handyOrt === "kissen") {
+              this.handyOrt = "hand";
+              this.handyDisplayT = 2;
+              sfx.ui();
+            }
+          } },
+      );
+    }
+
+    if (hatHandy) {
+      const tragR: Pt = [TISCH_STAND + 7 * S, F - 31 * S];
+      const ruheR: Pt = [TISCH_STAND + 7 * S, F - 23 * S];
+      const tisch: Pt = [416, F - 26];
+      schritte.push(
+        { was: "zumNachttisch", x: TISCH_STAND, floor: 2, face: 1 },
+        { was: "handyAblegen", dauer: 1.3,
+          pose: (p) => ({ state: "idle", face: 1,
+            hand: p < 0.5 ? weg(tragR, tisch, p / 0.45) : weg(tisch, ruheR, (p - 0.55) / 0.45) }),
+          tick: (p) => {
+            if (p >= 0.5 && this.handyOrt === "hand") {
+              this.handyOrt = "nachttisch";
+              // Das Display geht exakt 2 Sekunden nach dem Ablegen aus.
+              this.handyDisplayT = 2;
+              this.dirty = true;
+              sfx.tick();
+            }
+          } },
+      );
+    }
+
+    if (brauchtBrille) {
+      const ruheR: Pt = [TISCH_STAND + 7 * S, F - 23 * S];
+      const brille: Pt = [this.glassesRest?.x ?? 401, (this.glassesRest?.y ?? F - 27) + 1];
+      const auge: Pt = [TISCH_STAND + 6.6 * S, F - 46.2 * S];
+      if (!hatHandy) schritte.push({ was: "zumNachttisch", x: TISCH_STAND, floor: 2, face: 1 });
+      schritte.push(
+        { was: "brilleNehmen", dauer: 1.5,
+          pose: (p) => ({ state: "bend", phase: 0.28 * weich(p / 0.4) * (1 - weich((p - 0.7) / 0.3)), face: 1, hairAside: 1,
+            hand: p < 0.5 ? weg(ruheR, brille, p / 0.45) : weg(brille, [TISCH_STAND + 9 * S, F - 34 * S], (p - 0.55) / 0.45) }),
+          tick: (p) => { if (p >= 0.5 && this.glassesRest) { this.glassesRest = null; this.glassesInHand = true; sfx.ui(); } } },
+        { was: "brilleAufsetzen", dauer: 1.6,
+          pose: (p) => ({ state: "glassesOn", phase: 0.42 + 0.58 * p, face: 1,
+            hand: p < 0.55 ? weg([TISCH_STAND + 9 * S, F - 34 * S], auge, p / 0.5) : p < 0.72 ? auge : weg(auge, ruheR, (p - 0.72) / 0.28) }),
+          tick: (p) => { if (p >= 0.6 && this.glassesInHand) { this.glassesInHand = false; this.glassesOn = true; this.dirty = true; } } },
+      );
+    }
+
+    if (!schritte.length) { danach(); return; }
+    this.kAblaufStarten(schritte, probe);
+    this.kNachher = danach;
+  }
+
+  /** Handy in der vorderen Greifhand zeichnen (morgens vom Kissen bis zum Nachttisch). */
+  private drawHandyInHand(c: C, ort: Pt) {
+    if (this.handyOrt !== "hand") return;
+    rrect(c, ort[0] - 2.2, ort[1] - 4.6, 4.4, 9, 1, "#1b1e26");
+    rect(c, ort[0] - 1.7, ort[1] - 3.9, 3.4, 6.4, "#a0d8fa");
+  }
+
+  /** Ein Klick des Spielers beendet das Aufwachen sofort: sie steht neben dem Bett. */
+  private bedWachBeenden() {
+    this.bedWach = null; this.bedWachT = 0; this.bedWachDanach = null;
+    this.bedSitHair = 0;
+    if (this.glassesRest && !this.glassesInSink && !this.glassesFly) { this.glassesOn = true; this.glassesRest = null; }
+    this.lf = 2; this.lx = BETT_STAND_X; this.lface = 1;
+    if (this.tagAktiv && this.tagWas === "aufstehen") this.tagBeenden();
+    this.dirty = true;
+  }
+
+  private drawBedWach(c: C) {
+    const ph = this.bedWach;
+    if (!ph) return;
+    const p = clamp(this.bedWachT / this.bedWachDauer(ph), 0, 1);
+    const e0 = sanft(p);
+    const f = FLOOR_Y[2], S = LUNI_SCALE, t = this.elapsed;
+    const weihnacht = this.welt === "weihnacht";
+    type Stoff = { links: number; oben: number; falten: number; gather: number; welle: number };
+    const SCHLAF: Stoff = { links: 320, oben: 281, falten: 0, gather: 0, welle: 0 };
+    const SCHIEBE_ENDE: Stoff = { links: 355, oben: 284.5, falten: 1, gather: 0.38, welle: 0 };
+    const ZIEL: Stoff = { links: 350, oben: 284.5, falten: 1, gather: 0.35, welle: 0 };
+    const FLACH: Stoff = { links: 328, oben: 288, falten: 0, gather: 0, welle: 0 };
+    const mix = (a: Stoff, b: Stoff, k: number): Stoff => ({
+      links: lerp(a.links, b.links, k), oben: lerp(a.oben, b.oben, k), falten: lerp(a.falten, b.falten, k),
+      gather: lerp(a.gather, b.gather, k), welle: lerp(a.welle, b.welle, k),
+    });
+    const stoff = (q: Stoff) => drawBedCloth(c, q.links, q.oben, q.falten, t, 386, f - 16, q.gather, q.welle, weihnacht);
+    const zwischen = (q: Stoff) => () => {
+      const s = this.scale * this.dpr;
+      c.save(); c.setTransform(s, 0, 0, s, 0, 0); stoff(q); c.restore();
+    };
+    const basis = { t, face: 1 as const, scale: S, shadow: false, glasses: this.glassesOn, outfit: this.bedKleidungAn, pajama: this.bedPyjama };
+    this.lastPose = "wake";
+    let hand: Pt;
+
+    if (ph === "aufsetzen" || ph === "schieben") {
+      // Eine durchgehende Bewegung über aufsetzen + schieben: Luni liegt mit
+      // ausgestreckten Beinen im Bett, richtet den Oberkörper auf und schiebt
+      // dabei die Decke Richtung Fußende. Je weiter die Decke zurückweicht,
+      // desto mehr von ihren Beinen auf der Matratze wird sichtbar.
+      const dAuf = this.bedWachDauer("aufsetzen"), dSch = this.bedWachDauer("schieben");
+      const u = ph === "aufsetzen" ? (p * dAuf) / (dAuf + dSch) : (dAuf + p * dSch) / (dAuf + dSch);
+      const ku = sanft(u);
+      const aufrichten = sanft(clamp(u / 0.72, 0, 1));
+      const q: Stoff = {
+        ...mix(SCHLAF, SCHIEBE_ENDE, ku),
+        welle: Math.sin(Math.PI * u) * 0.9,
+      };
+      const lx = lerp(338.52, 335.5, aufrichten);
+      const ly = f - lerp(24.6, 15.2, aufrichten);
+      // Sobald der Oberkörper sich hebt, greift die vordere Hand mit gesenktem Ellbogen
+      // an den Deckensaum und schiebt ihn bis ans Fußende.
+      const griffGewicht = sanft(clamp((u - 0.28) / 0.2, 0, 1)) * (1 - sanft(clamp((u - 0.86) / 0.14, 0, 1)));
+      const ruheHand: Pt = [lx - 3 * S, ly - 11 * S];
+      const saumHand: Pt = [q.links - 0.5, q.oben + 5.2];
+      const zielHand: Pt | null = griffGewicht > 0.01
+        ? [lerp(ruheHand[0], saumHand[0], griffGewicht), lerp(ruheHand[1], saumHand[1], griffGewicht)]
+        : null;
+      const vorlehn = u > 0.6 ? Math.sin(Math.PI * clamp((u - 0.6) / 0.4, 0, 1)) * 0.2 : 0;
+      const expr: LuniExpr = u < 0.22 ? "sleep" : "tired";
+      hand = drawLuni(c, lx, ly, {
+        ...basis, state: "sit", expr, blink: expr === "sleep" ? 1 : 0,
+        hairAside: 1 - aufrichten,
+        bettAufstehen: { aufrichten, beineSenken: 0 },
+        bedLean: vorlehn,
+        handTarget: zielHand, handElbow: -1, handKontakt: !!zielHand,
+      });
+      // Die Decke liegt vor dem Fußende und bedeckt genau den noch zugedeckten Teil der Beine.
+      stoff(q);
+    } else if (ph === "umsetzen") {
+      // Geschmeidiges Hinsetzen an die Bettkante: der Oberkörper bleibt aufrecht
+      // (kein Zurückfallen ins Liegen!), die Hüfte gleitet an die Vorderkante und
+      // die Beine schwingen von der Matratze vor das Bett herunter.
+      const e = e0;
+      const q = mix(SCHIEBE_ENDE, ZIEL, e);
+      const lx = lerp(335.5, BETT_STAND_X, e);
+      const ly = f - lerp(15.2, 11, e);
+      const beineVorne = e >= 0.32;
+      hand = drawLuni(c, lx, ly, {
+        ...basis, state: "sit", expr: "tired", blink: 0,
+        bettAufstehen: { aufrichten: 1, beineSenken: e },
+        betweenBodyAndArms: beineVorne ? zwischen(q) : undefined,
+      });
+      if (!beineVorne) stoff(q);
+    } else if (ph === "strecken") {
+      // Auf der Bettkante: gähnen, die Arme hoch, recken und strecken, wieder entspannen.
+      const hoch = p < 0.16 ? sanft(p / 0.16) : p < 0.74 ? 1 : 1 - sanft((p - 0.74) / 0.26);
+      const x = BETT_STAND_X, y = f - 11 - 0.8 * hoch;
+      const expr: LuniExpr = p < 0.1 ? "tired" : p < 0.62 ? "yawn" : p < 0.8 ? "tired" : "happy";
+      const reck = hoch * (1 + 0.04 * Math.sin(t * 9));
+      hand = drawLuni(c, x, y, {
+        ...basis, state: "sit", expr, reck: clamp(reck, 0, 1), betweenBodyAndArms: zwischen(ZIEL),
+      });
+    } else {
+      // Aufstehen von der Bettkante; die Decke legt sich dabei wieder flach hin.
+      stoff(mix(ZIEL, FLACH, sanft(clamp((p - 0.4) / 0.6, 0, 1))));
+      hand = drawLuni(c, BETT_STAND_X, f - 11 * (1 - e0), {
+        ...basis, state: "standup", expr: p < 0.7 ? "neutral" : "happy", phase: e0,
+      });
+    }
+    this.hand[0] = hand[0]; this.hand[1] = hand[1];
+  }
+
   /** Fortschritt des Zudeckens für die Zeichnung. */
   private sleepProgress(): { pull: number; grab: number; turn: number; hair: number } {
     const ease = (v: number) => {
@@ -11497,7 +12163,7 @@ export class House {
           this.sleepPhaseT = 0;
           this.asleep = true;
           // Uhrzeit des Einschlaferns merken (in Tests ohne Uhr bleibt der alte Wert).
-          if (this.clock) this.einschlafSek = tagessekunde(this.clock);
+          this.einschlafMerken();
           this.abendAktiv = false;
           this.sleepT = 0;
           this.bedSitHair = 1;
@@ -12464,6 +13130,10 @@ export class House {
 
     let back = false;
     let hairAside = 0;
+    if (this.bedWach) {
+      this.drawBedWach(c);
+      return;
+    }
     if (this.bedEinstieg && this.bedEinstieg !== "anfahrt") {
       const ph = this.bedEinstieg;
       const d = ph === "toss" ? ABEND_BETT.wurf : this.bettTakte()[ph];
@@ -12539,7 +13209,7 @@ export class House {
       // Die Figur wird vor dem Stoff gezeichnet; was über die Kante ragt,
       // verschwindet unter der Decke. Die Decke bewegt sich weiter frei.
       const decke = bedBlanketPose("hinlegen", e);
-      clipBedCover(c, decke.links, decke.oben);
+      clipBedCover(c, decke.links, decke.oben, e);
       // Sitzende Hüfte auf der Matratze; der Kopf landet auf dem vorhandenen Kissen.
       const wh = drawLuni(c, lerp(BETT_STAND_X, 345, e), FLOOR_Y[2] - lerp(11, 32, e), {
         t: this.elapsed,
@@ -12625,6 +13295,29 @@ export class House {
       c.restore();
       this.lastPose = "turnFront";
       return;
+    }
+    // Weste fließend anziehen: mit dem Rücken zum Spieler am Schrank, ohne Aufploppen;
+    // die Arme bleiben dabei durchgehend vor ihrer Brust (also hinter Rücken und Haar).
+    let westeGleit: number | undefined;
+    let westeAmSchrank = false;
+    if (!a && this.tagWas === "weste" && this.activity?.id === "kleiderschrank") {
+      const q = clamp(this.tagT / Math.max(0.01, this.tagDauer), 0, 1);
+      const T = WESTE_TAKT;
+      back = true; face = 1; expr = "neutral";
+      westeAmSchrank = true;
+      if (q < T.nehmen) {
+        state = "act";
+        posePhase = clamp(q / T.nehmen, 0, 1);
+        westeGleit = 0;
+      } else if (q < T.anziehen) {
+        state = "undress";
+        westeGleit = (q - T.nehmen) / (T.anziehen - T.nehmen);
+        posePhase = westeGleit;
+      } else {
+        state = "act";
+        posePhase = clamp((q - T.anziehen) / (1 - T.anziehen), 0, 1) * 0.5;
+        westeGleit = 1;
+      }
     }
     let duschUebergang: { phase: number; k: number } | undefined;
     const shp = this.showerPose();
@@ -12994,13 +13687,16 @@ export class House {
       if (kp.state) state = kp.state;
       if (kp.phase !== undefined) posePhase = kp.phase;
       if (kp.face) face = kp.face;
-      if (kp.hand) { saxHand = kp.hand; handElbow = -1; }
-      if (kp.hand2) { saxHand2 = kp.hand2; handElbow2 = 1; }
+      if (kp.yOff !== undefined) yOff = kp.yOff;
+      if (kp.back !== undefined) { back = kp.back; if (kp.back) sargBack = true; }
+      if (kp.hand) { saxHand = kp.hand; handElbow = kp.elbow ?? 1; }
+      if (kp.hand2) { saxHand2 = kp.hand2; handElbow2 = kp.elbow2 ?? 1; }
+      if (kp.hairAside !== undefined) hairAside = kp.hairAside;
     }
     if (kp?.trag || (this.kAblauf && this.cur && this.kTraegt())) {
-      // Tragen: die Hand bleibt vor dem Bauch, auch beim Gehen und auf der Treppe.
+      // Tragen: die Hand bleibt mit natürlichem Ellbogen (+1) vor dem Bauch, auch beim Gehen.
       saxHand = [x + face * 7 * LUNI_SCALE, y + yOff - 31 * LUNI_SCALE];
-      handElbow = -1;
+      handElbow = 1;
       if (this.kaffee?.tragUnten > 0) { saxHand2 = [x + face * 4 * LUNI_SCALE, y + yOff - 29 * LUNI_SCALE]; handElbow2 = 1; }
     }
     // Schluck Kaffee auf dem Raucherstuhl: Tasse vom Tischchen zum Mund und zurück.
@@ -13027,6 +13723,17 @@ export class House {
       saxHand = zahn.buersteNah ? zahn.l : zahn.r; saxHand2 = zahn.buersteNah ? zahn.r : zahn.l;
       handElbow = zahn.buersteNah ? zahn.ellbogenFrei : zahn.ellbogen; handElbow2 = zahn.buersteNah ? zahn.ellbogen : zahn.ellbogenFrei;
     }
+    const thekeHinten = !!kp?.back && !a;
+    if (thekeHinten) {
+      // Mit dem Rücken zum Spieler hält Luni Tank, Pad, Dose oder Tasse vor ihrer Brust
+      // (also hinter Rücken und Haar aus Sicht des Spielers, nicht auf den Haaren).
+      const vorL: [number, number] = kp?.hand ? [kp.hand[0], kp.hand[1]] : [x - 7 * LUNI_SCALE, y + yOff - 24 * LUNI_SCALE];
+      const vorR: [number, number] = kp?.hand2 ? [kp.hand2[0], kp.hand2[1]] : [x + 7 * LUNI_SCALE, y + yOff - 24 * LUNI_SCALE];
+      this.drawKaffeeInHand(c, vorL, vorR, face);
+    }
+    // Am Kleiderschrank (x = 458) steht Luni beim Umziehen / Weste-Anziehen immer mit dem Rücken
+    // zum Spieler und greift nach vorn in den Schrank: Rücken, Kleidung und Haar verdecken die Arme.
+    const amSchrankHinten = !this.gruselSarg && (westeAmSchrank || back) && this.lf === 2 && Math.abs(x - SH_STAND.toWardrobe.x) < 1;
     const hand = drawLuni(c, x, y + yOff, {
       t: this.elapsed,
       face,
@@ -13043,17 +13750,18 @@ export class House {
       sick: this.sick,
       outfit: this.outfit,
       kleidung,
-      schrankRuecken: abendWelt(this.welt) && !!shp?.back && this.lf === 2 && Math.abs(x - SH_STAND.toWardrobe.x) < 1,
+      schrankRuecken: thekeHinten || amSchrankHinten,
       zahnfrontal: zahn?.frontal,
       buerstenzeit: this.shPhase === "bBrush" ? this.shT : undefined,
       buerstendauer: this.shPhase === "bBrush" ? this.shDauer("bBrush") : undefined,
       buerstensaat: this.buerstSaat(),
       mundSchaum: zahn?.schaum,
-      bedLean: zahn?.neigung,
+      bedLean: zahn?.neigung ?? kp?.lean,
       back,
       wet: this.wet,
       glasses: this.glassesOn,
       weste: this.westeAn,
+      westeAnziehen: westeGleit,
       pajama: this.outfit === "dressed" || kleidung ? pyjamaStoff(this.pyjama, this.clock, this.welt) : null,
       vampir: this.outfit === "dressed" && this.vampirStil !== null ? VAMPIR_OUTFITS[this.vampirStil] : null,
       umhang,
@@ -13112,8 +13820,11 @@ export class House {
         }
       }
     }
-    // Kaffee, Tank, Pad, Dose, Milch oder Teekanne in der Hand.
-    this.drawKaffeeInHand(c, saxHands.front, saxHands.rear, face);
+    // Handy in der Hand: erst NACH dem Aufstehen (nicht schon beim Aufrichten
+    // im Bett), und nie zusätzlich zur Handysitzung.
+    if (!handy && !this.bedWach) this.drawHandyInHand(c, saxHands.front);
+    // Kaffee, Tank, Pad, Dose, Milch oder Teekanne in der Hand (in Rückenansicht bereits vor drawLuni gezeichnet).
+    if (!thekeHinten) this.drawKaffeeInHand(c, saxHands.front, saxHands.rear, face);
     // Unter der Dusche: Shampoo oder Duschgel in der Hand (greifen, auftragen, zurückstellen).
     if (!this.gruselBad) {
       const db = this.duschBildJetzt();
@@ -13126,18 +13837,18 @@ export class House {
     }
     // Die Zigarette, die sie gerade stopft, liegt sichtbar in ihren Händen
     // (an der vorderen Hand, zwischen beiden Händen) – nicht in der Luft.
-    if (this.activity?.id === "tabak" && !this.cur && !this.packMove && !this.takeMove) {
-      const jiggle = Math.sin(this.rollT * 13) * 0.7;
+    if ((this.activity?.id === "tabak" || kp?.state === "roll") && !this.cur && !this.packMove && !this.takeMove) {
+      const rt = this.activity?.id === "tabak" ? this.rollT : this.elapsed;
+      const jiggle = Math.sin(rt * 13) * 0.7;
       c.save();
       c.translate(hand[0] - 4.5, hand[1] - 0.5);
-      c.rotate(-0.18 + Math.sin(this.rollT * 6.5) * 0.09);
+      c.rotate(-0.18 + Math.sin(rt * 6.5) * 0.09);
       rect(c, 0, 0, 10.5, 2.1, "#f6f3ea");
       rect(c, 8, 0, 2.6, 2.1, "#e2b24a");
       c.fillStyle = "rgba(126,92,44,.85)";
       c.fillRect(3.5 + jiggle, 2.6, 1.3, 1.1);
       c.restore();
     }
-
     if (this.holding && this.ashMove && !this.ashWalking) {
       const rechts = saxHands.front;
       kippeAmFilter(c, [rechts[0] - face * KIPPE_GRIFF[0], rechts[1] - KIPPE_GRIFF[1]], face,
@@ -13145,7 +13856,7 @@ export class House {
     } else if (this.holding && (st?.id !== "raucherstuhl" || this.standing)) {
       cigarette(c, hand[0], hand[1], face, this.burnLeft > 0 ? 0.4 : 0, this.burnFrac());
     }
-    if (handy) drawHandy(c, saxHands.rear, face, handy, this.elapsed);
+    if (handy && this.handyOrt !== "hand") drawHandy(c, saxHands.rear, face, handy, this.elapsed);
     if (zuenden) {
       const rechts = saxHands.front;
       if (this.holding) {

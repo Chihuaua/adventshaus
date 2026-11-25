@@ -297,7 +297,7 @@ hundenaepfe | src/game/tagesroutine.ts | drawNapfPaar
 tuerregel-vergessen | src/game/house.ts | TUER_VERGESSEN
 rauch-lueften | src/game/house.ts | lueftT
 kellerrauch-eben | src/game/house.ts | drawKellerVorRauch
-tagesroutine-tests | tools/test-tagesroutine.mjs | 8 Gruppen
+tagesroutine-tests | tools/test-tagesroutine.mjs | 20 Gruppen
 dusch-ablage | src/game/shower.ts | drawDuschAblage
 dusch-wasser-aus-einseifen | src/game/duschprogramm.ts | flascheInHand
 dusch-studio | src/StudioApp.tsx | DUSCHE · BEWEGUNGEN EINZELN
@@ -305,7 +305,7 @@ dusch-vorhang-kopf | src/game/house.ts | Kopf oder Haare schauen nie seitlich
 ezbett-umziehen-kurz | src/game/abendzeiten.ts | waescheRichten: 8
 senseo-violett | src/game/kaffee.ts | drawSenseo
 senseo-ablauf | src/game/house.ts | kaffeeRunde
-senseo-zeiten-anleitung | src/game/kaffee.ts | aufheizen: 90
+senseo-zeiten-anleitung | src/game/kaffee.ts | aufheizen: 60
 kuechenschrank-kaffee-tee | src/game/kaffee.ts | drawSchrankRechts
 muell-unter-spuele | src/game/kaffee.ts | drawMuell
 kuehlschrank-offen | src/game/kaffee.ts | drawKuehlOffen
@@ -313,3 +313,37 @@ tee-kanne-schrank | src/game/house.ts | teeMitSchrank
 kaffee-steine | src/game/steine.ts | EZ_KAFFEE_STEIN
 tassen-keller-vergessen | src/game/kaffee.ts | TASSE_VERGESSEN
 kaffee-tests | tools/test-kaffee.mjs | Kaffee-Tests bestanden
+aufwachen-lang | src/game/house.ts | bedWachStart
+aufwachen-gaehnen-recken | src/game/luni.ts | reck?: number
+mimik-gaehnen | src/game/luni.ts | case "yawn"
+aufsteh-stein-immer | src/game/house.ts | laufendesBeenden
+morgens-barfuss | src/game/luni.ts | barfuß (Schlappen kommen später)
+morgens-brille-holen | src/game/house.ts | brilleNehmen
+weste-anziehen-animation | src/game/house.ts | WESTE_TAKT
+hinlegen-ohne-fenster | src/game/house.ts | schiene das Fenster durch
+handy-kette | src/game/house.ts | morgenAmBett
+handy-nachttisch | src/game/house.ts | handyDisplayT
+handy-ein-ort | src/game/house.ts | handyOrt
+recken-arme-vor-haar | src/game/luni.ts | reck > 0.02
+bettkante-hinter-luni | src/game/luni.ts | bettAufstehen
+stopfen-original | src/game/house.ts | kStopfen
+beine-umsetzen-fliessend | src/game/house.ts | beineSenken: e
+handy-nie-doppelt | src/game/house.ts | handyOrt !== "hand"
+weste-eine-animation | src/game/house.ts | WESTE_TAKT
+kellerrauch-hinter-moebeln | src/game/house.ts | drawSpillHinterMöbeln
+decke-beim-aufsetzen | src/game/house.ts | SCHIEBE_ENDE
+handy-erst-nach-aufstehen | src/game/house.ts | !this.bedWach
+kuechenschrank-innen-weiss | src/game/kaffee.ts | f7f9f7
+kueche-leicht-buecken | src/game/house.ts | hairAside: 1
+zigaretten-vorrat | src/game/house.ts | fehlt > 0
+weste-fliessend | src/game/luni.ts | westeAnziehen
+kaffee-theke-ruecken | src/game/house.ts | thekeHinten
+schranktueren-drehkreis | src/game/kaffee.ts | drehTuerBlatt
+adventskranz-plastisch | src/game/weihnachtshaus.ts | kranzPolster
+schrank-arme-ebene | src/game/house.ts | amSchrankHinten
+musikvideo-riro-noten | src/game/audio/riroNoten.ts | RIRO_NOTEN
+musikvideo-riro-klang | src/game/audio/riroMusik.ts | RiroMusik
+rauch-nur-mit-luni | src/game/house.ts | raucherQuelle
+schritte-barfuss | src/game/audio.ts | barfuss = false
+stopfen-zwei-wiederholungen | src/game/house.ts | rollCount >= 2
+senseo-klick-schluck-gartentuer | src/game/house.ts | kaffeeSchluck

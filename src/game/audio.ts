@@ -96,15 +96,18 @@ export class Sfx {
   }
 
   /**
-   * Weicher Schritt auf dem Boden. Der Takt kommt vom Aufrufer (jeder
-   * Schritt wird dort ausgelöst), daher hier keine Echtzeit-Sperre – die
-   * würde bei schnellem Simulationslauf Schritte verschlucken.
+   * Hörbarer Schritt auf dem Boden. `barfuss = true` erzeugt ein leiseres,
+   * weiches Haut-Tappen auf dem Boden (hörbar, nie lautlos); bekleidet klingt
+   * ein warmer, deutlicher Tritt auf den Dielen/Fliesen.
    */
-  step(pitch = 1) {
-    // kurzer Rauschimpuls als Trittfläche …
-    this.noise(0.075, 0.19, 300 * pitch, 1.05);
-    // … plus ein leiser, weicher Tiefbass als Körper
-    this.tone({ f: 108 * pitch, f2: 66 * pitch, dur: 0.075, type: "sine", gain: 0.1 });
+  step(pitch = 1, barfuss = false) {
+    if (barfuss) {
+      this.noise(0.045, 0.24, 980 * pitch, 0.95);
+      this.tone({ f: 205 * pitch, f2: 110 * pitch, dur: 0.052, type: "triangle", gain: 0.13, attack: 0.005 });
+      return;
+    }
+    this.noise(0.055, 0.38, 760 * pitch, 0.85);
+    this.tone({ f: 260 * pitch, f2: 125 * pitch, dur: 0.068, type: "triangle", gain: 0.24, attack: 0.004 });
   }
 
   /**

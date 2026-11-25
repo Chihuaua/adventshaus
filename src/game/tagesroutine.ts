@@ -35,8 +35,8 @@ export const TAGES_ZEITEN = {
 
 /** Dauern in echten Sekunden (Echtzeit) bzw. Sekundenbruchteile für die Probe. */
 export const TAGES_DAUERN = {
-  /** Am Schrank: Tür auf, Weste heraus, überziehen, Tür zu. */
-  weste: 26,
+  /** Am Schrank: Tür auf, Weste heraus, überziehen (wie den Schlafanzug), zurechtrücken, Tür zu. */
+  weste: 15,
   /** Essen vor dem Fernseher. */
   essen: 21 * 60,
   /** Näpfe füllen (Futter und Wasser je Hund). */
@@ -47,7 +47,7 @@ export const TAGES_DAUERN = {
 
 /** Kurze Probe über den Tag-Stein: alles in wenigen Sekunden. */
 export const TAGES_PROBE = {
-  weste: 6, essen: 12, fuettern: 8, auslass: 10,
+  weste: 8, essen: 12, fuettern: 8, auslass: 10,
 } as const;
 
 export interface Tageswerte {
@@ -81,14 +81,18 @@ export function tageswerte(tag: number, welt: string): Tageswerte {
 }
 
 /**
- * Aufwachtermin: sechs bis acht Stunden nach dem Einschlafen, aber nie vor
- * 6:00 und in der Regel nicht nach 7:30. Wer erst nach Mitternacht
- * einschläft, ruht trotzdem die vollen sechs bis acht Stunden.
+ * Aufwachtermin in Sekunden seit Mitternacht des EINSCHLAFTAGES (kann über
+ * 86400 hinausgehen = nächster Morgen). Sechs bis acht Stunden nach dem
+ * Einschlafen, in der Regel zwischen 6:00 und 7:30 des Morgens.
+ * Wer vor 12 Uhr mittags einschläft (z. B. nach Mitternacht), wacht am
+ * selben Tag auf, sonst am nächsten.
  */
 export function aufwachSekunde(einschlafSek: number, w: Tageswerte): number {
-  const regel = TAGES_ZEITEN.aufwach[0] + Math.round(w.aufwachAnteil * (TAGES_ZEITEN.aufwach[1] - TAGES_ZEITEN.aufwach[0]));
-  const pause = einschlafSek + w.schlafStunden * 3600;
-  return Math.max(regel, pause) % 86400;
+  const morgen = einschlafSek >= 12 * 3600 ? 86400 : 0;
+  const regel = morgen + TAGES_ZEITEN.aufwach[0]
+    + Math.round(w.aufwachAnteil * (TAGES_ZEITEN.aufwach[1] - TAGES_ZEITEN.aufwach[0]));
+  const frueh = einschlafSek + 6 * 3600, spaet = einschlafSek + 8 * 3600;
+  return Math.min(spaet, Math.max(frueh, regel));
 }
 
 /* ------------------------------ Hundenäpfe ------------------------------ */

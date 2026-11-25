@@ -107,6 +107,8 @@ export interface HausSnapshot {
   napfFutter?: { odin?: number; apollo?: number };
   tagErledigt?: { weste?: number; essen?: number; fuettern?: number; auslass?: number; aufwachen?: number };
   einschlafSek?: number;
+  /** Kalendertag (Tage seit 1970), an dem sie eingeschlafen ist. */
+  einschlafTag?: number;
   /** Positionen von Odin und Apollo im normalen Haus. */
   hunde?: {
     odin?: { x: number; floor: 0 | 1 | 2; face: 1 | -1 };
