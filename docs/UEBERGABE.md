@@ -1,5 +1,5 @@
-## Stand (automatisch, 05.11.2026 14:03)
-main 82689e8 · Kennung KI-B · Prüfung: siehe Leitstand
+## Stand (automatisch, 25.11.2026 01:48)
+main 930d2ee · Kennung KI-B · Prüfung: siehe Projektmanager
 
 <!-- HAND: ab hier schreibt nur der Besitzer -->
 
