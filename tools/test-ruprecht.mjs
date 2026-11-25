@@ -54,7 +54,7 @@ let zurueck = G.ruprechtBegleitung(gast); assert(Math.hypot(zurueck.x - wartet.x
 gast.schritt(G.WALDWEG_SEK, false, false); assert.equal(G.ruprechtBegleitung(gast), null);
 for (const w of ["normal", "traum", "gruesel", "weihnacht"]) {
   const slots = G.steinSlots(w);
-  assert.equal(slots.filter(s => s.aktion === "nikolaus").length, w === "normal" || w === "weihnacht" ? 1 : 0);
+  assert.equal(slots.filter(s => s.aktion === "nikolaus").length, 1, `${w}: Nikolaus sichtbar`);
   assert(!slots.some(s => s.art === "ruprecht"), "Kein zweiter Stein und kein weiterer Fokusplatz");
 }
 

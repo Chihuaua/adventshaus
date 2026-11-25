@@ -138,7 +138,8 @@ test("Klick des Spielers bricht ab und räumt auf; Traum- und Gruselhaus ohne Se
 test("Kaffee-Steine nur im normalen Haus und Weihnachtshaus", () => {
   const art = (w) => G.steinSlots(w).map((s) => s.art);
   for (const w of ["normal", "weihnacht"]) assert.ok(art(w).includes("kaffee") && art(w).includes("ezkaffee"), w);
-  for (const w of ["traum", "gruesel"]) assert.ok(!art(w).includes("kaffee"), w);
+  // Neu: alle Steine sind in allen Häusern sichtbar (Aktionen bleiben weltabhängig).
+  for (const w of ["traum", "gruesel"]) assert.ok(art(w).includes("kaffee"), w);
 });
 
 test("Körperhaltung, Armrichtungen und fließende Schranktüren beim Stopfen und Kaffeekochen", () => {

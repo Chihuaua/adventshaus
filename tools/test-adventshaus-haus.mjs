@@ -99,20 +99,21 @@ test("Rufsteine erscheinen mit ihrer Ausbaustufe (9 Raum-Steine im Kiesteil imme
   const raumAktionen = ["musikzimmer", "gaming", "schlafzimmer", "badezimmer", "treppenhaus", "flur", "wohnzimmer", "kueche", "keller"];
   const leer = haus("adventshaus");
   leer.steineSetzen();
-  assert.equal(leer.steine.length, 12, "3 Wechselsteine plus 9 Raum-Steine im Kiesteil");
-  assert.equal(leer.steinStationen.length, 12);
+  assert.equal(leer.steine.length, 21, "3 Wechselsteine plus alle Funktions- und Raumsteine");
+  assert.equal(leer.steinStationen.length, 21);
   assert.deepEqual(leer.steine.filter((s) => !s.aktion).map((s) => s.ziel).sort(), ["normal", "traum", "weihnacht"]);
   for (const r of raumAktionen) assert.ok(leer.steine.some((s) => s.aktion === r), `Raumstein ${r} fehlt`);
 
+  // Alle Steine sind sichtbar – der Ausbau regelt nur, was nutzbar ist.
   const mitPost = haus("adventshaus", ["post"]);
   mitPost.steineSetzen();
   assert.ok(mitPost.steine.some((s) => s.aktion === "post"));
-  assert.ok(!mitPost.steine.some((s) => s.aktion === "abend"));
+  assert.ok(mitPost.steine.some((s) => s.aktion === "abend"), "auch ohne Ausbaustufe sichtbar");
 
   const voll = haus("adventshaus", alle);
   voll.steineSetzen();
-  assert.equal(voll.steine.length, 20);
-  assert.equal(voll.steinStationen.length, 20);
+  assert.equal(voll.steine.length, 21);
+  assert.equal(voll.steinStationen.length, 21);
   for (const aktion of ["post", "nikolaus", "abend", "abendEZ", "aufsteh", "aufstehEZ", "kaffee", "kaffeeEZ", ...raumAktionen]) {
     assert.ok(voll.steine.some((s) => s.aktion === aktion), aktion);
   }

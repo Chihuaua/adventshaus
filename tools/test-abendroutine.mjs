@@ -19,11 +19,12 @@ G.sfx.zahnpflege = art => ton.push(art);
 
 for (const w of ["normal", "weihnacht", "traum", "gruesel"]) {
   const h = haus(w), slots = G.steinSlots(w), erlaubt = ["normal", "weihnacht"].includes(w);
+  // Sichtbarkeit: Bettsteine stehen in jedem Haus. Aktiv sind sie nur in Abendwelten.
   const bett = slots.find(s => s.aktion === "abend");
-  assert.equal(!!bett, erlaubt);
-  assert.equal(!!slots.find(s => s.aktion === "abendEZ"), erlaubt, "EZ-Bett-Stein nur in beiden Abendwelten");
-  assert.equal(h.steinStationen.filter(s => s.id === "stein_ezbett").length, Number(erlaubt));
-  assert.equal(h.steinStationen.filter(s => s.id === "stein_bett").length, Number(erlaubt));
+  assert.equal(!!bett, true, `${w}: Bett sichtbar`);
+  assert.equal(!!slots.find(s => s.aktion === "abendEZ"), true, `${w}: EZ-Bett sichtbar`);
+  assert.equal(h.steinStationen.filter(s => s.id === "stein_ezbett").length, 1, "sichtbar");
+  assert.equal(h.steinStationen.filter(s => s.id === "stein_bett").length, 1, "sichtbar");
   if (bett) {
     const s = G.STATIONS.find(s => s.id === "stein_bett"); assert.deepEqual(s.hits, [bett.hit]);
     assert.equal(G.steinAn(slots, bett.x, bett.y - 8), bett);
@@ -33,7 +34,7 @@ for (const w of ["normal", "weihnacht", "traum", "gruesel"]) {
     h.command("stein_bett"); assert.equal(h.abendAktiv, false); assert.equal(h.shPhase, null);
   }
 }
-console.log("OK  Bett-Stein: zwei Welten, ein Fokusziel, kein verfrühter Beginn");
+console.log("OK  Bett: zwei Welten, ein Fokusziel, kein verfrühter Beginn");
 
 const kleid = { top: "#7fc6c2", bottom: "#4a7a6a" };
 for (const [d, saison] of [[datum(2026,9,30),false],[datum(2026,10,1),true],[datum(2027,1,1),true],

@@ -16,6 +16,8 @@ nicht gebaut.
 
 ## Welten und Ausbau
 
+Standardhaus ist **immer das Adventshaus** (leerer Hash oder unbekannte Adresse). Das normale Haus liegt auf `#haus`.
+
 Welten: normal, traum, gruesel, weihnacht, adventshaus. Das Adventshaus (Hash `#adventshaus`,
 Adventsstein rechts im Erdreich, in jeder Welt am selben Platz) ist die Zielwelt: ein Klon des Traumhauses, der über den
 Adventskalender Stück für Stück zum fertigen Haus wird. Alle anderen Häuser sind
@@ -26,6 +28,13 @@ Der Ausbauplan liegt in `src/game/adventshaus-ausbau.ts`: 24 Stufen, eine pro T�
 Eigene Schlüssel: `lcp1.welt.adventshaus.*` und `lcp1.advent.adventshaus.*`.
 Vorschau einer Ausbaustufe ohne Speicheränderung: `#adventshaus/12`.
 In allen anderen Welten ist jeder Schalter offen – ihr Verhalten bleibt unverändert.
+
+STEINGRUPPEN (src/game/steine.ts): Alle Steine sind in jedem Haus sichtbar und haben die
+Form und Größe der Renovierungssteine (flacher Kiesel, 24×26). Anordnung thematisch:
+Ereignisse (Kranz, Post, Nikolaus) oben im Kies, darunter die neun Räume im Raster;
+Routinen (Bett, EZ-Bett, Aufsteh, EZ-Aufsteh, Kaffee, EZ-Kaffee) dicht in einer Reihe
+im Erdreich, darunter die Weltsteine. Haare: beim Bücken kurz (Gesicht bleibt frei),
+nur beim Haarebürsten fallen sie wieder lang.
 
 Renovierung: Für alle 9 Räume des Hauses liegt die Wand-Renovierung in `src/game/renovierung.ts` (`RENO_RAEUME`):
 8 Tapetenräume wechseln „Bahn für Bahn“ (Leiter + Kleistereimer), das Badezimmer nutzt eine eigene

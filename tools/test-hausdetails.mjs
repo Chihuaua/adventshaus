@@ -239,7 +239,7 @@ test("Wohnzimmer: Kranz von Tischkante zu Tischkante, vier Kerzen, nur in den de
   assert.equal(Math.max(...spitzen.map(p => p[0])) - Math.min(...spitzen.map(p => p[0])), w);
   const k = canvas(), ring = []; k.ellipse = (cx, cy, rx) => ring.push(rx);
   G.esstischAdventskranz(k,448); assert.ok(ring.length && 2 * Math.max(...ring) < w * .5);
-  for (const [deko, winter, gr, erwartet] of [[true,false,null,4],[true,true,null,4],[false,false,null,0],[true,false,{},0]]) {
+  for (const [deko, winter, gr, erwartet] of [[true,false,null,0],[true,true,null,0],[false,false,null,0],[true,false,{},0]]) {
     const h = canvas(); G.drawHouse(h, {}, { open: 0 }, true, gr, false, undefined, winter, false, deko);
     assert.equal(h.ops.filter(o => o.art === "linear" && o.stops.includes("#c16a63")).length, erwartet);
   }

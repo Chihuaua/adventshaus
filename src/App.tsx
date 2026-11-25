@@ -50,9 +50,12 @@ export default function App() {
   if (istAdventshausHash(hash)) {
     return <HouseView key="adventshaus" welt="adventshaus" ausbauVorschau={ausbauVorschauAusHash(hash)} />;
   }
+  // Normales Haus (Entwicklungshaus) ausdrücklich über "#haus".
+  if (hash === "#haus") return <HouseView key="normal" />;
   if (hash === "#traumhaus") return <HouseView key="traum" welt="traum" />;
   // key: jede Hauswelt bekommt ihre eigene Instanz (und damit ihren eigenen Speicher)
   if (hash === "#gruselhaus") return <HouseView key="gruesel" welt="gruesel" />;
   if (hash === "#weihnachtshaus") return <HouseView key="weihnacht" welt="weihnacht" />;
-  return <HouseView key="normal" />;
+  // Standardhaus ist immer das Adventshaus (leerer Hash oder unbekannte Adresse).
+  return <HouseView key="adventshaus" welt="adventshaus" />;
 }

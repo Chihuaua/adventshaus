@@ -32,80 +32,36 @@ export type RaumSteinArt =
 
 export type SteinArt =
   | "wach" | "traum" | "horror" | "weihnacht" | "advent"
-  | "bote" | "nikolaus" | "bett" | "ezbett" | "aufsteh" | "ezaufsteh" | "kaffee" | "ezkaffee"
+  | "bote" | "kranz" | "nikolaus" | "bett" | "ezbett" | "aufsteh" | "ezaufsteh" | "kaffee" | "ezkaffee"
   | RaumSteinArt;
 
-/** Platz A: der ursprüngliche Steinplatz (unverändert). */
-export const STEIN: { x: number; y: number; hit: Rect4 } = {
-  x: 278,
-  y: 536,
-  hit: [254, 506, 48, 58],
-};
+/** Erdreich-Platz: 26 x 30 groß, Mittelpunkt = x+13 / yTop+15. */
+const erd = (x: number, yTop: number): { x: number; y: number; hit: Rect4 } =>
+  ({ x: x + 13, y: yTop + 15, hit: [x, yTop, 26, 30] });
 
-/** Platz B: links daneben, ebenfalls in der Erde. */
-export const STEIN_B: { x: number; y: number; hit: Rect4 } = {
-  x: 222,
-  y: 540,
-  hit: [198, 510, 48, 58],
-};
+/* ---- Gruppe 1: Routinen (dicht in einer Reihe unter der Erde) ---- */
+/** Sechs Routinensteine nebeneinander: Bett, EZ-Bett, Aufsteh, EZ-Aufsteh, Kaffee, EZ-Kaffee. */
+export const ROUTINEN_PLAETZE: readonly { x: number; y: number; hit: Rect4 }[] =
+  [99, 129, 159, 189, 219, 249].map((x) => erd(x, 462));
 
-/** Platz C: rechts daneben im Erdreich (mit Luft vor der Kellerwand). */
-export const STEIN_C: { x: number; y: number; hit: Rect4 } = {
-  x: 316,
-  y: 541,
-  hit: [303, 511, 34, 56],
-};
+/* ---- Gruppe 2: Weltsteine (eine Reihe darunter, nach Welt sortiert) ---- */
+/** Wach, Traum, Horror, Weihnacht, Advent – jeweils eigener, fester Platz. */
+export const WELT_PLAETZE: readonly { x: number; y: number; hit: Rect4 }[] =
+  [99, 129, 159, 189, 219].map((x) => erd(x, 500));
 
-/** Platz D: Poststein, links von Platz B im Erdreich (innerhalb der 10-%-Randregel). */
-export const STEIN_D: { x: number; y: number; hit: Rect4 } = {
-  x: 166,
-  y: 541,
-  hit: [143, 511, 46, 56],
-};
+/** Kompatibilität: Weltsteine an ihren festen Plätzen. */
+export const STEIN = WELT_PLAETZE[0];
+export const STEIN_B = WELT_PLAETZE[1];
+export const STEIN_C = WELT_PLAETZE[2];
+export const ADVENT_STEIN = WELT_PLAETZE[4];
 
-/** Der Nikolausstein nutzt den freien Platz links vom Poststein, ohne ihn zu versetzen. */
-export const NIKOLAUS_STEIN: { x: number; y: number; hit: Rect4 } = {
-  x: 116, y: 540, hit: [96, 509, 41, 57],
-};
-
-/** Adventsstein: eigenes Plätzchen am rechten Rand des Erdreichs, direkt vor der
-    Kellerwand. In jeder Welt derselbe Platz, damit man ihn immer wiederfindet. */
-export const ADVENT_STEIN: { x: number; y: number; hit: Rect4 } = {
-  x: 340, y: 487, hit: [328, 461, 24, 43],
-};
-
-export const BETT_STEIN: { x: number; y: number; hit: Rect4 } = {
-  x: 222, y: 487, hit: [201, 461, 42, 43],
-};
-
-/** EZ-Bett-Stein rechts neben dem Bett-Stein: startet die Abendroutine mit ihren Echtzeit-Dauern. */
-export const EZ_BETT_STEIN: { x: number; y: number; hit: Rect4 } = {
-  x: 268, y: 487, hit: [247, 461, 42, 43],
-};
-
-/**
- * Aufsteh-Steine in der Reihe des Bett-Steins (Erdreich links vom Haus).
- * Links vom Bett-Stein bleiben 23 Einheiten Luft, damit sich die Steine
- * optisch nicht berühren; alles bleibt im sicheren Bildbereich (x >= 96).
- */
-export const AUFSTEH_STEIN: { x: number; y: number; hit: Rect4 } = {
-  x: 114, y: 487, hit: [98, 461, 30, 43],
-};
-
-/** EZ-Aufsteh-Stein daneben: dieselbe Routine mit ihren Echtzeit-Dauern. */
-export const EZ_AUFSTEH_STEIN: { x: number; y: number; hit: Rect4 } = {
-  x: 146, y: 487, hit: [131, 461, 30, 43],
-};
-
-/** Kaffee-Stein: kurze Probe der Morgenroutine mit der Senseo (2 × Kaffee → Zigarette). */
-export const KAFFEE_STEIN: { x: number; y: number; hit: Rect4 } = {
-  x: 180, y: 487, hit: [164, 461, 32, 43],
-};
-
-/** EZ-Kaffee-Stein rechts neben dem EZ-Bett-Stein: dieselbe Routine in Echtzeit. */
-export const EZ_KAFFEE_STEIN: { x: number; y: number; hit: Rect4 } = {
-  x: 311, y: 487, hit: [294, 461, 34, 43],
-};
+/** Bett-Reihe (Routinen). */
+export const BETT_STEIN = ROUTINEN_PLAETZE[0];
+export const EZ_BETT_STEIN = ROUTINEN_PLAETZE[1];
+export const AUFSTEH_STEIN = ROUTINEN_PLAETZE[2];
+export const EZ_AUFSTEH_STEIN = ROUTINEN_PLAETZE[3];
+export const KAFFEE_STEIN = ROUTINEN_PLAETZE[4];
+export const EZ_KAFFEE_STEIN = ROUTINEN_PLAETZE[5];
 
 /**
  * Linker Kiesteil (x 5..92, y 463..568): sauber im 3×3-Raster aufgeteilt
@@ -113,31 +69,40 @@ export const EZ_KAFFEE_STEIN: { x: number; y: number; hit: Rect4 } = {
  * 4 px Luft bis zum Nikolausstein bei x = 96). Ein Platz für jeden Raum des Hauses.
  */
 export const KIES_PLAETZE: readonly { x: number; y: number; hit: Rect4 }[] = [
-  // Reihe 1 (oben): Dachgeschoss & Schlafzimmer
-  { x: 18.5, y: 479.5, hit: [5, 463, 27, 33] },
-  { x: 48.5, y: 479.5, hit: [35, 463, 27, 33] },
-  { x: 78.5, y: 479.5, hit: [65, 463, 27, 33] },
-  // Reihe 2 (Mitte): Bad (Fliesen), Treppenhaus & Flur
-  { x: 18.5, y: 515.5, hit: [5, 499, 27, 33] },
-  { x: 48.5, y: 515.5, hit: [35, 499, 27, 33] },
-  { x: 78.5, y: 515.5, hit: [65, 499, 27, 33] },
-  // Reihe 3 (unten): Wohnzimmer, Küche & Keller
-  { x: 18.5, y: 551.5, hit: [5, 535, 27, 33] },
-  { x: 48.5, y: 551.5, hit: [35, 535, 27, 33] },
-  { x: 78.5, y: 551.5, hit: [65, 535, 27, 33] },
+  // Reihe 1 (oben): Ereignisse – Kranz, Post, Nikolaus
+  { x: 18, y: 472, hit: [5, 460, 26, 24] },
+  { x: 47, y: 472, hit: [34, 460, 26, 24] },
+  { x: 76, y: 472, hit: [63, 460, 26, 24] },
+  // Reihe 2: Dachgeschoss & Schlafzimmer
+  { x: 18, y: 498, hit: [5, 486, 26, 24] },
+  { x: 47, y: 498, hit: [34, 486, 26, 24] },
+  { x: 76, y: 498, hit: [63, 486, 26, 24] },
+  // Reihe 3: Bad, Treppenhaus, Flur
+  { x: 18, y: 524, hit: [5, 512, 26, 24] },
+  { x: 47, y: 524, hit: [34, 512, 26, 24] },
+  { x: 76, y: 524, hit: [63, 512, 26, 24] },
+  // Reihe 4 (unten): Wohnzimmer, Küche, Keller
+  { x: 18, y: 550, hit: [5, 538, 26, 24] },
+  { x: 47, y: 550, hit: [34, 538, 26, 24] },
+  { x: 76, y: 550, hit: [63, 538, 26, 24] },
 ] as const;
+
+/** Ereignisgruppe oben im Kies: Kranz, Post, Nikolaus. */
+export const KRANZ_STEIN = KIES_PLAETZE[0];
+export const STEIN_D = KIES_PLAETZE[1];
+export const NIKOLAUS_STEIN = KIES_PLAETZE[2];
 
 /** Feste Zuordnung der 9 Kiesplätze zu allen Räumen des Hauses. */
 export const RAUM_STEINE: readonly { art: RaumSteinArt; raum: RenoRaumId; label: string; platz: number }[] = [
-  { art: "musikzimmer", raum: "musik", label: "Musikzimmer-Stein", platz: 0 },
-  { art: "gaming", raum: "gaming", label: "Gaming-Stein", platz: 1 },
-  { art: "schlafzimmer", raum: "schlafzimmer", label: "Schlafzimmer-Stein", platz: 2 },
-  { art: "badezimmer", raum: "badezimmer", label: "Badezimmer-Stein", platz: 3 },
-  { art: "treppenhaus", raum: "treppenhaus", label: "Treppenhaus-Stein", platz: 4 },
-  { art: "flur", raum: "flur", label: "Flur-Stein", platz: 5 },
-  { art: "wohnzimmer", raum: "wohnzimmer", label: "Wohnzimmer-Stein", platz: 6 },
-  { art: "kueche", raum: "kueche", label: "Küchen-Stein", platz: 7 },
-  { art: "keller", raum: "keller", label: "Keller-Stein", platz: 8 },
+  { art: "musikzimmer", raum: "musik", label: "Musikzimmer", platz: 3 },
+  { art: "gaming", raum: "gaming", label: "Gaming", platz: 4 },
+  { art: "schlafzimmer", raum: "schlafzimmer", label: "Schlafzimmer", platz: 5 },
+  { art: "badezimmer", raum: "badezimmer", label: "Badezimmer", platz: 6 },
+  { art: "treppenhaus", raum: "treppenhaus", label: "Treppenhaus", platz: 7 },
+  { art: "flur", raum: "flur", label: "Flur", platz: 8 },
+  { art: "wohnzimmer", raum: "wohnzimmer", label: "Wohnzimmer", platz: 9 },
+  { art: "kueche", raum: "kueche", label: "Küche", platz: 10 },
+  { art: "keller", raum: "keller", label: "Keller", platz: 11 },
 ] as const;
 
 /** Musikzimmer-Stein (Platz 1 links im Kiesteil): startet den Tapetenwechsel „Bahn für Bahn“. */
@@ -152,28 +117,29 @@ const ZIEL_ART: Record<WeltId, SteinArt> = {
 };
 
 export const STEIN_NAMEN: Record<SteinArt, string> = {
-  wach: "Wachstein",
-  traum: "Traumstein",
-  horror: "Horrorstein",
-  weihnacht: "Weihnachtsstein",
-  advent: "Adventsstein",
-  bote: "Poststein",
-  nikolaus: "Nikolausstein",
-  bett: "Bett-Stein",
-  ezbett: "EZ-Bett-Stein",
-  aufsteh: "Aufsteh-Stein",
-  kaffee: "Kaffee-Stein",
-  ezkaffee: "EZ-Kaffee-Stein",
-  ezaufsteh: "EZ-Aufsteh-Stein",
-  musikzimmer: "Musikzimmer-Stein",
-  gaming: "Gaming-Stein",
-  schlafzimmer: "Schlafzimmer-Stein",
-  badezimmer: "Badezimmer-Stein",
-  treppenhaus: "Treppenhaus-Stein",
-  flur: "Flur-Stein",
-  wohnzimmer: "Wohnzimmer-Stein",
-  kueche: "Küchen-Stein",
-  keller: "Keller-Stein",
+  wach: "Wach",
+  traum: "Traum",
+  horror: "Horror",
+  weihnacht: "Weihnacht",
+  advent: "Advent",
+  bote: "Post",
+  kranz: "Kranz",
+  nikolaus: "Nikolaus",
+  bett: "Bett",
+  ezbett: "EZ-Bett",
+  aufsteh: "Aufsteh",
+  kaffee: "Kaffee",
+  ezkaffee: "EZ-Kaffee",
+  ezaufsteh: "EZ-Aufsteh",
+  musikzimmer: "Musikzimmer",
+  gaming: "Gaming",
+  schlafzimmer: "Schlafzimmer",
+  badezimmer: "Badezimmer",
+  treppenhaus: "Treppenhaus",
+  flur: "Flur",
+  wohnzimmer: "Wohnzimmer",
+  kueche: "Küche",
+  keller: "Keller",
 };
 
 export interface SteinSlot {
@@ -185,7 +151,7 @@ export interface SteinSlot {
   hit: Rect4;
   label: string;
   /** Rufsteine lösen statt eines Weltwechsels eine Aktion oder Raum-Renovierung aus. */
-  aktion?: "post" | "nikolaus" | "abend" | "abendEZ" | "aufsteh" | "aufstehEZ" | "kaffee" | "kaffeeEZ" | RaumSteinArt;
+  aktion?: "post" | "kranz" | "nikolaus" | "abend" | "abendEZ" | "aufsteh" | "aufstehEZ" | "kaffee" | "kaffeeEZ" | RaumSteinArt;
   /** Zugehöriger Raum für die Renovierungssteine im linken Kiesteil. */
   raum?: RenoRaumId;
   /** Liegt auf dem 9-Platz-Kiesteil links (x 2..94, y 460..570). */
@@ -199,68 +165,40 @@ export interface SteinSlot {
  * gewohnten Plätzen.
  */
 export function steinSlots(welt: WeltId): SteinSlot[] {
-  // Im Adventshaus stehen die drei Häuser, aus denen es wächst; sonst bleibt alles wie gehabt.
-  const reihenfolge: WeltId[] = welt === "adventshaus"
+  const weltIndex: Record<string, number> = { normal: 0, traum: 1, gruesel: 2, weihnacht: 3 };
+  const basis: WeltId[] = welt === "adventshaus"
     ? ["normal", "traum", "weihnacht"]
     : ["normal", "traum", "gruesel", "weihnacht"];
-  const plaetze = [STEIN, STEIN_B, STEIN_C];
-  return reihenfolge
-    .filter((w) => w !== welt)
-    .map((ziel, i): SteinSlot => ({
-      art: ZIEL_ART[ziel],
-      ziel,
-      x: plaetze[i].x,
-      y: plaetze[i].y,
-      hit: plaetze[i].hit,
-      label: STEIN_NAMEN[ZIEL_ART[ziel]],
-    }))
-    // Adventsstein: führt von jeder Welt aus ins Adventshaus, immer vom selben Platz.
-    .concat(welt === "adventshaus" ? [] : [{
-      art: "advent" as SteinArt,
-      ziel: "adventshaus" as WeltId,
-      x: ADVENT_STEIN.x,
-      y: ADVENT_STEIN.y,
-      hit: ADVENT_STEIN.hit,
-      label: STEIN_NAMEN.advent,
-    }])
-    .concat(welt !== "normal" && welt !== "weihnacht" && welt !== "adventshaus" ? [] : [{
-      art: "bote",
-      ziel: welt,
-      x: STEIN_D.x,
-      y: STEIN_D.y,
-      hit: STEIN_D.hit,
-      label: STEIN_NAMEN.bote,
-      aktion: "post",
-    }, {
-      ...NIKOLAUS_STEIN,
-      art: "nikolaus",
-      ziel: welt,
-      label: STEIN_NAMEN.nikolaus,
-      aktion: "nikolaus",
-    }, {
-      ...BETT_STEIN, art: "bett", ziel: welt, label: STEIN_NAMEN.bett, aktion: "abend",
-    }, {
-      ...EZ_BETT_STEIN, art: "ezbett", ziel: welt, label: STEIN_NAMEN.ezbett, aktion: "abendEZ",
-    }, {
-      ...AUFSTEH_STEIN, art: "aufsteh", ziel: welt, label: STEIN_NAMEN.aufsteh, aktion: "aufsteh",
-    }, {
-      ...EZ_AUFSTEH_STEIN, art: "ezaufsteh", ziel: welt, label: STEIN_NAMEN.ezaufsteh, aktion: "aufstehEZ",
-    }, {
-      ...KAFFEE_STEIN, art: "kaffee", ziel: welt, label: STEIN_NAMEN.kaffee, aktion: "kaffee",
-    }, {
-      ...EZ_KAFFEE_STEIN, art: "ezkaffee", ziel: welt, label: STEIN_NAMEN.ezkaffee, aktion: "kaffeeEZ",
-    }])
-    .concat(welt === "normal" || welt === "adventshaus"
-      ? RAUM_STEINE.map((r): SteinSlot => ({
-          ...KIES_PLAETZE[r.platz],
-          art: r.art,
-          ziel: welt,
-          label: r.label,
-          aktion: r.art,
-          raum: r.raum,
-          kies: true,
-        }))
-      : []);
+  const wechsel = basis
+    .filter((ziel) => ziel !== welt)
+    .map((ziel): SteinSlot => {
+      const p = WELT_PLAETZE[weltIndex[ziel]];
+      return { ...p, art: ZIEL_ART[ziel], ziel, label: STEIN_NAMEN[ZIEL_ART[ziel]] };
+    });
+  const advent: SteinSlot[] = welt === "adventshaus" ? [] : [{
+    ...ADVENT_STEIN, art: "advent", ziel: "adventshaus", label: STEIN_NAMEN.advent,
+  }];
+  // Ereignisse: dicht beieinander oben im Kiesteil
+  const ereignisse: SteinSlot[] = [
+    { ...KRANZ_STEIN, art: "kranz", ziel: welt, label: STEIN_NAMEN.kranz, aktion: "kranz", kies: true },
+    { ...STEIN_D, art: "bote", ziel: welt, label: STEIN_NAMEN.bote, aktion: "post", kies: true },
+    { ...NIKOLAUS_STEIN, art: "nikolaus", ziel: welt, label: STEIN_NAMEN.nikolaus, aktion: "nikolaus", kies: true },
+  ];
+  // Routinen: sechs Steine in einer Reihe im Erdreich
+  const routine: SteinSlot[] = [
+    { ...BETT_STEIN, art: "bett", ziel: welt, label: STEIN_NAMEN.bett, aktion: "abend" },
+    { ...EZ_BETT_STEIN, art: "ezbett", ziel: welt, label: STEIN_NAMEN.ezbett, aktion: "abendEZ" },
+    { ...AUFSTEH_STEIN, art: "aufsteh", ziel: welt, label: STEIN_NAMEN.aufsteh, aktion: "aufsteh" },
+    { ...EZ_AUFSTEH_STEIN, art: "ezaufsteh", ziel: welt, label: STEIN_NAMEN.ezaufsteh, aktion: "aufstehEZ" },
+    { ...KAFFEE_STEIN, art: "kaffee", ziel: welt, label: STEIN_NAMEN.kaffee, aktion: "kaffee" },
+    { ...EZ_KAFFEE_STEIN, art: "ezkaffee", ziel: welt, label: STEIN_NAMEN.ezkaffee, aktion: "kaffeeEZ" },
+  ];
+  // Raumsteine: neun Stück im Raster darunter
+  const raeume: SteinSlot[] = RAUM_STEINE.map((r): SteinSlot => ({
+    ...KIES_PLAETZE[r.platz], art: r.art, ziel: welt, label: r.label,
+    aktion: r.art, raum: r.raum, kies: true,
+  }));
+  return [...wechsel, ...advent, ...ereignisse, ...routine, ...raeume];
 }
 
 export function steinAn(slots: SteinSlot[], x: number, y: number): SteinSlot | null {
@@ -285,6 +223,7 @@ const FARBEN: Record<SteinArt, { main: string; edge: string; glow: string }> = {
   wach: { main: "#758b60", edge: "#e6d58a", glow: "rgba(255,224,139,.18)" },
   horror: { main: "#2b1a26", edge: "#ff6a3c", glow: "rgba(255,98,52,.26)" },
   weihnacht: { main: "#7a242c", edge: "#f5d36c", glow: "rgba(255,210,110,.26)" },
+  kranz: { main: "#24402f", edge: "#f4d489", glow: "rgba(244,212,137,.26)" },
   advent: { main: "#2f5a3d", edge: "#ffd98a", glow: "rgba(255,217,138,.28)" },
   bote: { main: "#2c5674", edge: "#9fe0a8", glow: "rgba(150,230,170,.22)" },
   nikolaus: { main: "#805046", edge: "#f3d59a", glow: "rgba(244,202,125,.28)" },
@@ -509,6 +448,58 @@ function drawRaumStein(c: C, kind: RaumSteinArt, x: number, y: number, t: number
 /** Halb eingegrabener Stein; Symbol und Farbe zeigen eindeutig, wohin er führt. */
 export function drawStein(c: C, kind: SteinArt, t = 0, px: number = STEIN.x, py: number = STEIN.y) {
   if (RAUM_STEIN_SET.has(kind)) {
+    drawSteinKern(c, kind, t, px, py);
+    return;
+  }
+  // Alle Orts- und Rufsteine: flacher Kiesel in exakt derselben Form und Größe
+  // wie die Renovierungssteine im Kiesteil (24 x 26, Radius 7).
+  const { main, edge, glow } = FARBEN[kind];
+  const pulse = 0.78 + Math.sin(t * 1.7) * 0.08;
+  c.save();
+  // weicher Schein
+  const g = c.createRadialGradient(px, py, 1, px, py, 17);
+  g.addColorStop(0, glow);
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  c.fillStyle = g;
+  c.beginPath();
+  c.arc(px, py, 17, 0, Math.PI * 2);
+  c.fill();
+  // Bodenschatten
+  c.fillStyle = "rgba(10,12,16,.36)";
+  c.beginPath();
+  c.ellipse(px, py + 12, 11.4, 2.8, 0, 0, Math.PI * 2);
+  c.fill();
+  // Kieselkorpus
+  c.fillStyle = main;
+  c.beginPath();
+  c.roundRect(px - 12, py - 13, 24, 26, 7);
+  c.fill();
+  // Symbol des Steins, auf dieselbe Symbolgröße wie im Kiesteil gebracht
+  c.save();
+  c.beginPath();
+  c.roundRect(px - 12, py - 13, 24, 26, 7);
+  c.clip();
+  c.translate(px, py);
+  c.scale(0.62, 0.62);
+  c.translate(-px, -py);
+  drawSteinKern(c, kind, t, px, py);
+  c.restore();
+  // zarter Glanz oben + warmer Rand
+  c.fillStyle = "rgba(255,250,235,.09)";
+  c.beginPath();
+  c.roundRect(px - 9.5, py - 11, 19, 6, 3);
+  c.fill();
+  c.strokeStyle = edge;
+  c.globalAlpha = pulse;
+  c.lineWidth = 1.25;
+  c.beginPath();
+  c.roundRect(px - 12, py - 13, 24, 26, 7);
+  c.stroke();
+  c.restore();
+}
+
+function drawSteinKern(c: C, kind: SteinArt, t = 0, px: number = STEIN.x, py: number = STEIN.y) {
+  if (RAUM_STEIN_SET.has(kind)) {
     drawRaumStein(c, kind as RaumSteinArt, px, py, t);
     return;
   }
@@ -545,7 +536,26 @@ export function drawStein(c: C, kind: SteinArt, t = 0, px: number = STEIN.x, py:
   c.lineTo(x + 4, y + 10);
   c.stroke();
   c.fillStyle = edge;
-  if (kind === "advent") {
+  if (kind === "kranz") {
+    // Adventskranz: dunkelgrüner Ring, vier Kerzen, die erste brennt.
+    c.strokeStyle = "#2e5c40"; c.lineWidth = 3.2;
+    c.beginPath(); c.ellipse(x, y + 1, 9, 3.6, 0, 0, Math.PI * 2); c.stroke();
+    c.strokeStyle = "#3f7f52"; c.lineWidth = 1.3;
+    c.beginPath(); c.ellipse(x, y, 9, 3.6, 0, 0, Math.PI * 2); c.stroke();
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      const kx = x + Math.cos(a) * 7, ky = y + Math.sin(a) * 2.6 - 8;
+      c.fillStyle = "#f6ecd2"; c.fillRect(kx - 0.9, ky, 1.8, 7);
+      if (i === 0) {
+        c.fillStyle = "#ffcf6a";
+        c.beginPath(); c.ellipse(kx, ky - 2.2, 1.2, 2.2, 0, 0, Math.PI * 2); c.fill();
+      } else {
+        c.fillStyle = "#b9a98a"; c.fillRect(kx - 0.8, ky - 2, 1.6, 1.6);
+      }
+    }
+    c.fillStyle = "#c9453a";
+    for (let i = 0; i < 3; i++) c.fillRect(x - 6 + i * 5, y + 2 + (i % 2) * 1.5, 1.5, 1.5);
+  } else if (kind === "advent") {
     // Adventsstein: brennende Kerze auf einem kleinen Tannenkranz, darüber ein Stern.
     c.fillStyle = "#2e5c40";
     c.beginPath(); c.ellipse(x, y + 2, 8.2, 2.9, 0, 0, Math.PI * 2); c.fill();

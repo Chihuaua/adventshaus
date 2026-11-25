@@ -99,18 +99,19 @@ test("Meldung nach einem Türchen nennt das neue Stück", () => {
   assert.equal(A.ausbauMeldung(99), null);
 });
 
-test("Adventsstein führt ins Adventshaus, ohne andere Steine zu versetzen", () => {
+test("Advent führt ins Adventshaus, ohne andere Steine zu versetzen", () => {
   const traum = S.steinSlots("traum");
   const advent = traum.find((s) => s.ziel === "adventshaus");
-  assert.ok(advent, "Adventsstein fehlt im Traumhaus");
+  assert.ok(advent, "Advent fehlt im Traumhaus");
   assert.equal(advent.art, "advent");
-  assert.equal(advent.label, "Adventsstein");
+  assert.equal(advent.label, "Advent");
   // Eigener Platz am rechten Rand des Erdreichs, vor der Kellerwand
   assert.equal(advent.x, S.ADVENT_STEIN.x);
   assert.equal(S.ADVENT_STEIN.hit[0] + S.ADVENT_STEIN.hit[2] <= 354, true, "Stein bleibt im Erdreich");
   assert.ok(advent.hit[2] >= 24 && advent.hit[3] >= 24, "Klickziel zu klein");
-  // Wachstein, Horrorstein und Weihnachtsstein bleiben an ihren Plätzen.
-  assert.deepEqual(traum.filter((s) => s !== advent).map((s) => s.x), [S.STEIN.x, S.STEIN_B.x, S.STEIN_C.x]);
+  // Wachstein, Horrorstein und Weihnacht bleiben an ihren Plätzen.
+  const festeWelt = traum.filter((s) => !s.aktion && s.ziel !== "adventshaus").map((s) => s.x);
+  assert.deepEqual(festeWelt, [S.STEIN.x, S.STEIN_C.x, S.WELT_PLAETZE[3].x], "feste Plätze nach Welt");
   const grusel = S.steinSlots("gruesel");
   assert.ok(grusel.some((s) => s.ziel === "adventshaus"));
   // Im Adventshaus stehen drei Wechselsteine zurück in die Entwicklungshäuser.
@@ -118,7 +119,7 @@ test("Adventsstein führt ins Adventshaus, ohne andere Steine zu versetzen", () 
   const wechsel = zurueck.filter((s) => !s.aktion);
   assert.equal(wechsel.length, 3);
   assert.deepEqual(wechsel.map((s) => s.ziel).sort(), ["normal", "traum", "weihnacht"]);
-  assert.deepEqual(wechsel.map((s) => s.x), [S.STEIN.x, S.STEIN_B.x, S.STEIN_C.x]);
+  assert.deepEqual(wechsel.map((s) => s.x), [S.WELT_PLAETZE[0].x, S.WELT_PLAETZE[1].x, S.WELT_PLAETZE[3].x]);
   // Kein Wechselstein führt aus dem Adventshaus auf sich selbst.
   assert.ok(!wechsel.some((s) => s.ziel === "adventshaus"));
   // Die Rufsteine für Abend, Aufsteh, Kaffee, Post und Nikolaus sind mit dabei;
@@ -131,12 +132,12 @@ test("Adventsstein führt ins Adventshaus, ohne andere Steine zu versetzen", () 
 test("Weihnachtshaus und normales Haus behalten ihre Steine unverändert", () => {
   const normal = S.steinSlots("normal");
   const an = normal.filter((s) => s.ziel === "adventshaus");
-  assert.equal(an.length, 1, "Adventsstein fehlt im normalen Haus");
+  assert.equal(an.length, 1, "Advent fehlt im normalen Haus");
   assert.equal(an[0].x, S.ADVENT_STEIN.x);
   assert.deepEqual(normal.slice(0, 3).map((s) => s.ziel), ["traum", "gruesel", "weihnacht"]);
   const weihnacht = S.steinSlots("weihnacht");
   assert.deepEqual(weihnacht.slice(0, 3).map((s) => s.ziel), ["normal", "traum", "gruesel"]);
-  assert.ok(weihnacht.some((s) => s.aktion === "post"), "Poststein fehlt im Weihnachtshaus");
+  assert.ok(weihnacht.some((s) => s.aktion === "post"), "Post fehlt im Weihnachtshaus");
 });
 
 test("Die Deko malt im Adventshaus Stück für Stück mehr (ohne Fehler)", () => {
