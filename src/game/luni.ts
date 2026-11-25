@@ -116,7 +116,9 @@ export type LuniExpr =
   | "love"
   | "talk"
   | "sing"
-  | "focus";
+  | "focus"
+  /** Gähnen: Augen zu, weit offener Mund. */
+  | "yawn";
 
 /** Ein Studiopinsel bemalt vorhandene Schnittteile. Gelenke und Zeichenreihenfolge bleiben bei Luni. */
 export interface LuniZeichenpinsel {
@@ -216,14 +218,20 @@ export interface LuniOpts {
   pajama?: { top: string; bottom: string; flausch?: boolean } | null;
   /** Weste aus dem Kleiderschrank über dem Schlafanzug. */
   weste?: boolean;
+  /** Fließendes Überziehen der Weste (0 = noch nur Schlafanzug .. 1 = Weste ganz angezogen). */
+  westeAnziehen?: number;
   /** 0..1: in der Seitenlage die Haare neben das Ohr legen */
   hairAside?: number;
   /** Nur Bett: 0 = sitzend, 1 = liegend; ohne Vorgabe unveränderte Liegepose. */
   lieDown?: number;
   /** Nur Bett: leichte Vorbeuge beim Greifen nach der Decke. */
   bedLean?: number;
+  /** Sitzend recken und strecken: beide Arme hoch, Kopf leicht in den Nacken (0..1). */
+  reck?: number;
   /** Nur Bett: Übergang vom Stehen zum Sitzen auf der Matratze. */
   bedSitzen?: number;
+  /** Aufwachen im Bett: aufrichten 0..1 (Liegen -> Langsitz), beineSenken 0..1 (Matratze -> Bettkante). */
+  bettAufstehen?: { aufrichten: number; beineSenken: number };
   /** Nur Bett: Arme und Beine liegen unter der Decke und werden nicht gezeichnet. */
   bedCover?: boolean;
   /** Reflektiertes Licht des aktuellen Videobilds, nur auf der Gesichtshaut. */
@@ -2000,7 +2008,7 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
     ctx.fillStyle = LUNI_COLORS.eye;
   };
 
-  if (expr === "sleep") {
+  if (expr === "sleep" || expr === "yawn") {
     arcDown(farX, 1.9);
     arcDown(nearX, 2.1);
   } else if (expr === "love") {
@@ -2195,6 +2203,12 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
     case "talk":
       ctx.beginPath();
       ctx.ellipse(mx, mY - 0.25, 1.35, 0.52 + Math.abs(Math.sin(t * 7)) * 0.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case "yawn":
+      // Weit aufgerissen, ein Stück nach unten gezogen.
+      ctx.beginPath();
+      ctx.ellipse(mx, mY + 0.5, 1.7, 2.3, 0, 0, Math.PI * 2);
       ctx.fill();
       break;
     case "sing": {
@@ -2982,6 +2996,7 @@ export function luniRigBauen(x: number, y: number, opts: LuniOpts = {}): Rig {
     lieDown,
     bedSitzen,
     bedLean = 0,
+    reck = 0,
     cough = 0,
     sway = 0,
     footTap = 0,
@@ -3006,6 +3021,18 @@ export function luniRigBauen(x: number, y: number, opts: LuniOpts = {}): Rig {
     r = buildRig(state, tzeit, walk, phase, armReach, beatT, opts.buerstenzeit, opts.buerstendauer, opts.buerstensaat);
   }
   if (bedLean > 0) r.bend = Math.max(r.bend, clamp01(bedLean) * 0.28);
+  if (reck > 0) {
+    // Arme in einem weiten V über den Kopf (wie die Streck-Haltung im Stehen), Kopf zurück.
+    const k = clamp01(reck);
+    const zu = (a: { elbow: V; hand: V }, e: V, h: V) => ({
+      elbow: [lerp(a.elbow[0], e[0], k), lerp(a.elbow[1], e[1], k)] as V,
+      hand: [lerp(a.hand[0], h[0], k), lerp(a.hand[1], h[1], k)] as V,
+    });
+    r.armNear = zu(r.armNear, [10, -45], [5.5, -63]);
+    r.armFar = zu(r.armFar, [-9, -45], [-6, -62]);
+    r.headTilt = lerp(r.headTilt, -0.2, k);
+    r.hairFlow = lerp(r.hairFlow ?? 0, -0.5, k);
+  }
   const bettSitzEnde = state === "sit" && bedSitzen !== undefined ? buildRig("sit", t, walk, phase, armReach) : null;
   if (bettSitzEnde && bedSitzen !== undefined) {
     const p = ease(bedSitzen);
@@ -3019,6 +3046,40 @@ export function luniRigBauen(x: number, y: number, opts: LuniOpts = {}): Rig {
         hand: [lerp(a.hand[0], b.hand[0], p), lerp(a.hand[1], b.hand[1], p)],
       };
     }
+  }
+  if (opts.bettAufstehen) {
+    const a = clamp01(opts.bettAufstehen.aufrichten);
+    const b = clamp01(opts.bettAufstehen.beineSenken);
+    const sit = buildRig("sit", t, walk, 1, armReach);
+    r.rootRot = 0;
+    r.rootY = SITZ_HUB;
+    r.hipY = sit.hipY;
+    // Oberkörper dreht sich um die Hüfte aus der Waagerechten (-90°) in den aufrechten Sitz (0°).
+    r.bend = (-Math.PI / 2) * (1 - a) + r.bend;
+    r.headTilt = lerp(0.1, sit.headTilt, a);
+    // Im Liegen liegen beide Arme flach entlang des Rumpfs tief unter der Decke.
+    r.armNear = {
+      elbow: [lerp(-2.2, sit.armNear.elbow[0], a), lerp(-27, sit.armNear.elbow[1], a)],
+      hand: [lerp(-2.4, sit.armNear.hand[0], a), lerp(-20.5, sit.armNear.hand[1], a)],
+    };
+    r.armFar = {
+      elbow: [lerp(-3.8, sit.armFar.elbow[0], a), lerp(-27, sit.armFar.elbow[1], a)],
+      hand: [lerp(-4.2, sit.armFar.hand[0], a), lerp(-20.5, sit.armFar.hand[1], a)],
+    };
+    // Beine liegen zuerst satt auf der Matratze ausgestreckt und schwingen beim Umsetzen vor die Bettkante.
+    const bogen = Math.sin(Math.PI * b);
+    const kFarY = lerp(-14.2, -15.8, a), fFarY = lerp(-13.6, -15.2, a);
+    const kNearY = lerp(-15.0, -16.6, a), fNearY = lerp(-14.4, -16.0, a);
+    r.legFar = {
+      elbow: [lerp(8.4, sit.legFar.elbow[0], b) - 0.8 * bogen, lerp(kFarY, sit.legFar.elbow[1], b) - 1.6 * bogen],
+      hand: [lerp(19.0, sit.legFar.hand[0], b), lerp(fFarY, sit.legFar.hand[1], b) - 1.2 * bogen],
+    };
+    r.legNear = {
+      elbow: [lerp(11.8, sit.legNear.elbow[0], b) - 0.8 * bogen, lerp(kNearY, sit.legNear.elbow[1], b) - 1.6 * bogen],
+      hand: [lerp(21.4, sit.legNear.hand[0], b), lerp(fNearY, sit.legNear.hand[1], b) - 1.0 * bogen],
+    };
+    r.footFarAng = -Math.PI * 0.36 * (1 - b);
+    r.footNearAng = -Math.PI * 0.36 * (1 - b);
   }
   if (state === "lie" && lieDown !== undefined) {
     const p = clamp01(lieDown);
@@ -3194,6 +3255,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
     eyeRoll = 0,
     vampir = null,
     umhang = 1,
+    reck = 0,
   } = opts;
 
   // Kränkliche Haut: je höher `sick`, desto grüner das Gesicht
@@ -3215,8 +3277,9 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
         teeShade: mixCol(P.top, "#000000", 0.12),
         leggings: P.bottom,
         leggingsLight: mixCol(P.bottom, "#ffffff", 0.14),
-        sockL: [P.bottom, P.bottom],
-        sockR: [P.bottom, P.bottom],
+        // Im Schlafanzug ist sie barfuß (Schlappen kommen später); Vampir-Outfits behalten ihre Farbe.
+        sockL: vampir ? [P.bottom, P.bottom] : [K0.skin, K0.skin],
+        sockR: vampir ? [P.bottom, P.bottom] : [K0.skin, K0.skin],
       }
     : K0;
   const haut = {
@@ -3246,11 +3309,11 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
   // Weste über dem Schlafanzug: oben trägt sie die helle Standardweste mit
   // Holzfäller-Karo, Hose und Socken bleiben der Schlafanzug. Ohne Schlafanzug
   // gibt es keine Weste darüber – dann ist die Kleidung schon die Tageskleidung.
-  const westeOben = weste && !!P && !kleidung?.handtuch && !vampir;
-  const alltag = P ? K0 : bekleidet;
-  const KW = westeOben
-    ? { ...alltag, leggings: KP.leggings, leggingsLight: KP.leggingsLight, sockL: KP.sockL, sockR: KP.sockR }
-    : KP;
+  const westeAnteil = opts.westeAnziehen !== undefined ? clamp01(opts.westeAnziehen) : (weste ? 1 : 0);
+  const westeOben = westeAnteil >= 0.999 && !!P && !kleidung?.handtuch && !vampir;
+  const westeGleit = westeAnteil > 0.001 && westeAnteil < 0.999 && !!P && !kleidung?.handtuch && !vampir;
+  const KWeste = { ...KP, cardigan: K0.cardigan, cardiganDark: K0.cardiganDark, cardiganLight: K0.cardiganLight };
+  const KW = westeOben ? KWeste : KP;
   const oberteil = kleidung ? (kleidung.handtuch ? "towel" : kleidung.oberteil ? "dressed" : "none") : outfit;
   const plueschHose = P?.flausch && (kleidung ? kleidung.hose : outfit === "dressed");
   const K = vampir && oberteil === "dressed"
@@ -3296,7 +3359,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
   // Rumpf, Arme, Hals und Kopf gemeinsam um die Hüfte – die Längen bleiben.
   const bent = r.bend > 0.01;
   const upperLean = (fn: () => void) => {
-    if (!bent) return fn();
+    if (Math.abs(r.bend) <= 0.01) return fn();
     ctx.save();
     ctx.translate(0, r.hipY);
     ctx.rotate(r.bend);
@@ -3312,12 +3375,42 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
 
   const klavierHaareVorn = back && (state === "piano" || pianoSeat !== undefined);
   const schrank = back && opts.schrankRuecken === true;
-  const rueckenarme = !back ? null : backIK ? { near: r.armNear, far: r.armFar, behind: false } : backArms(state, r, phase);
+  const westeArme = () => {
+    const sy = r.shoulderY + 2.2, SR: V = [6.2, sy], SL: V = [-6.2, sy];
+    const h = keys(westeAnteil, [
+      [0, [4.6, sy - 2]],
+      [0.26, [11.0, sy + 4.5]],
+      [0.58, [10.6, sy + 11.4]],
+      [0.82, [7.8, r.hipY + 0.6]],
+      [1, [8.6, sy + 16.2]],
+    ]);
+    return { near: armIK(SR, h, 1), far: armIK(SL, [-h[0], h[1]], -1), behind: true };
+  };
+  const rueckenarme = !back ? null
+    : backIK ? { near: r.armNear, far: r.armFar, behind: false }
+    : opts.westeAnziehen !== undefined && state !== "act" ? westeArme()
+    : backArms(state, r, phase);
   const armeVonHinten = () => {
     if (!rueckenarme || bedCover) return;
+    const wk = ease(westeAnteil);
     for (const [side, arm] of [[-1, rueckenarme.far], [1, rueckenarme.near]] as const) {
-      stroke3(ctx, [side * 6.2, r.shoulderY + 2.2], arm.elbow, arm.hand, side < 0 ? K.cardiganDark : K.cardigan, 4.5, pinsel);
-      if (P?.flausch && oberteil === "dressed" && !westeOben) flauschBund(ctx, arm.elbow, pullBack(arm.elbow, arm.hand, 1.5), P.top, 4.9);
+      const sh: V = [side * 6.2, r.shoulderY + 2.2];
+      stroke3(ctx, sh, arm.elbow, arm.hand, side < 0 ? K.cardiganDark : K.cardigan, 4.5, pinsel);
+      if (P?.flausch && oberteil === "dressed" && !westeOben && wk < 0.85) {
+        flauschBund(ctx, arm.elbow, pullBack(arm.elbow, arm.hand, 1.5), P.top, 4.9);
+      }
+      if (westeGleit && wk > 0.02) {
+        // Ärmel der Weste gleitet fließend von der Schulter über den Ellbogen bis zum Handgelenk
+        const wFarbe = side < 0 ? KWeste.cardiganDark : KWeste.cardigan;
+        const ePkt: V = wk < 0.5
+          ? [lerp(sh[0], arm.elbow[0], wk * 2), lerp(sh[1], arm.elbow[1], wk * 2)]
+          : arm.elbow;
+        const hZiel = pullBack(arm.elbow, arm.hand, 1.2);
+        const hPkt: V = wk < 0.5
+          ? ePkt
+          : [lerp(arm.elbow[0], hZiel[0], (wk - 0.5) * 2), lerp(arm.elbow[1], hZiel[1], (wk - 0.5) * 2)];
+        stroke3(ctx, sh, ePkt, hPkt, wFarbe, 4.7, pinsel);
+      }
       drawHand(ctx, arm.elbow, arm.hand, K.skin, K.skinShade, -side, "offen", pinsel, true);
     }
   };
@@ -3357,7 +3450,6 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
       plueschHose ? 6.4 : 5.4,
       pinsel, true,
     );
-    if (plueschHose) flauschBund(ctx, beinHell.leg.elbow, pullBack(beinHell.leg.elbow, beinHell.leg.hand, 3.3), beinHell.farbe, 6.7);
     drawSock(ctx, [beinHell.leg.hand[0], beinHell.leg.hand[1] + r.footDrop], beinHell.ang, beinHell.sock, beinHell.dir, pinsel);
   }
 
@@ -3422,7 +3514,6 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
       plueschHose ? 6.6 : 5.6,
       pinsel, true,
     );
-    if (plueschHose) flauschBund(ctx, beinDunkel.leg.elbow, pullBack(beinDunkel.leg.elbow, beinDunkel.leg.hand, 3.3), beinDunkel.farbe, 6.9);
     drawSock(ctx, [beinDunkel.leg.hand[0], beinDunkel.leg.hand[1] + r.footDrop], beinDunkel.ang, beinDunkel.sock, beinDunkel.dir, pinsel);
   }
 
@@ -3447,7 +3538,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
       drawHand(ctx, armFront.elbow, armFront.hand, K.skin, K.skinShade, daumenSeite(-1, armFront), gesteFern, pinsel);
     });
 
-  if (P && oberteil === "dressed" && !back && !vampir && !westeOben) drawPajamaDetails(ctx, r, P.top, P.bottom);
+  if (P && oberteil === "dressed" && !back && !vampir && !westeOben) upperLean(() => drawPajamaDetails(ctx, r, P.top, P.bottom));
 
   if (back) {
     /* --- Rückansicht: Arme seitlich, Oberkörper von hinten --- */
@@ -3455,6 +3546,21 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
     if (!schrank && verdeckt) armeVonHinten();
     drawTorsoBack(ctx, r, oberteil, K, pinsel);
     if (P?.flausch && oberteil === "dressed" && !westeOben) flauschJacke(ctx, r, P.top, true);
+    if (westeGleit && oberteil === "dressed") {
+      // Die Weste gleitet beim Überziehen fließend von den Schultern bis zum Saum hinab.
+      const wk = ease(westeAnteil);
+      const saum = lerp(r.shoulderY - 0.6, r.hipY + 2.2, wk);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(-9, r.shoulderY - 3);
+      ctx.lineTo(9, r.shoulderY - 3);
+      ctx.lineTo(9, saum);
+      ctx.quadraticCurveTo(0, saum + 1.4 * Math.sin(Math.PI * wk), -9, saum);
+      ctx.closePath();
+      ctx.clip();
+      drawTorsoBack(ctx, r, "dressed", KWeste, pinsel);
+      ctx.restore();
+    }
     if (kleidung?.hose && !kleidung.oberteil && !kleidung.handtuch) {
       ctx.fillStyle = K.leggings;
       rr(ctx, -6.8, r.hipY - 1.6, 13.6, 3.6, 1.6);
@@ -3479,7 +3585,17 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
       if (r.spineCurve > 0.01) drawLabTorso(ctx, r, oberteil, K);
       else if (oberteil === "dressed") {
         if (P?.flausch && !westeOben) flauschJacke(ctx, r, P.top, false);
-        else drawTorso(ctx, r, kleidung || P?.flausch === false || (P && state === "lie") ? K : LUNI_COLORS, pinsel);
+        else drawTorso(ctx, r, kleidung || westeOben || P?.flausch === false || (P && state === "lie") ? K : LUNI_COLORS, pinsel);
+        if (westeGleit) {
+          const wk = ease(westeAnteil);
+          const saum = lerp(r.shoulderY - 0.6, r.hipY + 2.4, wk);
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(-9, r.shoulderY - 3, 18, Math.max(0, saum - (r.shoulderY - 3)));
+          ctx.clip();
+          drawTorso(ctx, r, KWeste, pinsel);
+          ctx.restore();
+        }
         if (vampir) drawVampirTorso(ctx, r, vampir);
       }
       else if (oberteil === "towel") drawTowel(ctx, r);
@@ -3645,6 +3761,10 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
     }
     if (eyeRoll > 0.01) drawEyeRoll(ctx, eyeRoll);
   }
+  // Beim Recken und Strecken ragen die Arme über den Kopf: sie liegen vor den
+  // langen Haaren, sonst verschwinden sie hinter dem Haarfall.
+  if (reck > 0.02 && !bedCover && !back && !bent) { drawBackArm(); drawFrontArm(); }
+
   if (wet > 0.02 && r.bend < 0.7) {
     // nasser Glanz und Tropfen an den Haarspitzen
     ctx.save();
@@ -3731,7 +3851,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
         : r.armNear.hand[0] >= r.armFar.hand[0]
           ? r.armNear.hand
           : r.armFar.hand;
-  if (bent) {
+  if (Math.abs(r.bend) > 0.01) {
     const dx = propHand[0];
     const dy = propHand[1] - r.hipY;
     const cs = Math.cos(r.bend);

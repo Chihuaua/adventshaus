@@ -5,7 +5,7 @@ import { build } from "esbuild";
 
 const source = readFileSync("src/game/house.ts", "utf8");
 const b = await build({
-  stdin: { contents: source + '\nexport { drawHouse, micStand };\nexport * from "./tv";\nexport { drawSternennacht, STERNENNACHT_FARBEN, STERNENNACHT_STERNE, sternenLicht, staubImRaum } from "./sternennacht";\nexport { TVKlang } from "./audio/tvVoice";\nexport { createState as neuesGOL } from "./gol";',
+  stdin: { contents: source + '\nexport { drawHouse, micStand };\nexport * from "./tv";\nexport { drawSternennacht, STERNENNACHT_FARBEN, STERNENNACHT_STERNE, sternenLicht, staubImRaum } from "./sternennacht";\nexport { TVKlang } from "./audio/tvVoice";\nexport * from "./audio/riroNoten";\nexport { createState as neuesGOL } from "./gol";',
     resolveDir: path.resolve("src/game"), loader: "ts" },
   bundle: true, write: false, platform: "node", format: "esm",
 });
@@ -290,6 +290,48 @@ test("TV-Audio: eigener Gain, wirkliche Stummschaltung und sauberes Beenden", ()
     klang.setze(null, 0, 1);
     assert.ok(quellen.every(o => o.beendet));
   } finally { klang.dispose(); }
+});
+
+test("Musikvideo: riro.mid mit allen 297 MIDI-Noten, Akkorden und Wiederholung verknüpft", () => {
+  assert.equal(G.RIRO_TICKS_PRO_SEKUNDE, 1920);
+  assert.equal(G.RIRO_ENDE_TICK, 32947);
+  assert.equal(G.RIRO_NOTEN.length, 297);
+  assert.deepEqual(G.RIRO_NOTEN.slice(0, 4).map(n => n[2]), [56, 58, 61, 58], "Auftakt aus riro.mid");
+  const akkord = G.RIRO_NOTEN.filter(n => n[0] === 998).map(n => n[2]);
+  assert.deepEqual(akkord, [54, 61, 65, 70], "vierstimmiger Refrain-Akkord bei Tick 998");
+
+  const gespielte = [], timer = new Set();
+  const setzeTimer = globalThis.setInterval, loescheTimer = globalThis.clearInterval;
+  globalThis.setInterval = f => { timer.add(f); return f; };
+  globalThis.clearInterval = f => timer.delete(f);
+  const ctx = {
+    currentTime: 0,
+    createGain() { return { gain: { value: 0, setTargetAtTime(v) { this.value = v; }, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {}, disconnect() {} }; },
+    createOscillator() {
+      const o = { frequency: { value: 0 }, connect() {}, disconnect() {}, start(w) { this.wann = w; gespielte.push(this); }, stop(e) { this.ende = e; } };
+      return o;
+    },
+  };
+  const wz = new G.TVKlang(ctx, {}), dg = new G.TVKlang(ctx, {});
+  try {
+    wz.setze("musik", 60, 0);
+    const erste = gespielte.length;
+    assert.ok(erste >= 2, "sofortiger Einsatz der ersten Töne");
+    dg.setze("musik", 30, 0);
+    assert.equal(timer.size, 1, "gemeinsame Sendung für beide Fernseher");
+    assert.equal(gespielte.length, erste, "kein doppelter Start");
+    const runde = G.RIRO_ENDE_TICK / G.RIRO_TICKS_PRO_SEKUNDE + 0.08;
+    for (let ms = 35; ms <= (runde + 0.3) * 1000; ms += 35) {
+      ctx.currentTime = ms / 1000;
+      for (const f of timer) f();
+    }
+    assert.ok(gespielte.length > G.RIRO_NOTEN.length, "vollständiger Durchlauf aller 297 Noten plus nahtlose Wiederholung");
+    wz.pause(); dg.pause();
+    assert.equal(timer.size, 0, "bei Pause kein laufender Timer");
+  } finally {
+    wz.dispose(); dg.dispose();
+    globalThis.setInterval = setzeTimer; globalThis.clearInterval = loescheTimer;
+  }
 });
 
 console.log(`\n${n} TV- und Hauswelt-Tests bestanden.`);

@@ -386,7 +386,7 @@ test("UFO bietet genau ein Archiv mit aktuell.patch und aktuell.json", () => {
   assert.ok(Number.isInteger(G.PATCH_NUMMER) && G.PATCH_NUMMER > 0, "laufende Nummer");
   const erwartet = `LCL-${G.PATCH_KURZ}-${String(G.PATCH_NUMMER).padStart(2, "0")}.zip`;
   assert.equal(G.PATCH_ZIP, erwartet, "Namensmuster LCL-<Kurzname>-<Nummer>.zip");
-  assert.match(G.PATCH_ZIP, /^LCL-[A-Za-z0-9-]+-\d{2}\.zip$/);
+  assert.match(G.PATCH_ZIP, /^LCL-[A-Za-z0-9-]+-\d{2,}\.zip$/);
   assert.deepEqual(G.PATCH_DATEIEN.map(d => d.name), ["aktuell.patch", "aktuell.json"]);
   // Ohne laufende Sitzung ist das Archiv leer (Stand auf main); mit Sitzung
   // muessen Patch und Beschreibung echten Inhalt haben.

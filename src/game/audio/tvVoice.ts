@@ -1,5 +1,6 @@
 import type { TVKanal } from "../tv";
 import { NmsMusik } from "./nmsMusik";
+import { RiroMusik } from "./riroMusik";
 
 /** Eigener, leiser TV-Tonkanal. Die TV-Lautstaerke beeinflusst keine Instrumente. */
 export class TVKlang {
@@ -11,6 +12,7 @@ export class TVKlang {
   private anker = 0;
   private lautstaerke = -1;
   private nms: NmsMusik | null = null;
+  private riro: RiroMusik | null = null;
   private pausenPosition = 0;
 
   constructor(private ctx: AudioContext, master: AudioNode) {
@@ -32,6 +34,10 @@ export class TVKlang {
     if (!programm) return;
     if (programm === "sterne") {
       this.nms = NmsMusik.empfangen(this.ctx, this.output, einstieg);
+      return;
+    }
+    if (programm === "musik") {
+      this.riro = RiroMusik.empfangen(this.ctx, this.output, einstieg);
       return;
     }
     this.anker = this.ctx.currentTime - zeit;
@@ -60,11 +66,7 @@ export class TVKlang {
     while (this.anker + this.schritt * 0.25 <= now + 0.12) {
       const i = this.schritt++, when = Math.max(now, this.anker + i * 0.25);
       if (this.lautstaerke <= 0) continue;
-      if (this.programm === "musik") {
-        const melodie = [64, 67, 69, 67, 64, 62, 60, 62, 65, 69, 72, 69, 67, 64, 62, 67];
-        this.ton(melodie[i % melodie.length], when, 0.22, 0.21, "triangle");
-        if (i % 2 === 0) this.ton([48, 53, 55, 48][Math.floor(i / 8) % 4], when, 0.32, 0.24, "sine");
-      } else if (this.programm === "garten" && i % 2 === 0) {
+      if (this.programm === "garten" && i % 2 === 0) {
         this.ton([72, 76, 79, 76, 74, 72, 67, 71][Math.floor(i / 2) % 8], when, 0.42, 0.16, "triangle");
       } else if (this.programm === "konsole" && i % 2 === 0) {
         this.ton([60, 67, 72, 67][Math.floor(i / 2) % 4], when, 0.12, 0.05, "square");
@@ -76,14 +78,15 @@ export class TVKlang {
 
   pause() {
     if (!this.programm) return;
-    const position = this.nms?.position ?? 0;
+    const position = this.nms?.position ?? this.riro?.position ?? 0;
     this.stop();
     this.pausenPosition = position;
   }
 
   stop() {
     this.nms?.trennen(this.output);
-    this.nms = null; this.pausenPosition = 0;
+    this.riro?.trennen(this.output);
+    this.nms = null; this.riro = null; this.pausenPosition = 0;
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null; this.programm = null;
     for (const [osc, gain] of this.stimmen) {
