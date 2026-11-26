@@ -11,7 +11,7 @@ let n = 0;
 const test = (name, run) => { run(); n++; console.log(`OK  ${name}`); };
 const X = 632, F = 324, SKALA = 1.08, ARM = (8.2 + 8.4) * SKALA;
 const STAND = { becken: X + G.ZAHN_STAND.becken, schrank: X + G.ZAHN_STAND.schrank };
-const amBecken = ["zPutzen", "zGurgeln", "zSpucken", "zHahnAuf", "zWaschen", "zHahnZu"];
+const amBecken = ["zPutzen", "zGurgeln", "zSpucken", "zHahnAuf", "zWaschen", "zHahnZu", "zHandWasser", "zMundSpucken"];
 
 test("Zähne: jede Hand erreicht ihr Ziel, ohne quer über den Körper zu greifen", () => {
   for (const [takte, name] of [[G.ZAHN_TAKTE, "Echtzeit"], [G.ZAHN_PROBE, "Probe"]]) {

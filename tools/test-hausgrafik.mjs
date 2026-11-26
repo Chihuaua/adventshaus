@@ -236,7 +236,7 @@ test("Beim Deckenschieben bleiben beide Füße am selben Ort", () => {
   for (let i = 0; i <= 20; i++) {
     h.bedEinstiegT = 2.2 * i / 20;
     const c = canvas(); h.drawLuniNow(c.ctx);
-    const socken = c.shapes.filter(s => s.color === "#ff6f61" || s.color === "#35d6c0")
+    const socken = c.shapes.filter(s => s.color === "#7b4fb0" || s.color === "#7a4fb0")
       .map(({ left, right, top, bottom }) => [left, right, top, bottom]);
     assert.equal(socken.length, 2);
     if (!erste) erste = socken;
@@ -250,7 +250,7 @@ test("Setzen und Hinlegen beginnen ohne Sprung von der vorherigen Pose", () => {
     G.drawLuni(c.ctx, 337, y, { t: 0, scale: 1.08, shadow: false, ...opts });
     return {
       kopf: head(c),
-      socken: c.shapes.filter(s => s.color === "#ff6f61" || s.color === "#35d6c0")
+      socken: c.shapes.filter(s => s.color === "#7b4fb0" || s.color === "#7a4fb0")
         .map(({ left, right, top, bottom }) => [left, right, top, bottom]),
     };
   };
@@ -620,7 +620,7 @@ test("Im Bett bleiben nur Kopf, Hals und Schulter; Arme und Socken fehlen", () =
   const opts = { state: "lie", t: 0, scale: 1.08, shadow: false, glasses: true };
   G.drawLuni(ohne.ctx, 345, 292, opts);
   G.drawLuni(mit.ctx, 345, 292, { ...opts, bedCover: true });
-  const socken = c => c.shapes.filter(z => ["#ff6f61", "#35d6c0", "#ffd166", "#c3e84f"].includes(z.color)).length;
+  const socken = c => c.shapes.filter(z => ["#7b4fb0", "#7a4fb0"].includes(z.color)).length;
   assert.ok(socken(ohne) > 0, "normalerweise Socken sichtbar");
   assert.equal(socken(mit), 0, "unter der Decke keine Socken");
   const hand = c => c.shapes.filter(z => z.kind === "stroke" && ["#f4c9a0", "#e3b288"].includes(z.color)).length;
@@ -644,19 +644,25 @@ test("Beide Bett-Zeichnungen setzen bedCover; die Decke behält ihre eigene Form
   assert.ok(src.includes("g * 9"), "Rollkante hebt sich");
 });
 
-test("Umziehen: ganze Arme in der richtigen Ebene, der Schrankgriff liegt hinter dem Ruecken", () => {
-  for (const schrankRuecken of [false, true]) for (const state of ["undress", "wrap"]) for (const phase of [.12, .39, .5, .73, .92]) {
+test("Umziehen: ganze Arme vor dem Rumpf – der Schrankgriff versteckt sie nicht mehr", () => {
+  const zeichne = (schrankRuecken, state, phase) => {
     const c = canvas();
     G.drawLuni(c.ctx, 0, 0, { state, phase, back: true, schrankRuecken, shadow: false, t: 0 });
     const arme = c.shapes.filter(z => z.kind === "stroke" && ["#dcc9a5", "#c4ad84"].includes(z.color));
-    assert.equal(arme.length, 2); assert.ok(arme.every(z => z.points.length >= 3), "zwei ungeteilte Arme");
     const ruecken = c.shapes.findIndex(z => z.kind === "path" && z.color === "#dcc9a5" && z.right-z.left > 13);
-    assert.ok(ruecken >= 0);
-    assert.ok(arme.every(a => schrankRuecken ? c.shapes.indexOf(a) < ruecken : c.shapes.indexOf(a) > ruecken));
-    if (schrankRuecken) {
-      const ersterHaarfall = c.shapes.findIndex(z => z.kind === "path" && z.color === "#191920" && z.bottom - z.top > 18);
-      assert.ok(ersterHaarfall > 0 && arme.every(a => c.shapes.indexOf(a) < ersterHaarfall), "auch die seitlichen Haarstraehnen verdecken die Aermel");
+    return { arme, ruecken, ordnung: arme.map(a => c.shapes.indexOf(a)) };
+  };
+  for (const state of ["undress", "wrap"]) for (const phase of [.12, .39, .5, .73, .92]) {
+    for (const schrankRuecken of [false, true]) {
+      const { arme, ruecken, ordnung } = zeichne(schrankRuecken, state, phase);
+      assert.equal(arme.length, 2); assert.ok(arme.every(z => z.points.length >= 3), "zwei ungeteilte Arme");
+      assert.ok(ruecken >= 0);
+      // Beim Umziehen greifen die Hände über den Kopf: beide Arme müssen vor dem Rumpf bleiben,
+      // sonst wirken sie wie hinter dem Rücken versteckt (Regel des Besitzers).
+      assert.ok(ordnung.every(i => i > ruecken), `Arme liegen vor dem Rumpf (schrankRuecken=${schrankRuecken})`);
     }
+    // Der Schrankzustand darf beim Umziehen keinen Unterschied mehr machen.
+    assert.deepEqual(zeichne(true, state, phase).ordnung, zeichne(false, state, phase).ordnung, `${state} ${phase}: Reihenfolge wie ohne Schrankgriff`);
   }
 });
 
@@ -901,7 +907,7 @@ test("Tanzen: Arme und Hände liegen vor dem Körper (außer beim Floss)", () =>
 test("Tanzen auf der Stelle: beide Füße bleiben fest am Boden", () => {
   for (const p of TANZ_STAND) {
     const start = tanzBild(p, 0);
-    for (const farbe of ["#ff6f61", "#35d6c0"]) {
+    for (const farbe of ["#7b4fb0", "#7a4fb0"]) {
       const s0 = socke(start, farbe);
       assert.ok(s0, `${p}: Socke gezeichnet`);
       for (const t of zeiten(2.1)) {
@@ -915,17 +921,17 @@ test("Tanzen auf der Stelle: beide Füße bleiben fest am Boden", () => {
 
 test("Fuß tippt: die Ferse bleibt am Boden, nur die Zehen wippen", () => {
   let hoch = 0;
-  const rot0 = socke(tanzBild("danceTap", 0), "#ff6f61");
+  const rot0 = socke(tanzBild("danceTap", 0), "#7b4fb0");
   for (const t of zeiten(1, 0.02)) {
     const c = tanzBild("danceTap", t);
-    const tipp = socke(c, "#35d6c0"), steh = socke(c, "#ff6f61");
+    const tipp = socke(c, "#7a4fb0"), steh = socke(c, "#7b4fb0");
     assert.ok(Math.abs(tipp.bottom) < 1e-6, `t=${t.toFixed(2)}: Ferse steht auf dem Boden`);
     assert.ok(Math.abs(steh.left - rot0.left) < 1e-6 && Math.abs(steh.bottom) < 1e-6, "Standfuß bleibt stehen");
     hoch = Math.max(hoch, -3.6 - tipp.top);
   }
   assert.ok(hoch > 1, `Zehen heben sichtbar an (${hoch.toFixed(2)})`);
   // genau auf dem Schlag liegt der Fuß wieder flach
-  near(socke(tanzBild("danceTap", 0.5), "#35d6c0").top, -3.6);
+  near(socke(tanzBild("danceTap", 0.5), "#7a4fb0").top, -3.6);
 });
 
 test("Floss (Fortnite): gestreckte Arme kreuzen abwechselnd vor und hinter dem Körper, die Hüfte geht dagegen", () => {
@@ -993,7 +999,7 @@ test("Schritt-Tanz: Kopf nickt, ein Arm wippt nach oben, der Zeigefinger zeigt z
   const kopf = t => head(tanzBild("danceSchritt", t));
   assert.ok(kopf(0) && kopf(0.25), "Kopf gezeichnet");
   // Schritte: beide Füße wechseln sich ab
-  const fuss = t => socke(tanzBild("danceSchritt", t), "#35d6c0").left;
+  const fuss = t => socke(tanzBild("danceSchritt", t), "#7a4fb0").left;
   assert.ok(Math.abs(fuss(0) - fuss(0.5)) > 8, "ganze Schritte im Takt");
 });
 
@@ -1001,7 +1007,7 @@ test("Moonwalk: geschmeidig, keine Socken-Wechsel, ein Fuß steht auf der Zehe",
   let vorher = null, gekippt = 0;
   for (const t of zeiten(1, 0.01)) {
     const c = tanzBild("danceMoonwalk", t);
-    const rot = c.shapes.filter(z => z.color === "#ff6f61"), tuerkis = c.shapes.filter(z => z.color === "#35d6c0");
+    const rot = c.shapes.filter(z => z.color === "#7b4fb0"), tuerkis = c.shapes.filter(z => z.color === "#7a4fb0");
     assert.equal(rot.length, 1, "eine rote Socke");
     assert.equal(tuerkis.length, 1, "eine türkise Socke");
     const xr = (rot[0].left + rot[0].right) / 2, xt = (tuerkis[0].left + tuerkis[0].right) / 2;
@@ -1015,7 +1021,7 @@ test("Moonwalk: geschmeidig, keine Socken-Wechsel, ein Fuß steht auf der Zehe",
     if (tuerkis[0].bottom - tuerkis[0].top > 4.6 || rot[0].bottom - rot[0].top > 4.6) gekippt++;
   }
   assert.ok(gekippt > 40, "Stützfuß steht deutlich auf der Zehe");
-  const a = socke(tanzBild("danceMoonwalk", 0.1), "#35d6c0"), b = socke(tanzBild("danceMoonwalk", 0.35), "#35d6c0");
+  const a = socke(tanzBild("danceMoonwalk", 0.1), "#7a4fb0"), b = socke(tanzBild("danceMoonwalk", 0.35), "#7a4fb0");
   assert.ok(Math.abs(a.left - b.left) > 0.5, "Füße gleiten");
   // Tour: Moonwalk ist ein reines Bewegungssegment (nie auf der Stelle)
   const tour = readFileSync("src/game/house.ts", "utf8");
@@ -1044,7 +1050,7 @@ test("Torjubel: Schritte als Anlauf, dann Rutscher auf beiden Knien ins Wohnzimm
   assert.ok(abschnitt.includes("r.footNearDir = -1;") && abschnitt.includes("r.footFarDir = -1;"), "Füße zeigen nach hinten");
   const c = canvas();
   G.drawLuni(c.ctx, 0, 0, { state: "danceSlide", t: 0.5, face: -1, shadow: false, scale: 1 });
-  const socken = c.shapes.filter(z => ["#ff6f61", "#35d6c0"].includes(z.color)).map(z => z.bottom);
+  const socken = c.shapes.filter(z => ["#7b4fb0", "#7a4fb0"].includes(z.color)).map(z => z.bottom);
   assert.equal(socken.length, 2, "beide Füße sichtbar");
   assert.ok(socken.every(v => v > -2 && v < 4), `Knie/Füße am Boden: ${socken.map(v => v.toFixed(1))}`);
   // beide Arme jubeln nach oben: Hände über Schulterhöhe
@@ -1484,7 +1490,7 @@ test("Verbeugung: frontal zum Spieler, Füße bleiben am Boden, Kopf senkt sich"
   const mess = (phase) => {
     const c = canvas();
     G.drawLuni(c.ctx, 0, 0, { state: "bow", phase, face: 1, scale: 1, shadow: false, t: 0 });
-    const socken = c.shapes.filter(z => ["#ff6f61", "#35d6c0"].includes(z.color)).map(z => z.bottom);
+    const socken = c.shapes.filter(z => ["#7b4fb0", "#7a4fb0"].includes(z.color)).map(z => z.bottom);
     return { kopf: head(c), socken, breite: Math.max(...c.shapes.map(z => z.right)) - Math.min(...c.shapes.map(z => z.left)) };
   };
   const oben = mess(0), tief = mess(0.5), zurueck = mess(1);

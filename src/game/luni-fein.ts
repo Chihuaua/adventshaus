@@ -1,5 +1,5 @@
 /** Stoffe und Licht der Studio-Alternative. Die Figur selbst zeichnet weiterhin Lunis Original-Rig. */
-import { drawLuni, LUNI_COLORS as K, type LuniOpts, type LuniZeichenpinsel } from "./luni";
+import { drawLuni, LUNI_COLORS as K, ringelFuss, type LuniOpts, type LuniZeichenpinsel } from "./luni";
 
 type C = CanvasRenderingContext2D;
 type Punkt = [number, number];
@@ -350,6 +350,7 @@ const PINSEL: LuniZeichenpinsel = {
     }
   },
   socke(c, farben) {
+    if (farben.length >= 3) { ringelFuss(c, farben); return; } // Ringelsocke: Grund bleibt Lila
     c.fillStyle = farben[0]; c.fillRect(-3, -4, 9, 5);
     flaeche(c, farben[1], 3.23, -4, [2.13, -2.18, 3.04, .4], [6.2, .4], [6.2, -4]);
     c.fillStyle = verlauf(c, 0, -3.8, .23, 4.12, "rgba(255,253,221,.25)", "rgba(255,251,228,.04)", "rgba(30,47,49,.18)");

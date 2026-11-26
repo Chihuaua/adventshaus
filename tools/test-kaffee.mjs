@@ -39,14 +39,25 @@ test("Zeiten aus dem Senseo-Datenblatt: 60 s Aufheizen, 30 s Brühen, Tank 1,4 l
   assert.equal(G.MAX_TASSEN_UNTEN, 3);
 });
 
-test("Kaffee-Stein: ohne Zigaretten erst zwei stopfen, dann zweimal Kaffee → Zigarette", () => {
+test("Kaffee-Stein: ohne Zigaretten stopft sie zwei, während die Senseo beim ersten Kaffee aufheizt; dazwischen Pause am Fenster", () => {
   speicher.clear();
   const h = haus("normal"); h.pack = 0; h.cigs = 0;
   h.command("stein_kaffee");
   assert.ok(h.kAblauf?.probe, "Kaffee-Stein = kurze Probe");
   const folge = laufen(h);
-  assert.equal(folge[0], "zumTisch");
-  assert.equal(folge[1], "stopfen", "ursprüngliche Stopfanimation vor dem ersten Kaffee");
+  const iStopfen = folge.indexOf("stopfen");
+  assert.equal(folge.filter((x) => x === "stopfen").length, 1, "einmal stopfen (zwei Zigaretten)");
+  // Reihenfolge nach Ansage: einschalten → stopfen → zur Maschine → Vibration → zurück → Schritt in Zeitlupe
+  assert.ok(folge.indexOf("power") < iStopfen && iStopfen < folge.indexOf("knopfLinks"),
+    "gestopft wird direkt nach dem Einschalten, bevor sie zur Maschine geht");
+  assert.ok(folge.includes("vibrierZurueck1") && folge.includes("vibrierVor"), "sie geht bei der Vibration zurück und kommt langsam wieder vor");
+  assert.ok(folge.indexOf("vibrierVor") < folge.indexOf("durchlaufen"), "der Zeilupten-Schritt liegt vor dem Durchlaufen");
+  assert.equal(folge[iStopfen - 1], "zumTisch");
+  assert.ok(folge.indexOf("power") < folge.indexOf("zumTisch"), "erst einschalten, dann an den Tisch");
+  // Zwischen den Kaffees: am Küchenstuhl sitzen und hinausschauen, dann wieder aufstehen.
+  const iPause = folge.indexOf("pauseFenster");
+  assert.ok(iPause > folge.indexOf("rauchen") && iPause < folge.lastIndexOf("power"), "Pause liegt zwischen den beiden Kaffees");
+  assert.deepEqual(folge.slice(iPause - 1, iPause + 2), ["zumPausenstuhl", "pauseFenster", "pauseAufstehen"]);
   const reihenfolge = ["tankNehmen", "hahnAuf", "fuellen", "hahnZu", "tankEinsetzen", "schrankAuf", "doseNehmen", "doseAbstellen",
     "doseAuf", "deckelAuf", "padRaus", "muellAuf", "padWeg", "muellZu", "padNehmen", "padEinlegen", "deckelZu", "doseZu",
     "doseZurueck", "tasseHolen", "tasseUnter", "power", "schrankZu", "aufheizen", "knopfLinks", "durchlaufen", "tasseRaus",
@@ -72,6 +83,7 @@ test("Mit Zigaretten wird nicht gestopft; Klick auf die Senseo: 1–2 Schluck tr
   assert.equal(h.kAblauf.schritte.filter((s) => s.was === "rauchen").length, 1);
 
   let fuellVorSchluck = 0, fuellNachSchluck = 1, gartenOffenVorRauch = false;
+  const zufall = Math.random; Math.random = () => 0.4;   // feste Zufallswerte: Schluckzahl und Türregeln bleiben reproduzierbar
   for (let i = 0; i < 60000 && h.kAblauf; i++) {
     h.update(.05);
     const w = h.kAblauf?.schritte[h.kAblauf.i]?.was;
@@ -79,6 +91,7 @@ test("Mit Zigaretten wird nicht gestopft; Klick auf die Senseo: 1–2 Schluck tr
     if (w === "kurzWarten") fuellNachSchluck = h.kaffee.tasseFuell;
     if (w === "rauchen" && h.gardenWant >= 0.5) gartenOffenVorRauch = true;
   }
+  Math.random = zufall;
   assert.ok(fuellVorSchluck > 0.95 && fuellNachSchluck < fuellVorSchluck - 0.1, "1–2 Schluck Kaffee in der Küche getrunken");
   assert.ok(gartenOffenVorRauch && h.gardenDoor > 0.5, "vor dem Rauchen in der Schleuse Tür zum Garten geöffnet");
 
@@ -175,6 +188,59 @@ test("Körperhaltung, Armrichtungen und fließende Schranktüren beim Stopfen un
   for (const s of ["fuellen", "deckelAuf", "padRaus", "padEinlegen", "power", "knopfLinks"]) {
     assert.ok(rueckenSchritte.has(s), `${s}: Rücken zum Spieler an der Arbeitsplatte`);
   }
+});
+
+test("Morgenroutine: offene Schleusentür wird nicht noch einmal geöffnet; nach der zweiten Tasse Hunde rein, alle Türen zu", () => {
+  const alt = Math.random;
+  const draussen = (h) => ["odin", "apollo"].filter((id) => h.hunde.istImGarten(id));
+  const hundeRaus = (h) => { for (const [id, x] of [["odin", 880], ["apollo", 905]]) { const d = h.hunde.get(id); d.floor = 0; d.x = x; d.schritte = []; d.gartenPause = 0; d.gerufen = false; } };
+  const faelle = [
+    // [Name, Schleuse zu Beginn offen, Gartentür vor der letzten Rauchpause offen, Hunde dann draußen]
+    ["Schleuse offen, Garten offen, beide Hunde draußen", true, true, true],
+    ["Garten zu, beide Hunde warten draußen", false, false, true],
+    ["alles zu, die Schleusentür würde sonst vergessen", false, false, false],
+  ];
+  for (const [name, schleuse, garten, hunde] of faelle) {
+    speicher.clear();
+    const h = haus("normal"); h.pack = 4; h.gardenDoor = 0; h.gardenWant = 0;
+    h.cellarDoorV = schleuse ? 1 : 0; h.cellarDoorWant = schleuse ? 1 : 0;
+    h.command("stein_kaffee");
+    let griffBeiOffenerTuer = 0, rufen = false, gartenZu = false, rauchen = 0, letzter = "";
+    try {
+      for (let i = 0; i < 90000 && h.kAblauf; i++) {
+        Math.random = () => (h.tuerHinter ? 0.01 : 0.5);   // „Tür hinter sich schließen vergessen“ erzwingen
+        h.update(.05);
+        const w = h.kAblauf?.schritte[h.kAblauf.i]?.was;
+        if (w !== letzter) {
+          letzter = w;
+          // Beginn der letzten Rauchpause: Türen und Hunde wie im Fall vorgegeben (unabhängig vom Zufallswetter).
+          if (w === "rauchen" && ++rauchen === 2) {
+            h.gardenDoor = garten ? 1 : 0; h.gardenWant = garten ? 1 : 0;
+            if (hunde) hundeRaus(h);
+          }
+        }
+        if (schleuse && w === "zumRaucherraum" && h.doorHandT >= 0) griffBeiOffenerTuer++;
+        if (w === "hundeRufen") rufen = true;
+        if (w === "gartentuerZu") gartenZu = true;
+      }
+      for (let i = 0; i < 100; i++) { Math.random = () => (h.tuerHinter ? 0.01 : 0.5); h.update(.05); }
+    } finally { Math.random = alt; }
+    assert.equal(rauchen, 2, `${name}: zwei Rauchpausen`);
+    assert.equal(griffBeiOffenerTuer, 0, `${name}: offene Schleusentür wird nicht noch einmal geöffnet`);
+    assert.equal(draussen(h).length, 0, `${name}: beide Hunde sind wieder im Haus`);
+    assert.ok(h.gardenWant < .5 && h.gardenDoor < .5, `${name}: Gartentür ist zu`);
+    assert.ok(h.cellarDoorWant < .5, `${name}: Schleusentür ist zu`);
+    assert.equal(h.lf, 1, `${name}: danach ist sie oben in der Küche`);
+    if (hunde) assert.ok(rufen, `${name}: sie ruft die Hunde herein`);
+    if (garten) assert.ok(gartenZu, `${name}: sie schließt die Gartentür`);
+  }
+});
+
+test("Klick auf die Senseo (nur eine Tasse): kein Hunde-Zuruf, keine neuen Schritte", () => {
+  speicher.clear();
+  const h = haus("normal"); h.pack = 4;
+  h.command("kaffee");
+  assert.ok(!h.kAblauf.schritte.some((s) => ["hundeRufen", "gartentuerZu", "tuerFuerHunde", "schleuseMerken"].includes(s.was)));
 });
 
 console.log(`\n${n} Kaffee-Tests bestanden.`);

@@ -2,7 +2,7 @@
    Patch-Dateien der aktuellen Sitzung (Inhalt der UFO-/Schlitten-Station)
 
    Dieses Modul wird von tools/ufo-bauen.mjs erzeugt. Das Menü oben rechts
-   bietet LCL-Adventshaus-Routinen-Kaffeeautomat-122.zip, die TXT-Datei und die Code-Vorschau an.
+   bietet LCL-Socken-Arme-Zeitlupe-132.zip, die TXT-Datei und die Code-Vorschau an.
    ======================================================================= */
 
 export interface PatchDatei {
@@ -11,8 +11,8 @@ export interface PatchDatei {
   inhalt: string;
 }
 
-export const PATCH_KURZ = "Adventshaus-Routinen-Kaffeeautomat";
-export const PATCH_NUMMER = 122;
+export const PATCH_KURZ = "Socken-Arme-Zeitlupe";
+export const PATCH_NUMMER = 132;
 export const PATCH_ZIP =
   `LCL-${PATCH_KURZ}-${String(PATCH_NUMMER).padStart(2, "0")}.zip`;
 export const PATCH_TXT =

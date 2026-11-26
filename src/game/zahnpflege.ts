@@ -10,6 +10,7 @@ export type Zahnschritt = keyof typeof ZAHN_TAKTE;
 export const ZAHN_PROBE: Record<Zahnschritt, number> = {
   zNehmen: 1.5, zTube: 1.3, zPaste: 1.4, zTubeZurueck: 1.3, zPutzen: 8.4,
   zGurgeln: 1.9, zSpucken: 1.6, zHahnAuf: 1.0, zWaschen: 3.0, zHahnZu: 1.0, zZurueck: 1.6,
+  zHandWasser: 2.4, zMundNehmen: 1.4, zMundSpuelen: 3.2, zMundSpucken: 1.1, zMundZurueck: 1.4,
 };
 /**
  * Standplätze: Am Spiegelschrank steht Luni rechts vom Becher; die hintere Hand nimmt die Bürste aus dem Becher
@@ -19,7 +20,13 @@ export const ZAHN_PROBE: Record<Zahnschritt, number> = {
 export const ZAHN_STAND = { schrank: 17, becken: 4 } as const;
 /** Die Tube liegt im Spiegelschrank vorn rechts, in Reichweite der vorderen Hand. */
 const TUBE_X = 24;
-const AM_BECKEN: readonly Zahnschritt[] = ["zPutzen", "zGurgeln", "zSpucken", "zHahnAuf", "zWaschen", "zHahnZu"];
+const AM_BECKEN: readonly Zahnschritt[] = ["zPutzen", "zGurgeln", "zSpucken", "zHahnAuf", "zWaschen", "zHahnZu", "zHandWasser", "zMundSpucken"];
+
+/** Morgens: Bürste, Wasser aus der Hand, dann das mintfarbene Mundwasser – in dieser Reihenfolge. */
+export const ZAHN_MORGEN: readonly string[] = [
+  "zNehmen", "zTube", "zPaste", "zTubeZurueck", "zZumBecken", "zPutzen", "zSpucken",
+  "zHahnAuf", "zHandWasser", "zHahnZu", "zMundNehmen", "zMundSpuelen", "zMundSpucken", "zMundZurueck", "zZurueck",
+] as const;
 export const ZAHN_WEG = ["zPlatz", "zNehmen", "zTube", "zPaste", "zTubeZurueck", "zZumBecken",
   "zPutzen", "zGurgeln", "zSpucken", "zHahnAuf", "zWaschen", "zHahnZu", "zZumBecher", "zZurueck"] as const;
 export const istZahnschritt = (schritt: string | null): schritt is Zahnschritt =>
@@ -82,7 +89,7 @@ function putzVersatz(art: PutzArt, zeit: number, f: number): Pt {
 
 /* ------------------------------ Zahnbild ------------------------------ */
 
-export function zahnbild(ph: Zahnschritt, t: number, x: number, f: number, dauer: number = ZAHN_TAKTE[ph]) {
+export function zahnbild(ph: Zahnschritt, t: number, x: number, f: number, dauer: number = ZAHN_TAKTE[ph], drehung = 0) {
   const p = Math.min(1, t / dauer);
   const st = x + (AM_BECKEN.includes(ph) ? ZAHN_STAND.becken : ZAHN_STAND.schrank);
   // Ruhestellung beider Hände, je auf ihrer eigenen Körperseite, mit fast gestrecktem Arm.
@@ -97,6 +104,9 @@ export function zahnbild(ph: Zahnschritt, t: number, x: number, f: number, dauer
   const druecken: Pt = [aufrecht[0] + kopfAufrecht[0] + .6, aufrecht[1] + kopfAufrecht[1] - 7.5];
   const mund: Pt = [st + .86, f - 44.1];
   const knauf: Pt = [x + 13, f - 40], strahl: Pt = [x + 17.6, f - 37.2];
+  // Das mintfarbene Mundwasser steht im Spiegelschrank rechts neben der Tube.
+  const flasche: Pt = [x + 26.5, f - 52.2];
+  let flascheHand = false, handWasser = 0, nicken = 0;
   // r = Hand mit der Bürste, l = die andere Hand; buersteNah: Bürste im vorderen Arm (sonst im hinteren).
   let r: Pt = halten, l: Pt = ruheFern, buersteNah = true, winkel = -.35, neigung = 0, tubeWinkel = 1.45;
   let fluss = 0, schaum = 0, belag = 0, tropfen: number | null = null, strich = 0, spuckt = 0, putzt = false;
@@ -187,6 +197,53 @@ export function zahnbild(ph: Zahnschritt, t: number, x: number, f: number, dauer
     case "zHahnZu":
       r = hoch(halten, [knauf[0] - 1.5, knauf[1] + 1], halten); winkel = zahl(-.35, -1.35, Math.sin(Math.PI * p));
       fluss = 1 - glatt((p - .45) / .25); break;
+    case "zHandWasser": {
+      // Wasser in die hohle Hand unter den Strahl, dann in den Mund; der Kopf nickt leicht.
+      const fuellen = glatt(p / .34), trinken = glatt((p - .4) / .34);
+      r = p < .34 ? weg(halten, [strahl[0] + 1.2, strahl[1] + 2.4], fuellen)
+        : p < .74 ? weg([strahl[0] + 1.2, strahl[1] + 2.4], [mund[0] - .4, mund[1] + 1.2], trinken)
+        : weg([mund[0] - .4, mund[1] + 1.2], halten, glatt((p - .74) / .26));
+      fluss = p < .6 ? 1 : 1 - glatt((p - .6) / .2);
+      handWasser = fuellen * (1 - glatt((p - .68) / .22));
+      nicken = trinken * (1 - glatt((p - .8) / .2));
+      winkel = zahl(-.35, -.05, trinken); belag = .2;
+      break;
+    }
+    case "zMundNehmen":
+      // Die vordere Hand nimmt die Flasche aus dem Schrank; die Bürste ruht in der hinteren.
+      buersteNah = false; flascheHand = p >= .45;
+      l = hoch(ruheNah, flasche, [st + 3.6, f - 34], .55);
+      r = haltenFern;
+      break;
+    case "zMundSpuelen": {
+      // Die hintere Hand setzt die Flasche an den Mund, der Kopf geht in den Nacken.
+      const an = glatt(p / .22), halt = glatt((1 - p) / .2);
+      buersteNah = false;
+      l = mische([st + 3.6, f - 34], [mund[0] + 1.5, mund[1] + 1.1], an * (0.55 + 0.45 * glatt(p / .5)));
+      r = [st - 1.5, f - 30];
+      winkel = zahl(1.45, .55, an);
+      nicken = -an * (1 - glatt((p - .82) / .18));
+      handWasser = an * (1 - halt) * 0.35;
+      neigung = 0;
+      break;
+    }
+    case "zMundSpucken":
+      // Über das Becken beugen und ausspucken; die Flasche bleibt in der hinteren Hand.
+      l = [st - 1.5, f - 30];
+      r = weg(halten, [st + 3.2, f - 39], glatt(p / .3));
+      buersteNah = true;
+      neigung = glatt(p / .3) * (1 - glatt((p - .7) / .3));
+      flascheHand = p < .8;
+      if (p >= .3 && p <= .66) tropfen = (p - .3) / .36;
+      tropfenVon = [st + 2.6, f - 41]; tropfenNach = [x + 15.5, f - 36.4];
+      break;
+    case "zMundZurueck": {
+      // Flasche zurück ins Fach, die Bürste wechselt beim Gehen nach vorn.
+      buersteNah = p >= .55; flascheHand = p < .55;
+      l = p < .55 ? weg([st + 3.6, f - 34], flasche, glatt(p / .55)) : ruheFern;
+      r = p < .55 ? [st - 1.5, f - 30] : (buersteNah ? uebergabe : halten);
+      break;
+    }
     case "zZurueck": {
       // Vor dem Bauch zurück in die hintere Hand, die stellt die Bürste in den Becher hinter dem Kopf.
       buersteNah = p < .3;
@@ -197,11 +254,16 @@ export function zahnbild(ph: Zahnschritt, t: number, x: number, f: number, dauer
       break;
     }
   }
-  return { r, l, p, ph, t, winkel, neigung, buersteHand, buersteNah, tubeHand, tubeWinkel, fluss, schaum, belag,
+  // Der Schaum ist bewusster sparsam: ein Drittel weniger als früher.
+  const schaumWeniger = schaum * (2 / 3);
+  return { r, l, p, ph, t, winkel, neigung: neigung + nicken * 0.5, buersteHand, buersteNah, tubeHand, tubeWinkel, fluss,
+    schaum: schaumWeniger, belag: belag > 0 ? Math.min(belag, 1 - schaumWeniger * 0.35) : belag,
     tropfen, tropfenVon, tropfenNach, strich, spuckt, putzt,
+    /** Mouthwater: Flasche in der Hand, Wasser in der hohlen Hand, Rücken zum Spieler. */
+    flascheHand, handWasser, ruecken: drehung > 0.5,
     /** Beide Ellbogen knicken nach außen und unten; kein Arm greift quer über den Körper. */
     ellbogen: 1 as 1 | -1, ellbogenFrei: 1 as 1 | -1,
-    frontal: ph === "zPutzen" || ph === "zGurgeln" };
+    frontal: (ph === "zPutzen" || ph === "zGurgeln") && drehung < 0.5 };
 }
 export type Zahnbild = ReturnType<typeof zahnbild>;
 
@@ -223,6 +285,16 @@ function zahnbuerste(c: C, x: number, y: number, winkel: number, belag: number) 
   if (belag > 0) rund(c, 5.7, -3.8, 3.6 * belag, 1.2, .5, "#d6f4ed");
   c.restore();
 }
+/** Mintfarbenes Mundwasser: schlanke Flasche mit hellem Etikett und Schraubkappe. */
+function mundwasserFlasche(c: C, x: number, y: number, winkel: number, offen = false) {
+  c.save(); c.translate(x, y); c.rotate(winkel);
+  rund(c, -1.9, -3.4, 3.8, 7.4, 1.3, "#7fd8c6");
+  rund(c, -1.9, -3.4, 3.8, 2.2, 1.1, "rgba(255,255,255,.55)");
+  rund(c, -1.5, -.4, 3, 3.4, .9, "#a8ead9");
+  rund(c, -.8, -5, 1.6, 1.9, .4, offen ? "#3f8e7c" : "#5fb9a4");
+  c.fillStyle = "rgba(255,255,255,.5)"; c.fillRect(-1.5, -2.6, .5, 5.2);
+  c.restore();
+}
 /** Kleine Tube; `offen`: Kappe ab, Öffnung zeigt nach unten (in der Hand). */
 function zahnpasta(c: C, x: number, y: number, winkel: number, offen: boolean, druck = 0) {
   c.save(); c.translate(x, y); c.rotate(winkel);
@@ -239,8 +311,9 @@ export function zahnfach(c: C, x: number, f: number, z: Zahnbild | null) {
   rund(c, x + 5.3, f - 55.6, 7, 5.7, 1.4, "#73adc0");
   rund(c, x + 4.9, f - 56.1, 7.8, 1.25, .55, "#b5dce0");
   c.fillStyle = "#cee6df"; c.fillRect(x + 6.5, f - 54.5, .85, 3);
-  // Die Tube liegt flach neben dem Becher.
+  // Die Tube liegt flach neben dem Becher, das Mundwasser rechts daneben.
   if (!z?.tubeHand) zahnpasta(c, x + TUBE_X, f - 51.7, 1.45, false);
+  if (!z?.flascheHand) mundwasserFlasche(c, x + 26.5, f - 52.2, 0, !!z);
 }
 
 export function zahnWasser(c: C, x: number, f: number, z: Zahnbild) {
@@ -263,15 +336,46 @@ export function zahnWasser(c: C, x: number, f: number, z: Zahnbild) {
 
 /** Bürste und Tube in den Händen, die Zahnpasta beim Auftragen und die Tropfen beim Ausspucken. */
 /** `nah`/`fern`: die gezeichneten Hände des vorderen und des hinteren Arms. */
-export function zahnHandobjekte(c: C, z: Zahnbild, nah: Pt, fern: Pt, _x: number, _f: number) {
+/** `seite`: nur die Objekte einer Hand zeichnen – die hintere Hand liegt HINTER dem Körper. */
+export function zahnHandobjekte(c: C, z: Zahnbild, nah: Pt, fern: Pt, _x: number, _f: number, seite: "beide" | "vorn" | "hinten" = "beide") {
   const hand = z.buersteNah ? nah : fern, andere = z.buersteNah ? fern : nah;
+  if (seite === "vorn" && z.buersteNah === false) {
+    if (z.flascheHand) mundwasserFlasche(c, ...andere, z.ph === "zMundSpuelen" ? -.5 : .2, true);
+    if (z.tubeHand) zahnpasta(c, ...andere, z.tubeWinkel, true, z.ph === "zPaste" ? Math.sin(Math.PI * z.p) : 0);
+  }
+  if (seite === "hinten") {
+    if (z.buersteNah === false) return;
+    if (!z.tubeHand && !z.flascheHand) return;
+    c.save(); c.globalAlpha = 0.55;
+    if (z.tubeHand) zahnpasta(c, ...andere, z.tubeWinkel, true, 0);
+    else if (z.flascheHand) mundwasserFlasche(c, ...andere, .2, true);
+    c.restore();
+    return;
+  }
+  if (seite !== "beide") {
+    if (z.buersteHand) zahnbuerste(c, ...hand, z.winkel, z.belag);
+    return;
+  }
   if (z.buersteHand) zahnbuerste(c, ...hand, z.winkel, z.belag);
   if (z.tubeHand) zahnpasta(c, ...andere, z.tubeWinkel, true, z.ph === "zPaste" ? Math.sin(Math.PI * z.p) : 0);
+  if (z.flascheHand) mundwasserFlasche(c, ...andere, z.ph === "zMundSpuelen" ? -.5 : .2, true);
   if (z.ph === "zPaste" && z.p > .24 && z.p < .77) {
     const duese = dreh([0, 5.3], z.tubeWinkel), kopf = dreh([7.4, -3.3], z.winkel);
     c.strokeStyle = "#c4e9dc"; c.lineWidth = 1.05; c.lineCap = "round"; c.beginPath();
     c.moveTo(andere[0] + duese[0], andere[1] + duese[1]);
     c.lineTo(hand[0] + kopf[0], hand[1] + kopf[1]); c.stroke();
+  }
+  if (z.handWasser > 0.02) {
+    const [hx, hy] = hand;
+    c.save(); c.globalAlpha *= Math.min(1, z.handWasser);
+    punkt(c, hx + .4, hy - 1.1, 1.5, "#9fd9e8");
+    punkt(c, hx + .4, hy - 1.4, .8, "#e6f8fb");
+    c.restore();
+  }
+  if (z.ph === "zMundSpuelen" && z.p > .18) {
+    c.save(); c.globalAlpha *= .55;
+    punkt(c, z.l[0] + 2.2, z.l[1] - 2.4, 1.15, "#8fe0cb");
+    c.restore();
   }
   if (z.tropfen !== null) {
     const [ax, ay] = z.tropfenVon, [bx, by] = z.tropfenNach;

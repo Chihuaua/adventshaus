@@ -61,6 +61,15 @@ Eingangsbereich und dann das Wohnzimmer. Moebel, Boeden und Spieloberflaeche ble
 3. **Drei Zielplattformen** – PC-Browser, Handy (Touch), Wii; nichts bauen, was auf der Wii nicht nachbaubar ist.
 4. **Alles handgezeichnet, keine Assets** – prozedural (Canvas 2D, WebAudio); keine Bild-, Font-, Audiodateien im Spiel.
 
+## Türlogik (dauerhaft, nicht verhandelbar)
+
+Luni öffnet und schließt alle Türen von sich aus – Schleuse, Gartentür, Verbindungstür,
+Bad- und Haustür. Nur wenn sie **direkt vom Spieler** geschickt wird, kümmert er sich um die
+Türen: sie öffnet dann höchstens, was in ihrem Weg steht, und lässt es offen. Ausnahmen sind
+die bereits festgelegten Werte (vergessene Tür, vergessene Tasse, Zigaretten-Regeln, offene
+Schleuse wird nicht noch einmal geöffnet). Die Markierung `tuerAuftrag` im Haus entscheidet
+darüber; sie erlischt, sobald Luni stillsteht und nichts mehr vorhat.
+
 ## Plattformregeln
 - Nur Canvas-Primitive in der 960×600-Bühne; kein DOM/HTML-Text/CSS in der Spielwelt.
 - Keine Browser-Spezialitäten in `src/game/` (kein fetch, keine Web-Fonts/Bild-URLs/externen Dienste).

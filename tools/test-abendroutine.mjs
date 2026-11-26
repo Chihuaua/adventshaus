@@ -88,7 +88,7 @@ function durchlauf(h, starten = true) {
     if (z) {
       assert.ok(h.glassesOn && !h.glassesInSink && h.cabinetOpen > .99);
       if (z.ph === "zPaste") mitTube ||= z.tubeHand && z.buersteHand && z.belag > .5;
-      if (z.ph === "zPutzen") schaum ||= z.schaum > .95;
+      if (z.ph === "zPutzen") schaum ||= z.schaum > .6; // Schaum ist um ein Drittel reduziert: Spitze liegt bei 2/3
       if (z.ph === "zWaschen") gewaschen ||= z.buersteHand && z.fluss === 1 && z.belag === 0;
       if (z.ph === "zZurueck") assert.equal(z.fluss, 0);
     }

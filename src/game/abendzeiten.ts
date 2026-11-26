@@ -30,6 +30,8 @@ export const PROBE_WERTE: AbendWerte = { dusche: 10, zaehne: 8.4, haare: 7, vide
 export const ZAHN_TAKTE = {
   zNehmen: 4, zTube: 4, zPaste: 6, zTubeZurueck: 4, zPutzen: ABEND_RICHTWERTE.zaehne,
   zGurgeln: 8, zSpucken: 2, zHahnAuf: 2, zWaschen: 6.5, zHahnZu: 2, zZurueck: 4.5,
+  /* Morgens zusätzlich: Mund mit der Hand ausspülen, dann das mintfarbene Mundwasser. */
+  zHandWasser: 7, zMundNehmen: 4, zMundSpuelen: 9, zMundSpucken: 2.5, zMundZurueck: 4,
 } as const;
 
 export function gueltigeAbendwerte(w: AbendWerte | undefined): w is AbendWerte {

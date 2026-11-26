@@ -35,9 +35,11 @@ export const LUNI_COLORS = {
   leggings: "#272b34",
   leggingsLight: "#343945",
   glasses: "#15151b",
-  // [Grundfarbe, Zehenkappe] – ohne Schaft werden nur zwei Töne gebraucht
-  sockL: ["#ff6f61", "#ffd166"],
-  sockR: ["#35d6c0", "#c3e84f"],
+  // Fein geringelte Socken mit flauschigem Bündchen, das ganze Jahr: [Lila, Weiß, Schwarz].
+  // Lila ist der Grund, Weiß und Schwarz sind die Ringe. Der rechte Fuß unterscheidet sich im
+  // Rotanteil um 1 – unsichtbar, aber so lassen sich beide Füße in den Zeichentests trennen.
+  sockL: ["#7b4fb0", "#f4f1ea", "#25222b"],
+  sockR: ["#7a4fb0", "#f4f1ea", "#25222b"],
   blush: "rgba(255,122,122,.30)",
   mouth: "#a35f4a",
   eye: "#20343c",
@@ -101,6 +103,9 @@ export type LuniState =
   | "labBrush"
   | "sleepBend"
   | "pet";
+
+/** Socke eines Fußes: an (true), aus (false) oder eine Zahl 0..1 = so weit ist sie schon über den Fuß gezogen. */
+export type SockenZustand = boolean | number;
 
 export type LuniExpr =
   | "happy"
@@ -194,6 +199,8 @@ export interface LuniOpts {
   armsInFront?: boolean;
   /** Kleidung: angezogen, Handtuch oder (nur hinter dem Vorhang) ohne */
   outfit?: "dressed" | "towel" | "none";
+  /** Socken an? Ohne Angabe wie bisher (nur ohne Schlafanzug). Ein Paar [vorderer Fuß = sockL, hinterer Fuß = sockR] zeigt je Fuß. */
+  socken?: SockenZustand | [SockenZustand, SockenZustand];
   /** Beim Umziehen Oberteil und Hose getrennt zeigen, ohne Handtuch-Platzhalter. */
   kleidung?: { oberteil: boolean; hose: boolean; handtuch?: boolean };
   /** Beim Umziehen vor dem Schrank verdeckt der Rücken die davor greifenden Arme. */
@@ -2255,18 +2262,96 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
 
 /* ------------------------------- Socken -------------------------------- */
 
-function drawSock(ctx: C, foot: V, ang: number, cols: string[], dir: 1 | -1 = 1, pinsel?: LuniZeichenpinsel) {
+/** Fein geringelter Fuß: Lila ist der Grund (Sohle liegt auf y = 0), Weiß und Schwarz sind die Ringe darüber. */
+export function ringelFuss(ctx: C, cols: string[]) {
+  // Ferse schwarz, Zehen weiß, die Ringe nur über Spann und Schaft – so liest es
+  // als Socke und nicht als Streifenmuster über dem ganzen Fuß.
+  ctx.fillStyle = cols[2];
+  rr(ctx, -2.2, -3.5, 2.1, 3.5, 1.1);
+  ctx.fill();
+  ctx.fillStyle = cols[1];
+  rr(ctx, 3.5, -3.5, 1.7, 3.5, 1.2);
+  ctx.fill();
+  const breite = 0.86;
+  for (let i = 0, x = -0.4; x < 3.6; i++, x += breite) {
+    if (i % 3 === 0) continue; // Lila: der Grund schaut durch
+    ctx.fillStyle = cols[i % 3];
+    ctx.fillRect(x, -3.6, breite + 0.04, 3.6);
+  }
+  ctx.fillStyle = "rgba(24,16,40,.14)"; // Sohle: nur unter Ferse und Ballen etwas dunkler
+  rr(ctx, -2.2, -0.8, 3.1, 0.8, 0.4);
+  ctx.fill();
+  rr(ctx, 1.6, -0.8, 3.6, 0.8, 0.4);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,.10)"; // ein Hauch Licht über dem Spann
+  rr(ctx, -0.4, -3.5, 3.9, 0.7, 0.35);
+  ctx.fill();
+}
+
+/** Flauschiges Bündchen am Knöchel; es liegt über dem Ende des Hosenbeins. */
+function sockenBuendchen(ctx: C) {
+  // Nur eine Handbreit über dem Knöchel – ein zu breites Bündchen wirkt wie ein weißer Klotz.
+  ctx.fillStyle = "#f1ece6";
+  rr(ctx, -3, -5.9, 6, 2.6, 1);
+  ctx.fill();
+  for (let x = -2.4; x <= 2.45; x += 0.82) { // Flausch: kleine Wölbungen am oberen Rand
+    ctx.beginPath();
+    ctx.arc(x, -5.85, 0.56, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = "rgba(123,79,176,.3)"; // lilafarbene Rippen im weißen Bündchen
+  for (let x = -2.3; x <= 2.35; x += 0.78) ctx.fillRect(x, -5.2, 0.18, 1.9);
+  ctx.fillStyle = "rgba(70,50,95,.16)"; // Schatten zum Fuß hin
+  ctx.fillRect(-3, -3.6, 6, 0.45);
+}
+
+function drawSock(ctx: C, foot: V, ang: number, cols: string[], dir: 1 | -1 = 1, pinsel?: LuniZeichenpinsel, anteil = 1) {
   ctx.save();
   ctx.translate(foot[0], foot[1]);
   ctx.rotate(ang);
   if (dir < 0) ctx.scale(-1, 1);
-  // kein Schaft – die Socke endet am Knöchel.
+  // Drei Farben = geringelte Socke mit Bündchen; zwei Farben = nackter Fuß (Haut) bzw. Schlafanzug.
+  const geringelt = cols.length >= 3;
+  // Wird die Socke gerade angezogen: Haut darunter, die Socke wächst von den Zehen zur Ferse,
+  // zuletzt rutscht das Bündchen über den Knöchel.
+  if (geringelt && anteil < 0.999) {
+    ctx.fillStyle = LUNI_COLORS.skin;
+    rr(ctx, -2.2, -3.6, 7.4, 3.6, 1.6);
+    ctx.fill();
+    if (anteil > 0.01) {
+      const kante = 5.2 - 7.4 * anteil;
+      ctx.save();
+      rr(ctx, -2.2, -3.6, 7.4, 3.6, 1.6);
+      ctx.clip();
+      ctx.beginPath();
+      ctx.rect(kante, -4, 12, 5);
+      ctx.clip();
+      ctx.fillStyle = cols[0];
+      ctx.fillRect(-2.4, -3.8, 8, 4);
+      ringelFuss(ctx, cols);
+      ctx.restore();
+    }
+    const k = clamp01((anteil - 0.7) / 0.3);
+    if (k > 0.01) {
+      ctx.save();
+      ctx.translate(0, (1 - k) * 3.4);
+      sockenBuendchen(ctx);
+      ctx.restore();
+    }
+    ctx.restore(); return;
+  }
   // Fuß – Sohle liegt auf y = 0
   ctx.fillStyle = cols[0];
   rr(ctx, -2.2, -3.6, 7.4, 3.6, 1.6);
   ctx.fill();
   if (pinsel) {
     imSchnitt(ctx, () => pinsel.socke(ctx, cols));
+    if (geringelt) sockenBuendchen(ctx);
+    ctx.restore(); return;
+  }
+  if (geringelt) {
+    imSchnitt(ctx, () => ringelFuss(ctx, cols));
+    sockenBuendchen(ctx);
     ctx.restore(); return;
   }
   ctx.fillStyle = cols[1];
@@ -2551,8 +2636,8 @@ function backArms(state: LuniState, r: Rig, phase: number): { near: Limb; far: L
     const h = keys(p, [
       [0, hang],
       [0.22, [7.4, r.hipY + 0.5]],
-      [0.5, [3.4, sy - 16]],
-      [0.62, [3.4, sy - 16]],
+      [0.5, [10.4, sy - 15.2]],
+      [0.62, [10.4, sy - 15.2]],
       [1, hang],
     ]);
     return pair(h);
@@ -2561,7 +2646,7 @@ function backArms(state: LuniState, r: Rig, phase: number): { near: Limb; far: L
     // Handtuch weit gehalten, dann vor der Brust zusammengeführt
     const h = keys(clamp01(phase), [
       [0, [12.6, sy + 6]],
-      [1, [2.2, sy + 4]],
+      [1, [8.4, sy + 3.4]],
     ]);
     return pair(h, phase > 0.35);
   }
@@ -3256,6 +3341,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
     vampir = null,
     umhang = 1,
     reck = 0,
+    socken,
   } = opts;
 
   // Kränkliche Haut: je höher `sick`, desto grüner das Gesicht
@@ -3267,7 +3353,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
       }
     : LUNI_COLORS;
   const P = pajama;
-  const bekleidet = P
+  const bekleidet0 = P
     ? {
         ...K0,
         cardigan: P.top,
@@ -3282,6 +3368,19 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
         sockR: vampir ? [P.bottom, P.bottom] : [K0.skin, K0.skin],
       }
     : K0;
+  // Socken: Ohne Angabe bleibt alles wie bisher (Schlafanzug = barfuß). Mit `socken` bestimmt der
+  // Zustand je Fuß (vorderer Fuß = sockL, hinterer Fuß = sockR), außer beim Vampir-Outfit.
+  const sockenTeil = (v: SockenZustand | undefined): number | undefined => (v === undefined ? undefined : typeof v === "boolean" ? (v ? 1 : 0) : clamp01(v));
+  const sockeL = sockenTeil(Array.isArray(socken) ? socken[0] : socken);
+  const sockeR = sockenTeil(Array.isArray(socken) ? socken[1] : socken);
+  const barfuss: string[] = [K0.skin, K0.skin];
+  const bekleidet = vampir || (sockeL === undefined && sockeR === undefined)
+    ? bekleidet0
+    : {
+        ...bekleidet0,
+        sockL: sockeL === undefined ? bekleidet0.sockL : sockeL > 0 ? K0.sockL : barfuss,
+        sockR: sockeR === undefined ? bekleidet0.sockR : sockeR > 0 ? K0.sockR : barfuss,
+      };
   const haut = {
     ...K0,
     leggings: K0.skinShade,
@@ -3374,7 +3473,9 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
   }
 
   const klavierHaareVorn = back && (state === "piano" || pianoSeat !== undefined);
-  const schrank = back && opts.schrankRuecken === true;
+  // Der Griff in den Schrank legt die Arme hinter den Rumpf. Beim Umziehen (Oberteil über den Kopf,
+  // Handtuch vor der Brust) und beim Socken-Holen arbeitet sie VORN – sonst wirken die Arme hinterrücks.
+  const schrank = back && opts.schrankRuecken === true && state !== "undress" && state !== "wrap";
   const westeArme = () => {
     const sy = r.shoulderY + 2.2, SR: V = [6.2, sy], SL: V = [-6.2, sy];
     const h = keys(westeAnteil, [
@@ -3428,6 +3529,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
     ang: r.footNearAng,
     dir: r.footNearDir,
     sock: K.sockR,
+    teil: sockeR ?? 1,
     farbe: K.leggingsLight,
   };
   const beinDunkel = {
@@ -3436,6 +3538,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
     ang: r.footFarAng,
     dir: r.footFarDir,
     sock: K.sockL,
+    teil: sockeL ?? 1,
     farbe: K.leggings,
   };
 
@@ -3450,7 +3553,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
       plueschHose ? 6.4 : 5.4,
       pinsel, true,
     );
-    drawSock(ctx, [beinHell.leg.hand[0], beinHell.leg.hand[1] + r.footDrop], beinHell.ang, beinHell.sock, beinHell.dir, pinsel);
+    drawSock(ctx, [beinHell.leg.hand[0], beinHell.leg.hand[1] + r.footDrop], beinHell.ang, beinHell.sock, beinHell.dir, pinsel, beinHell.teil);
   }
 
   /* --- Arme: Rollen getauscht ---
@@ -3514,7 +3617,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
       plueschHose ? 6.6 : 5.6,
       pinsel, true,
     );
-    drawSock(ctx, [beinDunkel.leg.hand[0], beinDunkel.leg.hand[1] + r.footDrop], beinDunkel.ang, beinDunkel.sock, beinDunkel.dir, pinsel);
+    drawSock(ctx, [beinDunkel.leg.hand[0], beinDunkel.leg.hand[1] + r.footDrop], beinDunkel.ang, beinDunkel.sock, beinDunkel.dir, pinsel, beinDunkel.teil);
   }
 
   // Zeichnung und Armbewegung beginnen am selben Schultergelenk.
@@ -3567,10 +3670,14 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
       ctx.fill();
     }
     if (vampir && oberteil === "dressed") drawVampirRuecken(ctx, r, vampir);
-    if (!schrank && !verdeckt) armeVonHinten();
+    // Beim Umziehen greifen die Hände über den Kopf: ohne diese Reihenfolge verschwänden sie
+    // unter den Haaren und wirkten wie hinter dem Rücken versteckt.
+    const armeNachHaaren = !schrank && !verdeckt && (state === "undress" || state === "wrap");
+    if (!schrank && !verdeckt && !armeNachHaaren) armeVonHinten();
     if (vampir?.umhang && oberteil === "dressed" && umhang > 0.01) drawUmhangRuecken(ctx, r, vampir.umhang, umhang);
     // Die langen Haare liegen über Rücken und Schultern.
     if (!klavierHaareVorn) drawHairBack(ctx, opts.buerstenzeit !== undefined ? r.hairFlow : r.hairFlow * (1 - 0.72 * clamp01((r.bend - 0.22) / 0.5)), r.hairUp, (opts.buerstenzeit !== undefined ? 1 : 1 - 0.55 * clamp01((r.bend - 0.22) / 0.5)) * r.hairLen * (wet > 0.3 ? 0.94 : 1), true, pinsel);
+    if (armeNachHaaren) armeVonHinten();
   } else {
     // Tanz: ein Arm, der hinter dem Körper durchschwingt (Floss), wird vor dem
     // Rumpf gezeichnet und dadurch von ihm verdeckt.
