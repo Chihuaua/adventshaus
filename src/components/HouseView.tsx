@@ -108,7 +108,7 @@ export default function HouseView({
               href="#studio"
               className="rounded bg-[#132a33] px-2 py-1 font-display text-[8px] tracking-[0.18em] text-amber-glow ring-1 ring-white/10 transition hover:bg-ink-700 sm:text-[9px]"
             >
-              LUNI‑STUDIO →
+              STUDIO →
             </a>
             <button
               onClick={toggleMute}

@@ -26,7 +26,9 @@ export type HundPose =
   | "stretch"
   | "wag"
   | "petted"
-  | "bark";
+  | "bark"
+  /** Schuldbewusst: Kopf gesenkt, Ohren zurück, Rute eingezogen. */
+  | "schuldig";
 
 export interface HundInfo {
   id: HundId;
@@ -367,6 +369,15 @@ function baueHundRig(id: HundId, pose: HundPose, t: number, gang: number, blinze
       break;
     }
 
+    case "schuldig": {
+      r.kopf = [r.kopf[0] - 1.4, r.kopf[1] + 6.4];
+      r.kopfNeig = 0.42;
+      r.ohrHub = -0.38;
+      r.ruteWinkel = -1.32;
+      r.ruteWedeln = Math.sin(t * 1.8) * 0.02;
+      break;
+    }
+
     case "bark": {
       const stoss = Math.max(0, Math.sin(t * 14));
       r.schulter[1] -= stoss * 0.9;
@@ -671,6 +682,8 @@ export interface HundZeichenOpts {
   schatten?: boolean;
   /** Abgekürzter Alias, damit Sheets denselben Namen wie bei Luni nutzen. */
   shadow?: boolean;
+  /** Schuldbewusst: Kopf tief, Ohren zurück, Rute eingezogen (über jeder Pose). */
+  guilty?: boolean;
 }
 
 /** Zeichnet Odin oder Apollo an Weltkoordinate (x, y = Bodenlinie). */
@@ -684,11 +697,22 @@ export function drawHund(c: C, id: HundId, x: number, y: number, opts: HundZeich
     scale = 1,
     schatten,
     shadow,
+    guilty = false,
   } = opts;
   const zeigeSchatten = schatten ?? shadow ?? true;
 
   const breit = id === "apollo";
   const r = baueHundRig(id, pose, t, gang, blinzeln);
+  if (guilty) {
+    // Schuldbewusst: Kopf tief, Ohren zurück, Rute fest eingezogen – die
+    // Beinbewegung der jeweiligen Pose bleibt erhalten.
+    r.kopf = [r.kopf[0] - 1.4, r.kopf[1] + 6.4];
+    r.kopfNeig += 0.42;
+    r.ohrHub = -0.38;
+    r.ruteWinkel = -1.32;
+    r.ruteWedeln = Math.sin(t * 1.8) * 0.02;
+    r.augeFroh = false;
+  }
 
   c.save();
   c.translate(x, y);
@@ -883,6 +907,12 @@ export interface HundZustand {
   gerufen: boolean;
   /** Hat vor verschlossener Gartentür schon einmal kurz gebellt. */
   tuerGebellt: boolean;
+  /** Aus dem Bild gelaufen: wird nicht gezeichnet und ist nicht anklickbar. */
+  weggelaufen: boolean;
+  /** Läuft gerade aus dem Bild (Richtung rechter Rand). */
+  renntWeg: boolean;
+  /** Schuldbewusst unterwegs (Kopf tief, Rute eingezogen). */
+  schuldig: boolean;
 }
 
 export interface HausUmgebung {
@@ -895,6 +925,10 @@ export interface HausUmgebung {
   cellarDoor: number;
   smoke: number;
   schlechtesWetter: boolean;
+  /** Luni raucht gerade (Raucherstuhl, Zigarette in der Hand). */
+  luniRauchen?: boolean;
+  /** In diesem Bildschritt hat sie gerade zu rauchen begonnen (einmalige Gelegenheit). */
+  rauchNeu?: boolean;
   /** Rückruf für ein sanftes Bellen (tief = true für Apollo). */
   onWuff?: (tief: boolean) => void;
 }
@@ -927,6 +961,9 @@ function erzeugeHund(id: HundId, x: number, face: 1 | -1, startPose: HundPose, t
     wirdGestreichelt: false,
     gerufen: false,
     tuerGebellt: false,
+    weggelaufen: false,
+    renntWeg: false,
+    schuldig: false,
   };
 }
 
@@ -934,9 +971,20 @@ export class HundeWelt {
   readonly hunde: [HundZustand, HundZustand];
   private zufall: () => number;
   private grussPause = 18;
+  /** Einmalige Gelegenheiten (kein Dauerwürfeln). */
+  private rauchGelegenheit = false;
+  private gartenGelegenheit: Record<HundId, boolean> = { odin: false, apollo: false };
 
-  constructor(zufall: () => number = Math.random) {
-    this.zufall = zufall;
+  constructor(zufall?: () => number) {
+    // Stabiler Zufallsstrom: gleiche Ausgangslage, gleiche Hundetage – und
+    // reproduzierbare Prüfungen. Der Strom ist trotzdem lebendig genug.
+    let saat = 0x9e3779b9;
+    this.zufall = zufall ?? (() => {
+      saat |= 0; saat = (saat + 0x6d2b79f5) | 0;
+      let t = Math.imul(saat ^ (saat >>> 15), 1 | saat);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    });
     // Start im Wohnzimmer: beide sofort gut sichtbar und im 4:3-Sicherheitsbereich.
     this.hunde = [
       erzeugeHund("odin", 336, 1, "stand", 5.5),
@@ -956,6 +1004,7 @@ export class HundeWelt {
   /** Trefferrechteck (≥ 38×30, fernsehtauglich) an der aktuellen Weltposition. */
   hitBox(id: HundId): [number, number, number, number] {
     const h = this.get(id);
+    if (h.weggelaufen) return [-100, -100, 1, 1];
     const [wx, wy] = this.weltPos(h);
     return [Math.round(wx - 19), Math.round(wy - 30), 38, 31];
   }
@@ -997,6 +1046,9 @@ export class HundeWelt {
       if (typeof s.x === "number" && isFinite(s.x)) h.x = clamp(s.x, minX, maxX);
       h.face = s.face === -1 ? -1 : 1;
       h.schritte = [];
+      h.weggelaufen = false;
+      h.renntWeg = false;
+      h.schuldig = false;
     }
   }
 
@@ -1045,6 +1097,71 @@ export class HundeWelt {
     }
   }
 
+  /** Aus dem Bild gelaufene Hunde (leer = alle zu Hause). */
+  weggelaufen(): HundId[] {
+    return this.hunde.filter((h) => h.weggelaufen).map((h) => h.id);
+  }
+
+  /** Hund läuft aus dem Bild: erst zum rechten Rand, dann verschwindet er. */
+  private starteWeglaufen(h: HundZustand) {
+    if (h.weggelaufen || h.renntWeg) return;
+    h.renntWeg = true;
+    h.weggelaufen = false;
+    h.schuldig = false;
+    h.schritte = [{ k: "geh", x: 952, trab: true }];
+    h.gartenPause = 0;
+    h.pose = "trot";
+    h.face = 1;
+  }
+
+  /**
+   * 20 % Gelegenheit: Ein Hund, der im Garten ist, läuft einmal aus dem Bild.
+   * Wird pro Rauchbeginn und pro Gartenbesuch genau einmal gewürfelt.
+   */
+  private verlaufeVielleicht(imGarten: readonly HundId[]) {
+    // Erst wer eine Weile draußen ist, läuft auch mal aus dem Bild.
+    const frei = imGarten.filter((id) => {
+      const h = this.get(id);
+      return !h.weggelaufen && !h.renntWeg && h.gartenZeit > 25;
+    });
+    if (!frei.length) return;
+    if (this.zufall() >= 0.2) return;
+    this.starteWeglaufen(this.get(frei[Math.floor(this.zufall() * frei.length)]));
+  }
+
+  /**
+   * Luni ruft die Ausreißer zurück. Sie kommen mit schuldbewusster Haltung
+   * herein und legen sich im Wohnzimmer ab.
+   */
+  zurueckInsWohnzimmer(ids: readonly HundId[]) {
+    for (const id of ids) {
+      const h = this.get(id);
+      h.weggelaufen = false;
+      h.renntWeg = false;
+      h.schuldig = true;
+      h.gerufen = true;
+      h.wartetAufLuni = false;
+      h.wirdGestreichelt = false;
+      h.gartenZeit = 0;
+      h.gartenPause = 300;
+      h.tuerGebellt = false;
+      h.pose = "walk";
+      h.face = -1;
+      h.floor = 0;
+      h.x = 946;
+      h.schritte = [
+        { k: "geh", x: 862, trab: false },
+        { k: "geh", x: 812, trab: false },
+        { k: "geh", x: 600, trab: false },
+        { k: "geh", x: TREPPE_KELLER.fussX, trab: false },
+        { k: "treppe", von: 0, nach: 1, fussX: TREPPE_KELLER.fussX, kopfX: TREPPE_KELLER.kopfX, keller: true, t: 0 },
+      ];
+      // Ziel im Wohnzimmer: links bzw. rechts am Sofa vorbei, dann ablegen.
+      const ziel = id === "odin" ? 330 : 420;
+      h.schritte.push({ k: "geh", x: ziel, trab: false });
+    }
+  }
+
   /** Pfad zwischen Etagen 0, 1, 2 und innerhalb eines Stockwerks aufbauen. */
   schickeNach(h: HundZustand, zielFloor: 0 | 1 | 2, zielX: number, trab = false, env?: HausUmgebung) {
     // Durch geschlossene Keller-/Gartentür nicht hindurchplanen
@@ -1081,6 +1198,28 @@ export class HundeWelt {
 
   update(dt: number, env: HausUmgebung) {
     this.grussPause = Math.max(0, this.grussPause - dt);
+    // 20 % pro Gelegenheit: Rauchbeginn oder ein neuer Gartenbesuch.
+    if (env.rauchNeu && !this.rauchGelegenheit) {
+      this.rauchGelegenheit = true;
+      const draussen = this.hunde.filter((h) => h.floor === 0 && h.x > HAUS_RECHTS + 2).map((h) => h.id);
+      this.verlaufeVielleicht(draussen);
+    } else if (!env.luniRauchen) {
+      this.rauchGelegenheit = false;
+    }
+    for (const h of this.hunde) {
+      const imGarten = h.floor === 0 && h.x > HAUS_RECHTS + 2;
+      if (!imGarten) {
+        this.gartenGelegenheit[h.id] = false;
+        continue;
+      }
+      if (h.gartenZeit < 25) continue;
+      if (this.gartenGelegenheit[h.id] || h.weggelaufen || h.renntWeg) continue;
+      this.gartenGelegenheit[h.id] = true;
+      if (this.zufall() < 0.2) {
+        // Nur ein Hund pro Gelegenheit läuft weg.
+        if (!this.hunde.some((x) => x.renntWeg || x.weggelaufen)) this.starteWeglaufen(h);
+      }
+    }
     for (const h of this.hunde) this.updateHund(h, dt, env);
 
     // Begegnen sich Odin & Apollo ruhig auf derselben Etage, wedeln sie sich kurz zu
@@ -1122,6 +1261,16 @@ export class HundeWelt {
       }
     }
 
+    if (h.weggelaufen) return;
+    if (h.renntWeg) {
+      if (h.schritte.length) this.bewegeSchritt(h, dt, env);
+      else {
+        h.weggelaufen = true;
+        h.renntWeg = false;
+        h.pose = "stand";
+      }
+      return;
+    }
     if (h.wirdGestreichelt) {
       h.pose = "petted";
       return;
@@ -1217,15 +1366,16 @@ export class HundeWelt {
   private bewegeSchritt(h: HundZustand, dt: number, env: HausUmgebung) {
     const s = h.schritte[0];
     if (s.k === "geh") {
+      if (h.schuldig) h.pose = s.trab ? "trot" : "walk";
       // Geschlossene Türen respektieren
-      if (h.floor === 0) {
+      if (h.floor === 0 && !h.schuldig) {
         if ((h.x < KELLER_TUER_X) !== (s.x < KELLER_TUER_X) && env.cellarDoor < 0.5) {
           h.schritte = [];
           h.pose = "sit";
           h.timer = 4;
           return;
         }
-        if ((h.x < HAUS_RECHTS) !== (s.x < HAUS_RECHTS) && env.gardenDoor < 0.45) {
+        if ((h.x < HAUS_RECHTS) !== (s.x < HAUS_RECHTS) && env.gardenDoor < 0.45 && !h.schuldig) {
           h.schritte = [];
           h.gerufen = false;
           h.pose = "sit";
@@ -1243,7 +1393,13 @@ export class HundeWelt {
         h.schritte.shift();
         if (!h.schritte.length) {
           h.gerufen = false;
-          this.ankunftsPose(h, env);
+          if (h.schuldig) {
+            // Zu Hause angekommen: im Wohnzimmer ablegen und dort bleiben.
+            h.schuldig = false;
+            h.pose = "lie";
+            h.timer = 120 + this.zufall() * 120;
+            h.face = 1;
+          } else this.ankunftsPose(h, env);
         }
       } else {
         h.x += Math.sign(dx) * schritt;
@@ -1267,7 +1423,13 @@ export class HundeWelt {
       h.floor = s.nach;
       h.x = richtung === 1 ? s.kopfX : s.fussX;
       h.schritte.shift();
-      if (!h.schritte.length) this.ankunftsPose(h, env);
+      if (!h.schritte.length) {
+        if (h.schuldig) {
+          h.schuldig = false;
+          h.pose = "lie";
+          h.timer = 120 + this.zufall() * 120;
+        } else this.ankunftsPose(h, env);
+      }
     }
   }
 
@@ -1397,6 +1559,7 @@ export class HundeWelt {
     // Apollo zuerst, Odin danach (so verdecken sie sich ruhig in fester Tiefe)
     for (const id of ["apollo", "odin"] as const) {
       const h = this.get(id);
+      if (h.weggelaufen) continue;
       const s = h.schritte[0];
       const [wx, wy] = this.weltPos(h);
       const aufTreppe = !!s && s.k === "treppe";
@@ -1418,6 +1581,7 @@ export class HundeWelt {
         blinzeln: h.blinzeln > 0,
         scale: HUND_SCALE,
         schatten: !aufTreppe,
+        guilty: h.schuldig,
       });
       // Außenwand-Laibung über dem durchschlüpfenden Hund, damit er wirklich DURCH die Tür läuft
       if (anWand) {

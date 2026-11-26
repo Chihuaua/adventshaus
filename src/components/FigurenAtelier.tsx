@@ -129,7 +129,7 @@ export default function FigurenAtelier({ id, fahrzeug = false }: { id: Auswahl; 
           <div className="flex flex-wrap items-center justify-between gap-3 font-display text-[10px] tracking-[.19em]">
             <span className="text-teal">LITTLE COMPUTER LUNI · FIGURENSTUDIO</span>
             <nav aria-label="Studio-Navigation" className="flex gap-2 text-[9px]">
-              <a className={link} href="#studio">&larr; LUNI-STUDIO</a><a className={link} href="#">ZUM HAUS &rarr;</a>
+              <a className={link} href="#studio">&larr; STUDIO</a><a className={link} href="#">ZUM HAUS &rarr;</a>
             </nav>
           </div>
           <h1 className="mt-5 font-display text-[clamp(24px,6.7vw,40px)] leading-tight tracking-tight text-amber-glow">{tafel === "fahrzeug" ? "SCHWEBETRANSPORTER" : entwurf ? entwurf.name.toLocaleUpperCase("de-DE") : <><span className="text-mint-50">LUNIS </span>FIGURENATELIER</>}</h1>

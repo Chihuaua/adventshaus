@@ -171,7 +171,7 @@ function HundeStudio({ id }: { id: HundId }) {
                 href="#studio"
                 className="rounded bg-[#132a33] px-2 py-1 tracking-[0.2em] text-amber-glow ring-1 ring-white/10 transition hover:bg-ink-700"
               >
-                ← LUNI-STUDIO
+                ← STUDIO
               </a>
               <a
                 href={id === "odin" ? "#studio-apollo" : "#studio-odin"}
@@ -366,7 +366,7 @@ function HundeStudio({ id }: { id: HundId }) {
                 href="#studio"
                 className="btn-press rounded-md px-3 py-2 text-[11px] font-medium tracking-wide bg-[#132a33] text-mint-200 ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
               >
-                Luni-Studio
+                Studio
               </a>
             </div>
           </Panel>

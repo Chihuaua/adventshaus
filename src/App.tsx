@@ -13,6 +13,7 @@ import { atelierAusHash } from "@/game/atelier/figuren";
 import { ausbauVorschauAusHash, istAdventshausHash } from "@/game/adventshaus-ausbau";
 import { FigurenEditor } from "@/components/FigurenEditor";
 import RenovierungStudio from "@/components/RenovierungStudio";
+import RoutinenStudio from "@/components/RoutinenStudio";
 
 /** Hash-Weiche: "#studio" Figuren-Studio, "#studio-frosch" Methan Frog, "#editor" Figuren-Editor,
     "#studio-odin"/"#studio-apollo" Hunde-Studios,
@@ -35,6 +36,7 @@ export default function App() {
   const atelier = atelierAusHash(hash);
   if (atelier) return <FigurenAtelier key={atelier} id={atelier} />;
   if (hash === "#studio") return <StudioApp />;
+  if (hash === "#studio-routinen") return <RoutinenStudio />;
   if (hash === "#studio-luni-fein") return <LuniFeinStudio />;
   if (hash === "#studio-odin") return <OdinStudio />;
   if (hash === "#studio-apollo") return <ApolloStudio />;

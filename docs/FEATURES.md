@@ -243,6 +243,8 @@ hund-apollo | src/game/hunde.ts | drawApollo
 hund-stationen | src/game/house.ts | "apollo"
 hund-streicheln | src/game/luni.ts | case "pet"
 hunde-tests | tools/test-hunde.mjs | Odin und Apollo
+hunde-ausreisser | src/game/hunde.ts | zurueckInsWohnzimmer
+hunde-ausreisser-tests | tools/test-hunde-ausreisser.mjs | Hunde-Ausreißer-Prüfungen bestanden
 
 ## Teleflauschi „Flauschi“ (Weihnachtshaus)
 
@@ -320,6 +322,7 @@ aufsteh-stein-immer | src/game/house.ts | laufendesBeenden
 morgens-barfuss | src/game/luni.ts | barfuß (Schlappen kommen später)
 morgens-brille-holen | src/game/house.ts | brilleNehmen
 weste-anziehen-animation | src/game/house.ts | WESTE_TAKT
+weste-sitz-tests | tools/test-weste.mjs | Sitz-Prüfungen bestanden
 hinlegen-ohne-fenster | src/game/house.ts | schiene das Fenster durch
 handy-kette | src/game/house.ts | morgenAmBett
 handy-nachttisch | src/game/house.ts | handyDisplayT
@@ -344,7 +347,7 @@ schrank-arme-ebene | src/game/house.ts | amSchrankHinten
 musikvideo-riro-noten | src/game/audio/riroNoten.ts | RIRO_NOTEN
 musikvideo-riro-klang | src/game/audio/riroMusik.ts | RiroMusik
 rauch-nur-mit-luni | src/game/house.ts | raucherQuelle
-schritte-barfuss | src/game/audio.ts | barfuss = false
+schritte-barfuss | src/game/audio.ts | "barfuss" | "socke" | "schuh"
 stopfen-zwei-wiederholungen | src/game/house.ts | rollCount >= 2
 senseo-klick-schluck-gartentuer | src/game/house.ts | kaffeeSchluck
 adventshaus-welt | src/game/welten.ts | adventshaus: "Adventshaus"

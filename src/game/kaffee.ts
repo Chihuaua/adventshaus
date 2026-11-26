@@ -23,8 +23,8 @@ export const KAFFEE_ZEIT = {
   aufheizen: 60,
   bruehen: 30,
   fuellen: 14,
-  /** genau 2 Stopfwiederholungen (2 × 1,35 s) */
-  stopfen: 2.7,
+  /** genau 2 Stopfwiederholungen (2 × 1,8 s = um 1/3 langsamer als vorher) */
+  stopfen: 3.6,
   /** Abstand zwischen zwei Schlucken auf dem Raucherstuhl */
   schluck: 28,
   /** Tasse kurz ausspülen */
@@ -32,7 +32,7 @@ export const KAFFEE_ZEIT = {
 } as const;
 /** Kurze Probe: dieselben Abläufe, Wartezeiten stark verkürzt. */
 export const KAFFEE_PROBE = {
-  aufheizen: 5, bruehen: 4, fuellen: 3, stopfen: 2.7, schluck: 5, ausspuelen: 1.6,
+  aufheizen: 5, bruehen: 4, fuellen: 3, stopfen: 3.6, schluck: 5, ausspuelen: 1.6,
 } as const;
 /** Faktor für Handgriffe in der Probe (Echtzeit = 1). */
 export const PROBE_GRIFF = 0.55;

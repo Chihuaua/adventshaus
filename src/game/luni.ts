@@ -87,6 +87,7 @@ export type LuniState =
   | "phone"
   | "call"
   | "standup"
+  | "shrug"
   | "bow"
   | "pack"
   | "undress"
@@ -122,6 +123,10 @@ export type LuniExpr =
   | "talk"
   | "sing"
   | "focus"
+  /** Müder Morgenblick: Strichaugen mit normalen, ruhigen Augenbrauen. */
+  | "muede"
+  /** Angeekelt: Strichaugen, normale Augenbrauen, verzogener Mund. */
+  | "ekel"
   /** Gähnen: Augen zu, weit offener Mund. */
   | "yawn";
 
@@ -157,6 +162,8 @@ export interface LuniOpts {
   walk?: number;
   /** 0 = Augen offen, 1 = zu */
   blink?: number;
+  /** 0..0.3: Ober- und Unterlid nähern sich je um diesen Anteil (Pupille bleibt sichtbar). */
+  lid?: number;
   scale?: number;
   shadow?: boolean;
   /** 0..1 für turn / cartwheel / flip */
@@ -237,6 +244,12 @@ export interface LuniOpts {
   reck?: number;
   /** Nur Bett: Übergang vom Stehen zum Sitzen auf der Matratze. */
   bedSitzen?: number;
+  /**
+   * Sitzt auf der Matratze und lässt die Beine über die Bettkante hängen.
+   * 0..1 = wie weit der jeweilige Fuß schon zum Anziehen hochgezogen ist
+   * ( erst der vordere, dann der hintere Fuß ).
+   */
+  bettBeineHangen?: [number, number];
   /** Aufwachen im Bett: aufrichten 0..1 (Liegen -> Langsitz), beineSenken 0..1 (Matratze -> Bettkante). */
   bettAufstehen?: { aufrichten: number; beineSenken: number };
   /** Nur Bett: Arme und Beine liegen unter der Decke und werden nicht gezeichnet. */
@@ -758,8 +771,14 @@ function buildRig(state: LuniState, t: number, walkP: number, phase: number, rea
       r.armNear = { elbow: [4 - sw * 4, -29], hand: [3 - sw * 9, -22] };
       r.armFar = { elbow: [-4 + sw * 4, -29], hand: [-3 + sw * 9, -22] };
       r.hairFlow = -1.15 - sw * 0.45; // Haar weht konstant nach hinten
-      r.footNearAng = sw * 0.1;
-      r.footFarAng = -sw * 0.1;
+      // Natürlicher Fußrollen: die Ferse hebt sich, sobald das Bein nach vorn schwingt,
+      // die Spitze zieht beim Vorstellen der Zeh nach oben. Viermal so viel Bewegung
+      // wie bisher, und das hintere Bein läuft gegenphasig – sonst wirken beide
+      // Füße wie ein starres Brett.
+      const roll = (schwing: number, hub: number) =>
+        schwing * 0.30 + hub / 3.4 * 0.26 + Math.max(0, -schwing) * 0.12;
+      r.footNearAng = roll(sw, lift);
+      r.footFarAng = -roll(swF, liftF);
       break;
     }
 
@@ -1326,6 +1345,29 @@ function buildRig(state: LuniState, t: number, walkP: number, phase: number, rea
       r.legNear = leg([lerp(9.5, 3.6, p), lerp(-19, -10, p)], [lerp(12, 4.2, p), lerp(-9.5, 0, p)]);
       r.headTilt = lerp(0.03, 0, p) + push * 0.16;
       r.hairFlow = 0.3 + push * 0.5;
+      break;
+    }
+
+    case "shrug": {
+      // Schulterzucken zur Kamera: Schultern und Kopf heben sich kurz, die
+      // Ellbogen gehen nach außen, die Unterarme zeigen mit offenen Händen hoch.
+      const p = ease(clamp01(phase));
+      const lift = Math.sin(p * Math.PI);
+      r.rootY = breathe * 0.3 - 0.6 * lift;
+      r.shoulderY = SHOULDER_Y - 3.4 * lift;
+      r.headY = HEAD_Y - 2.4 * lift;
+      r.headTilt = 0.05 * lift;
+      r.armNear = {
+        elbow: [10.6, -30.5 - 1.2 * lift],
+        hand: [8.2, -39.5 - 1.6 * lift],
+      };
+      r.armFar = {
+        elbow: [-10.6, -30.5 - 1.2 * lift],
+        hand: [-8.2, -39.5 - 1.6 * lift],
+      };
+      r.legFar = leg([-3.6, -10], [-4.2, 0]);
+      r.legNear = leg([3.6, -10], [4.2, 0]);
+      r.hairFlow = 0.25 * lift;
       break;
     }
 
@@ -1972,7 +2014,7 @@ function drawEyeRoll(ctx: C, p: number) {
 
 /* ------------------------------ Gesicht -------------------------------- */
 
-function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = true, gaze = 0, queasy = 0, singOpen = 0, pinsel?: LuniZeichenpinsel, frontal = false) {
+function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = true, gaze = 0, queasy = 0, singOpen = 0, pinsel?: LuniZeichenpinsel, frontal = false, lid = 0) {
   if (pinsel) {
     ctx.save(); ctx.translate(0, HEAD_Y);
     pinsel.gesicht(ctx, expr, blink, t, glasses, gaze, queasy, singOpen);
@@ -2045,6 +2087,15 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
   } else if (expr === "wink") {
     dot(farX, 1.5);
     arcUp(nearX, 2.1);
+  } else if (expr === "muede" || expr === "ekel") {
+    // Strichaugen: müde, aber nicht traurig – die Brauen bleiben normal.
+    ctx.lineWidth = 1.25;
+    for (const x of [farX, nearX]) {
+      ctx.beginPath();
+      ctx.moveTo(x - 1.8, eyeY);
+      ctx.lineTo(x + 1.8, eyeY);
+      ctx.stroke();
+    }
   } else if (expr === "annoyed") {
     ctx.lineWidth = 1.2;
     for (const x of [farX, nearX]) {
@@ -2096,6 +2147,29 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
     dot(nearX, 1.6);
   }
 
+  // Skeptisches Zukneifen: Ober- und Unterlid rücken je höchstens knapp ein
+  // Drittel aufeinander zu. Die Pupille in der Mitte bleibt frei sichtbar.
+  const lidK = Math.max(0, Math.min(0.3, lid));
+  if (lidK > 0.01 && !closed) {
+    const halfH = expr === "surprised" ? 2.15 : 1.75;
+    ctx.save();
+    for (const x of [farX, nearX]) {
+      const cover = halfH * 2 * lidK;
+      ctx.fillStyle = LUNI_COLORS.skin;
+      ctx.fillRect(x - 2.35, eyeY - halfH - 0.25, 4.7, cover + 0.25);
+      ctx.fillRect(x - 2.35, eyeY + halfH - cover, 4.7, cover + 0.25);
+      ctx.strokeStyle = LUNI_COLORS.eye;
+      ctx.lineWidth = 0.65;
+      ctx.beginPath();
+      ctx.moveTo(x - 1.85, eyeY - halfH + cover);
+      ctx.lineTo(x + 1.85, eyeY - halfH + cover);
+      ctx.moveTo(x - 1.85, eyeY + halfH - cover);
+      ctx.lineTo(x + 1.85, eyeY + halfH - cover);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   // ---- Augenbrauen ----
   ctx.strokeStyle = LUNI_COLORS.hair;
   ctx.lineWidth = 1;
@@ -2106,7 +2180,10 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
     ctx.quadraticCurveTo(x, browY + lift - 0.9, x + 2, browY + lift - tilt);
     ctx.stroke();
   };
-  if (expr === "sad") {
+  if (expr === "muede" || expr === "ekel") {
+    brow(farX, 0, 0);
+    brow(nearX, 0, 0);
+  } else if (expr === "sad") {
     brow(farX, -1, 0.6);
     brow(nearX, 1, 0.6);
   } else if (expr === "annoyed" || expr === "focus") {
@@ -2194,6 +2271,7 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
       break;
     case "neutral":
     case "focus":
+    case "muede":
       ctx.beginPath();
       ctx.moveTo(mx - 1.4, mY - 0.4);
       ctx.lineTo(mx + 1.6, mY - 0.4);
@@ -2244,6 +2322,7 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
       ctx.stroke();
       break;
     case "annoyed":
+    case "ekel":
       ctx.beginPath();
       ctx.moveTo(mx - 2, mY);
       ctx.quadraticCurveTo(mx, mY - 1.3, mx + 2, mY + 0.2);
@@ -2619,6 +2698,11 @@ function drawTorso(ctx: C, r: Rig, K = LUNI_COLORS, pinsel?: LuniZeichenpinsel) 
  * hängt locker an den Seiten. Beim Greifen in den Schrank geht ein Arm nach
  * vorn – von hinten sieht man nur den angewinkelten Ellbogen.
  */
+/** Ruhende Handhaltung an der Seite (identisch in Rücken- und Westenarmen). */
+function hangRuhe(sy: number): V {
+  return [8.6, sy + 16.2];
+}
+
 function backArms(state: LuniState, r: Rig, phase: number): { near: Limb; far: Limb; behind: boolean } {
   const sy = r.shoulderY + 2.2;
   const SR: V = [6.2, sy];
@@ -2724,30 +2808,49 @@ function drawTorsoBack(ctx: C, r: Rig, outfit: "dressed" | "towel" | "none", K: 
 }
 
 /**
- * Haare neben das Ohr gelegt: der Pony bleibt, die Seitensträhne auf der
- * sichtbaren Seite wird zu einem weichen Büschel hinter das Ohr geschoben.
+ * Haare neben das Ohr gelegt: volle, runde Oberkopfkontur wie bei drawHairFront
+ * (kein Wegclippen oder Abflachen an der Kopfoberseite beim Bücken), hintere
+ * Seitensträhne bleibt erhalten, vordere Strähne weich seitlich angelegt.
  */
 function drawHairAside(ctx: C, k: number) {
   const e = k * k * (3 - 2 * k);
   ctx.save();
   ctx.translate(0, HEAD_Y);
   ctx.fillStyle = LUNI_COLORS.hair;
-  // Stirnhaar
+  // Voller Oberkopfbogen + Pony: schließt ohne Stufe an das Rückenhaar an.
   ctx.beginPath();
-  ctx.arc(0, -1.2, 9.5, Math.PI * 1.01, Math.PI * 1.99);
-  ctx.quadraticCurveTo(7.4, -4.6, 2.6, -5.6);
-  ctx.quadraticCurveTo(-3.6, -6.8, -9.3, -2.2);
+  ctx.arc(0, -1.35, 9.8, Math.PI * 0.99, Math.PI * 2.01);
+  ctx.quadraticCurveTo(7.6, -4.5, 2.6, -5.6);
+  ctx.quadraticCurveTo(-3.6, -6.8, -9.5, -2.0);
   ctx.closePath();
   ctx.fill();
-  // Strähne über dem Ohr, zur Seite gelegt
+  // Hintere Seitensträhne bleibt bündig am Kopf, damit beim Bücken nichts wegspringt.
   ctx.beginPath();
-  const sx = lerp(8.6, 11.2, e);
-  ctx.moveTo(sx - 2.6, -4.4);
-  ctx.quadraticCurveTo(sx + 1.4 * e, 2, sx - 1.2, 7 + 2 * e);
-  ctx.quadraticCurveTo(sx - 4, 7.6 + 1.4 * e, sx - 4.6, 2);
-  ctx.quadraticCurveTo(sx - 4.8, -1.6, sx - 2.6, -4.4);
+  ctx.moveTo(-8.8, -4.6);
+  ctx.quadraticCurveTo(-11.3, 4.4, -10.1, 11.2);
+  ctx.quadraticCurveTo(-8.5, 11.9, -7.4, 10.5);
+  ctx.quadraticCurveTo(-8.0, 3.6, -6.5, -3.4);
   ctx.closePath();
   ctx.fill();
+  // Vordere Strähne weich an der Schläfe entlang angelegt (ohne Stufe oben rechts).
+  ctx.beginPath();
+  const sx = lerp(8.6, 10.2, e);
+  ctx.moveTo(7.4, -5.6);
+  ctx.quadraticCurveTo(sx + 1.1, -1.2, sx + 0.5 * e, 6.2 + 1.6 * e);
+  ctx.quadraticCurveTo(sx - 2.2, 7.6 + 1.2 * e, sx - 3.0, 2.2);
+  ctx.quadraticCurveTo(sx - 3.2, -1.6, 6.2, -4.2);
+  ctx.closePath();
+  ctx.fill();
+  // Dezenter Haarglanz bleibt erhalten (kein Blitzen beim Übergang ins Bücken).
+  ctx.save();
+  ctx.globalAlpha = 0.45;
+  ctx.strokeStyle = LUNI_COLORS.hairSheen;
+  ctx.lineWidth = 1.5;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.arc(0, -1.35, 7.3, Math.PI * 1.16, Math.PI * 1.5);
+  ctx.stroke();
+  ctx.restore();
   ctx.restore();
 }
 
@@ -3080,6 +3183,7 @@ export function luniRigBauen(x: number, y: number, opts: LuniOpts = {}): Rig {
     pianoSeat,
     lieDown,
     bedSitzen,
+    bettBeineHangen,
     bedLean = 0,
     reck = 0,
     cough = 0,
@@ -3117,6 +3221,17 @@ export function luniRigBauen(x: number, y: number, opts: LuniOpts = {}): Rig {
     r.armFar = zu(r.armFar, [-9, -45], [-6, -62]);
     r.headTilt = lerp(r.headTilt, -0.2, k);
     r.hairFlow = lerp(r.hairFlow ?? 0, -0.5, k);
+  }
+  // Auf der Matratze sitzen mit hängenden Beinen: das Knie bleibt auf Bettkantenhöhe,
+  // der Unterschenkel zeigt nach unten. Ein hochgezogener Fuß (Vorderkante am Griff)
+  // zieht Knie und Fuß an, damit die Socke vor dem Körper liegt statt unter dem Bett.
+  const hangeBeine = state === "sit" && bedSitzen === undefined && bettBeineHangen ? bettBeineHangen : null;
+  if (hangeBeine) {
+    const [qVorn, qHinten] = hangeBeine;
+    const knie = (q: number) => ({ x: 9.5 + 1.4 * q, y: -19 - 0.6 * q });
+    const fuss = (q: number) => ({ x: 12 - 3.6 * q, y: -9.5 - 5.4 * q });
+    r.legNear = leg([knie(qVorn).x, knie(qVorn).y], [fuss(qVorn).x, fuss(qVorn).y]);
+    r.legFar = leg([knie(qHinten).x - 1.4, knie(qHinten).y], [fuss(qHinten).x - 1.2, fuss(qHinten).y]);
   }
   const bettSitzEnde = state === "sit" && bedSitzen !== undefined ? buildRig("sit", t, walk, phase, armReach) : null;
   if (bettSitzEnde && bedSitzen !== undefined) {
@@ -3314,6 +3429,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
     state = "idle",
     expr = "happy",
     blink = 0,
+    lid = 0,
     scale = 1,
     shadow = true,
     phase = 0,
@@ -3473,24 +3589,36 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
   }
 
   const klavierHaareVorn = back && (state === "piano" || pianoSeat !== undefined);
-  // Der Griff in den Schrank legt die Arme hinter den Rumpf. Beim Umziehen (Oberteil über den Kopf,
-  // Handtuch vor der Brust) und beim Socken-Holen arbeitet sie VORN – sonst wirken die Arme hinterrücks.
-  const schrank = back && opts.schrankRuecken === true && state !== "undress" && state !== "wrap";
+  // Beim Griff in den Schrank und während des gesamten Weste-Anziehens liegen die Arme
+  // dauerhaft hinter Rumpf und Haaren – kein Ebenenwechsel vor/hinter die Haare, kein Ploppen.
+  const westeAktiv = opts.westeAnziehen !== undefined;
+  const schrank = back && (westeAktiv || (opts.schrankRuecken === true && state !== "undress" && state !== "wrap"));
   const westeArme = () => {
     const sy = r.shoulderY + 2.2, SR: V = [6.2, sy], SL: V = [-6.2, sy];
+    // Ruhige Bahn vor der Brust (von hinten gesehen hinter Rumpf und Haar):
+    // Hand bleibt durchgehend außerhalb der Schulterlinie (x >= 7.2) und unterhalb
+    // der Schulter (dy > 0), mit festem Außen-Ellbogenzweig – kein Zweigwechsel,
+    // keine schnelle Dreh-Zwischenbewegung und kein Ploppen am Ende.
     const h = keys(westeAnteil, [
-      [0, [4.6, sy - 2]],
-      [0.26, [11.0, sy + 4.5]],
-      [0.58, [10.6, sy + 11.4]],
-      [0.82, [7.8, r.hipY + 0.6]],
-      [1, [8.6, sy + 16.2]],
+      [0.0, [7.4, sy + 4.5]],
+      [0.28, [10.4, sy + 6.2]],
+      [0.58, [10.2, sy + 11.0]],
+      [0.82, [8.6, sy + 14.2]],
+      [1.0, hangRuhe(sy)],
     ]);
-    return { near: armIK(SR, h, 1), far: armIK(SL, [-h[0], h[1]], -1), behind: true };
+    return { near: armIK(SR, h, -1), far: armIK(SL, [-h[0], h[1]], 1), behind: true };
   };
+  /**
+   * Rückenarme. Entscheidend: während die Weste läuft, bleibt durchgehend die
+   * Westen-Quelle aktiv – auch in den Greif-Rahmen davor und danach. Ein
+   * Wechsel zwischen zwei Posen-Quellen ließ die Arme für einen Framesatz
+   * woanders stehen (Blitzen). Der Greif-Rahmen wird weich überblendet.
+   */
   const rueckenarme = !back ? null
     : backIK ? { near: r.armNear, far: r.armFar, behind: false }
-    : opts.westeAnziehen !== undefined && state !== "act" ? westeArme()
-    : backArms(state, r, phase);
+    : opts.westeAnziehen !== undefined
+      ? westeArme()
+      : backArms(state, r, phase);
   const armeVonHinten = () => {
     if (!rueckenarme || bedCover) return;
     const wk = ease(westeAnteil);
@@ -3844,12 +3972,23 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
       drawFace(ctx, expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0, singOpen, pinsel);
       haare();
     } else {
-      // Kurzer Bob: Haare hinter den Kopf, dann Kopfhaut und Gesicht davor.
+      // Kurzer Bob: Haare hinter den Kopf, dann Kopfhaut, runde Pony-Kappe (damit die
+      // Kopfoberseite nie wegclippt, ohne abstehende Seitensträhnen) und Gesicht davor.
       haare();
       ctx.fillStyle = LUNI_COLORS.skin;
       ctx.beginPath();
       ctx.arc(0, HEAD_Y - 0.4, HEAD_R - 0.2, 0, Math.PI * 2);
       ctx.fill();
+      ctx.save();
+      ctx.translate(0, HEAD_Y);
+      ctx.fillStyle = LUNI_COLORS.hair;
+      ctx.beginPath();
+      ctx.arc(0, -1.35, 9.7, Math.PI * 0.99, Math.PI * 2.01);
+      ctx.quadraticCurveTo(7.4, -4.6, 2.6, -5.6);
+      ctx.quadraticCurveTo(-3.6, -6.8, -9.4, -2.0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
       drawFace(ctx, expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0, singOpen, pinsel);
     }
   } else {
@@ -3871,7 +4010,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
       drawHairAside(ctx, k);
       ctx.restore();
     }
-    drawFace(ctx, eyeRoll > 0.01 ? "annoyed" : expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0, singOpen, pinsel, opts.zahnfrontal);
+    drawFace(ctx, eyeRoll > 0.01 ? "annoyed" : expr, blink, t, glasses, gaze, sick > 0.28 ? 1 : 0, singOpen, pinsel, opts.zahnfrontal, lid);
     if (opts.mundSchaum) {
       ctx.save(); ctx.globalAlpha *= opts.mundSchaum;
       ctx.fillStyle = "#abcfc9"; ctx.beginPath();

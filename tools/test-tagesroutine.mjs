@@ -430,7 +430,8 @@ let haus2, tick2;
   assert.ok(barfussMax >= 0.12, `Barfuß-Schritt ist hörbar und nicht lautlos (${barfussMax})`);
   assert.ok(normalMax > barfussMax * 1.35, `Bekleideter Schritt (${normalMax}) ist kräftiger als barfuß (${barfussMax})`);
 
-  // Im Haus: barfuß im Schlafanzug ruft sfx.step(..., true), in Tageskleidung sfx.step(..., false)
+  // Im Haus: drei Beläge. Barfuß im Schlafanzug "barfuss", in Socken "socke",
+  // in Tageskleidung mit Schuhen "schuh" (Schuhe kommen später ins Spiel).
   const schritte = [];
   const origStep = G2.sfx.step.bind(G2.sfx);
   G2.sfx.step = (p, b) => { schritte.push([p, b]); };
@@ -440,12 +441,19 @@ let haus2, tick2;
     h.pyjama = { top: "#7fc6c2", bottom: "#3f6f8c" }; h.lf = 2; h.lx = 310;
     h.command("kleiderschrank");
     tick2(h, 2.5);
-    assert.ok(schritte.length >= 2 && schritte.every(s => s[1] === true), "im Schlafanzug barfuß hörbare Schritte");
+    assert.ok(schritte.length >= 2 && schritte.every(s => s[1] === "barfuss"), "im Schlafanzug barfuß hörbare Schritte");
     schritte.length = 0;
-    h.pyjama = null; h.outfit = "dressed"; h.lf = 1; h.lx = 200;
+    // Socken an, aber keine Schuhe: weicher Socken-Belag
+    h.pyjama = null; h.outfit = "dressed"; h.sockenAn = true; h.lf = 1; h.lx = 200;
     h.command("esstisch");
     tick2(h, 3);
-    assert.ok(schritte.length >= 3 && schritte.every(s => s[1] === false), "in Tageskleidung normale Schritte");
+    assert.ok(schritte.length >= 3 && schritte.every(s => s[1] === "socke"), "in Socken weicher Schrittbelag");
+    schritte.length = 0;
+    // Ohne Socken (Schuhe später im Spiel): Schuh-Belag
+    h.lx = 200; h.sockenAn = false;
+    h.command("esstisch");
+    tick2(h, 2.5);
+    assert.ok(schritte.length >= 2 && schritte.every(s => s[1] === "schuh"), "ohne Socken Schuh-Belag");
   } finally {
     G2.sfx.step = origStep;
   }

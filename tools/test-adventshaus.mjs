@@ -39,7 +39,9 @@ test("Türchen schalten genau ihre Stufe frei – auch rückwirkend", () => {
   assert.ok(A.ausbauSchalter([1], 0).has("deko"));
   assert.ok(!A.ausbauSchalter([1], 0).has("post"));
   const fuenf = A.ausbauSchalter([1, 2, 3, 4, 5], 0);
-  for (const s of ["deko", "hunde", "weihnachtsdeko", "abend", "post"]) assert.ok(fuenf.has(s), s);
+  for (const s of ["deko", "weihnachtsdeko", "abend", "post"]) assert.ok(fuenf.has(s), s);
+  assert.ok(!fuenf.has("hunde"), "Hunde sind vom Kalender entkoppelt");
+  assert.equal(A.stufeZu(2)?.titel, "Fußmatte", "Türchen 2 ist jetzt die Fußmatte");
   assert.ok(!fuenf.has("flauschi"));
   // Nachgeholte Türchen zählen genauso, die Reihenfolge ist egal.
   assert.deepEqual([...A.ausbauSchalter([5, 3, 1], 0)].sort(), [...A.ausbauSchalter([1, 3, 5], 0)].sort());
@@ -47,7 +49,7 @@ test("Türchen schalten genau ihre Stufe frei – auch rückwirkend", () => {
 
 test("Volles Haus: alle Schalter da, keine Stufe fehlt mehr", () => {
   const voll = A.ausbauSchalter(alle, 0);
-  for (const s of ["deko", "hunde", "weihnachtsdeko", "abend", "post", "nikolaus", "kerzen",
+  for (const s of ["deko", "weihnachtsdeko", "abend", "post", "nikolaus", "kerzen",
     "xmaskiste", "flauschi", "kaffee", "lavalampe", "froschblase", "wetter", "festlich", "baum"]) {
     assert.ok(voll.has(s), s);
   }
