@@ -95,7 +95,7 @@ export default function MonsStudio() {
           href="#studio"
           className="rounded bg-[#132a33] px-2 py-1 tracking-[0.2em] text-amber-glow ring-1 ring-white/10 transition hover:bg-ink-700"
         >
-          ← LUNI-STUDIO
+          ← STUDIO
         </a>
         <a
           href="#studio-odin"

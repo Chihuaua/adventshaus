@@ -34,7 +34,7 @@ function haus(welt, schalter = []) {
   return h;
 }
 
-const alle = ["deko", "hunde", "weihnachtsdeko", "abend", "post", "nikolaus", "kerzen", "adventskranz",
+const alle = ["deko", "weihnachtsdeko", "abend", "post", "nikolaus", "kerzen", "adventskranz",
   "xmaskiste", "flauschi", "kaffee", "lavalampe", "froschblase", "wetter", "sternennacht", "festlich", "baum"];
 
 /** Zeichenfläche, die nur mitzählt. */
@@ -69,8 +69,8 @@ test("Leeres Adventshaus: nur der Kalender und das Haus selbst sind Ziele", () =
   assert.equal(h.stationFrei("kerzen"), false);
   assert.equal(h.stationFrei("lavalampe"), false);
   assert.equal(h.stationFrei("xmaskiste"), false);
-  assert.equal(h.stationFrei("odin"), false);
-  assert.equal(h.stationFrei("apollo"), false);
+  assert.equal(h.stationFrei("odin"), true, "Odin ist vom Kalender entkoppelt");
+  assert.equal(h.stationFrei("apollo"), true, "Apollo ist vom Kalender entkoppelt");
   assert.equal(h.weihnachtsdeko, false, "Kaffeeküche kommt erst mit Türchen 3");
   assert.equal(h.festlich, false);
   assert.equal(h.abendHaus, false);
@@ -82,7 +82,6 @@ test("Stufe für Stufe: jede Türöffnung schaltet genau ihr Stück frei", () =>
     ["kerzen", "kerzen", "stationFrei"],
     ["lavalampe", "lavalampe", "stationFrei"],
     ["xmaskiste", "xmaskiste", "stationFrei"],
-    ["odin", "hunde", "stationFrei"],
   ];
   for (const [id, schalter] of stufen) {
     assert.equal(haus("adventshaus", []).stationFrei(id), false, id);

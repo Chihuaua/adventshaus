@@ -143,7 +143,7 @@ export default function NikolausStudio({ gast = "nikolaus" }: { gast?: Gast }) {
           <div className="flex flex-wrap items-center justify-between gap-3 font-display text-[10px] tracking-[.19em]">
             <span className="text-teal">LITTLE COMPUTER LUNI · FIGURENSTUDIO</span>
             <nav aria-label="Studio-Navigation" className="flex flex-wrap gap-2 text-[9px]">
-              <a className={link} href="#studio">&larr; LUNI-STUDIO</a>
+              <a className={link} href="#studio">&larr; STUDIO</a>
               <a className={link} href={ruprecht ? "#studio-nikolaus" : "#studio-ruprecht"}>{ruprecht ? "NIKOLAUS" : "KNECHT RUPRECHT"}</a>
               <a className={link} href="#">ZUM HAUS &rarr;</a>
             </nav>

@@ -96,16 +96,31 @@ export class Sfx {
   }
 
   /**
-   * Hörbarer Schritt auf dem Boden. `barfuss = true` erzeugt ein leiseres,
-   * weiches Haut-Tappen auf dem Boden (hörbar, nie lautlos); bekleidet klingt
-   * ein warmer, deutlicher Tritt auf den Dielen/Fliesen.
+   * Hörbarer Schritt auf dem Boden – drei deutlich verschiedene Beläge:
+   *   "barfuss"  weiches, kurzes Haut-Tappen, kaum Hall, tonlos tief
+   *   "socke"    dumpfer, weicher Auftritt mit leiserem Stoffrascheln,
+   *              kürzer als ein Schuhtritt, aber voller als Barfuß
+   *   "schuh"    warmer, heller Tritt auf Dielen/Fliesen mit kurzem Nachhall
+   *              (Schuhe kommen später ins Spiel, der Klang liegt bereit)
+   * Schuhe kommen später; der Wert bleibt kompatibel: `true` = barfuß.
    */
-  step(pitch = 1, barfuss = false) {
-    if (barfuss) {
-      this.noise(0.045, 0.24, 980 * pitch, 0.95);
-      this.tone({ f: 205 * pitch, f2: 110 * pitch, dur: 0.052, type: "triangle", gain: 0.13, attack: 0.005 });
+  step(pitch = 1, belag: boolean | "barfuss" | "socke" | "schuh" = "schuh") {
+    const art = belag === true ? "barfuss" : belag === false ? "schuh" : belag;
+    if (art === "barfuss") {
+      // Haut auf Holz: sehr kurz, tief, fast ohne Zischen.
+      this.noise(0.032, 0.20, 520 * pitch, 0.6);
+      this.tone({ f: 150 * pitch, f2: 92 * pitch, dur: 0.055, type: "sine", gain: 0.10, attack: 0.004 });
       return;
     }
+    if (art === "socke") {
+      // Stoffsohle: gedämpftes Aufsetzen (tief und weich) plus ein hauchfeines
+      // Rascheln, das nach dem Auftritt kurz nachschwingt.
+      this.noise(0.05, 0.30, 1100 * pitch, 0.5);
+      this.tone({ f: 118 * pitch, f2: 74 * pitch, dur: 0.085, type: "sine", gain: 0.17, attack: 0.006 });
+      this.noise(0.11, 0.10, 2400 * pitch, 0.35, 0.028);
+      return;
+    }
+    // Schuh / bekleidet: heller Aufprall mit kurzem Hall auf den Dielen.
     this.noise(0.055, 0.38, 760 * pitch, 0.85);
     this.tone({ f: 260 * pitch, f2: 125 * pitch, dur: 0.068, type: "triangle", gain: 0.24, attack: 0.004 });
   }

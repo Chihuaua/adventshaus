@@ -54,7 +54,7 @@ export interface AusbauStufe {
  */
 export const AUSBAU_STUFEN: readonly AusbauStufe[] = [
   { tuer: 1, schalter: "deko", titel: "Türkranz", art: "deko", ort: "Haustür", text: "Der Ausbau beginnt: Von jetzt an bleibt jedes neue Stück im Haus." },
-  { tuer: 2, schalter: "hunde", titel: "Odin und Apollo", art: "bewohner", ort: "Flur und Garten", text: "Die Hunde ziehen ein, laufen mit und lassen sich rufen." },
+  { tuer: 2, titel: "Fußmatte", art: "deko", ort: "Flur", text: "Eine Fußmatte liegt vor der Haustür. Odin und Apollo sind vom Kalender entkoppelt und immer da." },
   { tuer: 3, schalter: "weihnachtsdeko", titel: "Kaffeeküche", art: "gegenstand", ort: "Küche", text: "Senseo, Tassen und der Kranz auf dem Couchtisch sind da." },
   { tuer: 4, schalter: "abend", titel: "Abendroutine", art: "ablauf", ort: "Schlafzimmer und Bad", text: "Luni geht abends zu Bett und steht morgens wieder auf." },
   { tuer: 5, schalter: "post", titel: "Postfrosch", art: "ereignis", ort: "Haustür", text: "Der Lieferfrosch klingelt und bringt Pakete ins Haus." },

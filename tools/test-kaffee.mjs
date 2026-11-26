@@ -30,11 +30,11 @@ function laufen(h, max = 60000) {
   return folge;
 }
 
-test("Zeiten aus dem Senseo-Datenblatt: 60 s Aufheizen, 30 s Brühen, Tank 1,4 l in 14 s, 2 Stopfwiederholungen", () => {
+test("Zeiten aus dem Senseo-Datenblatt: 60 s Aufheizen, 30 s Brühen, Tank 1,4 l in 14 s, 2 Stopfwiederholungen × 1,8 s", () => {
   assert.equal(G.KAFFEE_ZEIT.aufheizen, 60);
   assert.equal(G.KAFFEE_ZEIT.bruehen, 30);
   assert.equal(G.KAFFEE_ZEIT.fuellen, 14);
-  assert.equal(G.KAFFEE_ZEIT.stopfen, 2.7);
+  assert.equal(G.KAFFEE_ZEIT.stopfen, 3.6);
   assert.equal(G.TASSE_VERGESSEN, 0.23);
   assert.equal(G.MAX_TASSEN_UNTEN, 3);
 });
@@ -47,13 +47,64 @@ test("Kaffee-Stein: ohne Zigaretten stopft sie zwei, während die Senseo beim er
   const folge = laufen(h);
   const iStopfen = folge.indexOf("stopfen");
   assert.equal(folge.filter((x) => x === "stopfen").length, 1, "einmal stopfen (zwei Zigaretten)");
-  // Reihenfolge nach Ansage: einschalten → stopfen → zur Maschine → Vibration → zurück → Schritt in Zeitlupe
+  // Senseo-Reihenfolge: einschalten → stopfen → zurück zur Maschine → Vibration (Schritte der Senseo bleiben unverändert)
   assert.ok(folge.indexOf("power") < iStopfen && iStopfen < folge.indexOf("knopfLinks"),
     "gestopft wird direkt nach dem Einschalten, bevor sie zur Maschine geht");
-  assert.ok(folge.includes("vibrierZurueck1") && folge.includes("vibrierVor"), "sie geht bei der Vibration zurück und kommt langsam wieder vor");
-  assert.ok(folge.indexOf("vibrierVor") < folge.indexOf("durchlaufen"), "der Zeilupten-Schritt liegt vor dem Durchlaufen");
   assert.equal(folge[iStopfen - 1], "zumTisch");
   assert.ok(folge.indexOf("power") < folge.indexOf("zumTisch"), "erst einschalten, dann an den Tisch");
+  // Alter Automat (nur Adventshaus): Reihenfolge und Blickrichtung am Automaten sowie Gartentür von Hand
+  {
+    speicher.clear();
+    const autoH = haus("adventshaus");
+    autoH.command("stein_ezkaffee");
+    assert.equal(autoH.lx, G.KSTAND.maschine, "Automat-Teststein: Luni beginnt direkt an der Maschine");
+    assert.equal(autoH.lf, 1, "Automat-Teststein: Luni beginnt im Erdgeschoss an der Maschine");
+    const autoFolge = [];
+    const mimik = {};
+    let automatischGeoeffnet = false;
+    let vonHandGeoeffnet = false;
+    let gardenOffenBeimRauchen = false;
+    let warGartentuerAuf = false;
+    for (let i = 0; i < 60000 && autoH.kAblauf; i++) {
+      const w = autoH.kAblauf?.schritte[autoH.kAblauf.i]?.was;
+      if (w && autoFolge.at(-1) !== w) autoFolge.push(w);
+      const geradeHandgriff = w === "gartentuerAuf" || autoH.doorHand;
+      const bereitsDurchHandOffen = warGartentuerAuf;
+      if (autoH.gardenDoor > 0.05 && !geradeHandgriff && !bereitsDurchHandOffen) automatischGeoeffnet = true;
+      if (w === "gartentuerAuf") { vonHandGeoeffnet = true; warGartentuerAuf = true; }
+      if (w === "tasseKeller" && autoH.gardenDoor > 0.95) gardenOffenBeimRauchen = true;
+      if (w && autoH.kPose && ["schrittZurueck1", "schrittZurueck2", "blickZurMaschine", "zuschauen", "angeekelt", "traurig", "durchatmen", "kameraSchulterzucken"].includes(w)) {
+        const bisher = mimik[w] ?? { exprs: new Set(), lidMin: 1, lidMax: 0, state: null, frontal: false };
+        if (autoH.kPose.expr) bisher.exprs.add(autoH.kPose.expr);
+        if (typeof autoH.kPose.lid === "number") {
+          bisher.lidMin = Math.min(bisher.lidMin, autoH.kPose.lid);
+          bisher.lidMax = Math.max(bisher.lidMax, autoH.kPose.lid);
+        }
+        bisher.state = autoH.kPose.state ?? bisher.state;
+        bisher.frontal = bisher.frontal || !!autoH.kPose.frontal;
+        mimik[w] = bisher;
+      }
+      autoH.update(.05);
+    }
+    const ik = autoFolge.indexOf("knopf");
+    assert.equal(autoFolge[ik + 1], "zumTisch", "Automat: nach Startknopf an den Tisch");
+    assert.equal(autoFolge[ik + 2], "stopfen", "Automat: am Tisch stopfen (3,6 s)");
+    assert.ok(autoFolge.includes("aufVibrationWarten") && autoFolge.includes("schrittZurueck1") && autoFolge.includes("schrittZurueck2"), "Automat: wartet links neben Maschine und macht zwei Schritte zurück");
+    assert.ok(!autoFolge.includes("zoegernderAnsatz") && !autoFolge.includes("vibrierZurueck"), "Automat: langsamer Schritt nach vorn wurde gestrichen");
+    assert.ok(mimik.schrittZurueck1?.exprs.has("surprised") && mimik.schrittZurueck2?.exprs.has("surprised"), "Automat: große Augen beim Vibrieren");
+    assert.equal(mimik.schrittZurueck1?.lidMin, 0, "Automat: Lider beim Start noch offen");
+    assert.ok(mimik.zuschauen?.lidMax > 0.08 && mimik.zuschauen?.lidMax <= 0.15, "Automat: Lider kneifen bei Milch nur leicht zu, viel Auge bleibt sichtbar");
+    const kostReihe = ["schluck", "angeekelt", "durchatmen", "schluck2", "traurig", "kameraSchulterzucken", "zumGartentuer"];
+    let abKost = 0;
+    for (const s of kostReihe) { const i = autoFolge.indexOf(s, abKost); assert.ok(i >= 0, `Automat-Verkostung fehlt oder falsch: ${s}`); abKost = i + 1; }
+    assert.ok(mimik.angeekelt?.exprs.has("ekel") && mimik.traurig?.exprs.has("sad"), "Automat: angeekelt mit normalen Brauen, traurig erst nach dem zweiten Schluck");
+    assert.equal(mimik.kameraSchulterzucken?.state, "shrug", "Automat: Schulterzucken nach dem zweiten Schluck");
+    assert.ok(mimik.kameraSchulterzucken?.frontal, "Automat: Blick zur Kamera beim Schulterzucken");
+    assert.ok(autoFolge.includes("gartentuerAuf"), "Automat: Gartentür wird von Hand geöffnet");
+    assert.ok(!automatischGeoeffnet, "Automat: Gartentür öffnet sich nie von allein");
+    assert.ok(vonHandGeoeffnet, "Automat: Handgriff gartentuerAuf wurde ausgeführt");
+    assert.ok(gardenOffenBeimRauchen, "Automat: Gartentür ist für das Rauchen offen");
+  }
   // Zwischen den Kaffees: am Küchenstuhl sitzen und hinausschauen, dann wieder aufstehen.
   const iPause = folge.indexOf("pauseFenster");
   assert.ok(iPause > folge.indexOf("rauchen") && iPause < folge.lastIndexOf("power"), "Pause liegt zwischen den beiden Kaffees");
@@ -193,7 +244,7 @@ test("Körperhaltung, Armrichtungen und fließende Schranktüren beim Stopfen un
 test("Morgenroutine: offene Schleusentür wird nicht noch einmal geöffnet; nach der zweiten Tasse Hunde rein, alle Türen zu", () => {
   const alt = Math.random;
   const draussen = (h) => ["odin", "apollo"].filter((id) => h.hunde.istImGarten(id));
-  const hundeRaus = (h) => { for (const [id, x] of [["odin", 880], ["apollo", 905]]) { const d = h.hunde.get(id); d.floor = 0; d.x = x; d.schritte = []; d.gartenPause = 0; d.gerufen = false; } };
+  const hundeRaus = (h) => { for (const [id, x] of [["odin", 880], ["apollo", 905]]) { const d = h.hunde.get(id); d.floor = 0; d.x = x; d.schritte = []; d.gartenPause = 0; d.gerufen = false; d.gartenZeit = 0; } };
   const faelle = [
     // [Name, Schleuse zu Beginn offen, Gartentür vor der letzten Rauchpause offen, Hunde dann draußen]
     ["Schleuse offen, Garten offen, beide Hunde draußen", true, true, true],
@@ -202,6 +253,9 @@ test("Morgenroutine: offene Schleusentür wird nicht noch einmal geöffnet; nach
   ];
   for (const [name, schleuse, garten, hunde] of faelle) {
     speicher.clear();
+    // Hunde-Welt mit festem Zufall bauen, damit der 20-%-Ausreißer diesen
+    // Tür-/Hunde-Test nicht zufällig stört (er hat einen eigenen Test).
+    Math.random = () => 0.5;
     const h = haus("normal"); h.pack = 4; h.gardenDoor = 0; h.gardenWant = 0;
     h.cellarDoorV = schleuse ? 1 : 0; h.cellarDoorWant = schleuse ? 1 : 0;
     h.command("stein_kaffee");

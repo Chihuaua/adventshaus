@@ -134,7 +134,7 @@ export default function LuniFeinStudio() {
           <div className="flex flex-wrap items-center justify-between gap-3 font-display text-[10px] tracking-[.19em]">
             <span className="text-teal">LITTLE COMPUTER LUNI · FIGURENSTUDIO</span>
             <nav aria-label="Studio-Navigation" className="flex gap-2 text-[9px]">
-              <a className={link} href="#studio">&larr; LUNI-STUDIO</a><a className={link} href="#">ZUM HAUS &rarr;</a>
+              <a className={link} href="#studio">&larr; STUDIO</a><a className={link} href="#">ZUM HAUS &rarr;</a>
             </nav>
           </div>
           <h1 className="mt-5 font-display text-[28px] leading-tight tracking-tight text-mint-50 sm:text-[40px]">LUNI <span className="text-amber-glow">FEINZEICHNUNG</span></h1>

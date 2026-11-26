@@ -179,7 +179,7 @@ export default function StudioApp() {
               </a>
             </div>
             <h1 className="mt-1 font-display text-[22px] leading-none text-mint-50 text-shadow-hard sm:text-[34px]">
-              LUNI <span className="text-amber-glow">CHARAKTER-STUDIO</span>
+              LCL-<span className="text-amber-glow">STUDIO</span>
             </h1>
             <p className="mt-1.5 max-w-[66ch] text-[12px] leading-relaxed text-mint-200/80 sm:text-[13px]">
               Im Stil der ursprünglichen LCP-1-Figur: schlanke Gliedmaßen, kleiner runder Kopf, weiche
@@ -187,8 +187,9 @@ export default function StudioApp() {
               mit Knopfleiste, weißes T-Shirt, schwarze Leggings, bunte Socken, schwarze Nerd-Brille.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <div className="flex max-w-full flex-wrap gap-1 rounded-lg bg-[#08151a]/70 p-1 ring-1 ring-white/10">
+          <div className="flex max-w-full flex-col gap-1.5">
+            <div className="flex max-w-full flex-wrap items-center gap-1 rounded-lg bg-[#08151a]/70 p-1 ring-1 ring-white/10">
+              <span className="px-1 font-display text-[9px] tracking-[0.2em] text-mint-400/70">LUNI & ANSICHT</span>
               <Chip active={view === "original"} onClick={() => setView("original")}>
                 Ursprungsfigur
               </Chip>
@@ -205,49 +206,25 @@ export default function StudioApp() {
                 Luni-Feinzeichnung
               </a>
               <a
-                href="#studio-figurenatelier"
-                className="btn-press rounded-md bg-[#132a33] px-2.5 py-1.5 text-[11px] font-medium tracking-wide text-amber-glow ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
+                href="#studio-routinen"
+                className="btn-press rounded-md bg-teal px-2.5 py-1.5 text-[11px] font-medium tracking-wide text-[#04211d] ring-1 ring-white/10 transition hover:brightness-110"
               >
-                Figurenatelier
+                Routinen
               </a>
             </div>
-            <Chip active={grid} onClick={() => setGrid((v) => !v)}>
-              Raster {grid ? "an" : "aus"}
-            </Chip>
-            <Chip active={paused} onClick={() => setPaused((v) => !v)}>
-              {paused ? "Weiter" : "Standbild"}
-            </Chip>
-            <div className="flex max-w-full flex-wrap gap-1 rounded-lg bg-[#08151a]/70 p-1 ring-1 ring-white/10">
+            <div className="flex max-w-full flex-wrap items-center gap-1 rounded-lg bg-[#08151a]/70 p-1 ring-1 ring-white/10">
+              <span className="px-1 font-display text-[9px] tracking-[0.2em] text-mint-400/70">BEWOHNER & GÄSTE</span>
               <a
                 href="#studio-odin"
                 className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-mint-200 ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
               >
-                Odin-Studio
+                Odin
               </a>
               <a
                 href="#studio-apollo"
                 className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-mint-200 ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
               >
-                Apollo-Studio
-              </a>
-              <a
-                href="#studio-mons"
-                translate="no"
-                className="notranslate btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-amber-glow ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
-              >
-                Luni-Mon Studio
-              </a>
-              <a
-                href="#studio-tanz"
-                className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-teal ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
-              >
-                Tanz-Studio
-              </a>
-              <a
-                href="#studio-frosch"
-                className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-mint-200 ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
-              >
-                Methan Frog
+                Apollo
               </a>
               <a
                 href="#studio-nikolaus"
@@ -262,6 +239,43 @@ export default function StudioApp() {
                 Knecht Ruprecht
               </a>
               <a
+                href="#studio-frosch"
+                className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-mint-200 ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
+              >
+                Methan Frog
+              </a>
+              <a
+                href="#studio-figurenatelier"
+                className="btn-press rounded-md bg-[#132a33] px-2.5 py-1.5 text-[11px] font-medium tracking-wide text-amber-glow ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
+              >
+                Figurenatelier
+              </a>
+              <a
+                href="#studio-mons"
+                translate="no"
+                className="notranslate btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-amber-glow ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
+              >
+                Luni-Mon
+              </a>
+            </div>
+            <div className="flex max-w-full flex-wrap items-center gap-1 rounded-lg bg-[#08151a]/70 p-1 ring-1 ring-white/10">
+              <span className="px-1 font-display text-[9px] tracking-[0.2em] text-mint-400/70">RÄUME & BEWEGUNG</span>
+              <a
+                href="#studio-tanz"
+                className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-teal ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
+              >
+                Tanz-Studio
+              </a>
+              <a
+                href="#studio-renovierung"
+                className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-teal ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
+              >
+                Tapetenwechsel
+              </a>
+            </div>
+            <div className="flex max-w-full flex-wrap items-center gap-1 rounded-lg bg-[#08151a]/70 p-1 ring-1 ring-white/10">
+              <span className="px-1 font-display text-[9px] tracking-[0.2em] text-mint-400/70">WERKZEUGE</span>
+              <a
                 href="#editor"
                 className="btn-press rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-wide bg-[#132a33] text-amber-glow ring-1 ring-white/10 transition hover:bg-ink-700 hover:text-mint-50"
               >
@@ -273,6 +287,12 @@ export default function StudioApp() {
               >
                 Patch / ZIP
               </a>
+              <Chip active={grid} onClick={() => setGrid((v) => !v)}>
+                Raster {grid ? "an" : "aus"}
+              </Chip>
+              <Chip active={paused} onClick={() => setPaused((v) => !v)}>
+                {paused ? "Weiter" : "Standbild"}
+              </Chip>
             </div>
           </div>
         </header>
@@ -302,6 +322,8 @@ export default function StudioApp() {
                   ? "GEGENÜBERSTELLUNG · beide gehen"
                   : view === "original"
                     ? `URSPRUNG · ${ORIG_POSES.find((s) => s.k === origState)?.label}`
+                    : duschTat
+                      ? `DUSCHE · ${DUSCH_TATEN.find((d) => d.tat === duschTat)?.label.toUpperCase()}`
                     : `${ALL_POSES.find((s) => s.k === state)?.label} · ${EXPRS.find((e) => e.k === expr)?.label}`}
               </div>
             </div>
@@ -349,7 +371,7 @@ export default function StudioApp() {
                 <Panel title="HALTUNGEN" hint="alles, was die Ursprungsfigur konnte">
                   <div className="flex flex-wrap gap-1.5">
                     {ORIG_POSES.map((s) => (
-                      <Chip key={s.k} active={origState === s.k} onClick={() => setOrigState(s.k)}>
+                      <Chip key={s.k} active={origState === s.k} onClick={() => { setView("original"); setOrigState(s.k); }}>
                         {s.label}
                       </Chip>
                     ))}
@@ -396,7 +418,7 @@ export default function StudioApp() {
                   <Panel key={g.title} title={g.title}>
                     <div className="flex flex-wrap gap-1.5">
                       {g.items.map((s) => (
-                        <Chip key={s.k} active={state === s.k && !duschTat} onClick={() => { setState(s.k); setDuschTat(null); }}>
+                        <Chip key={s.k} active={state === s.k && !duschTat} onClick={() => { setView("luni"); setState(s.k); setDuschTat(null); }}>
                           {s.label}
                         </Chip>
                       ))}
@@ -407,7 +429,7 @@ export default function StudioApp() {
                 <Panel title="DUSCHE · BEWEGUNGEN EINZELN" hint="je drei Striche, dann von vorn">
                   <div className="flex flex-wrap gap-1.5">
                     {DUSCH_TATEN.map((d) => (
-                      <Chip key={d.tat} active={duschTat === d.tat} onClick={() => setDuschTat(d.tat)}>
+                      <Chip key={d.tat} active={duschTat === d.tat} onClick={() => { setView("luni"); setDuschTat(d.tat); }}>
                         {d.label}
                       </Chip>
                     ))}
@@ -417,7 +439,7 @@ export default function StudioApp() {
                 <Panel title="MIMIK" hint="nonverbale Kommunikation">
                   <div className="flex flex-wrap gap-1.5">
                     {EXPRS.map((e) => (
-                      <Chip key={e.k} active={expr === e.k} onClick={() => setExpr(e.k)}>
+                      <Chip key={e.k} active={expr === e.k} onClick={() => { setView("luni"); setExpr(e.k); }}>
                         {e.label}
                       </Chip>
                     ))}
