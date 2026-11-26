@@ -108,6 +108,10 @@ export interface HausSnapshot {
   flauschiOnShelf?: boolean;
   /** Tagesablauf: Weste über dem Schlafanzug, Näpfe, erledigte Termine. */
   westeAn?: boolean;
+  /** Socken an (fehlt in älteren Ständen = an). */
+  sockenAn?: boolean;
+  /** Liegt die morgens geworfene Brille im offenen Spiegelschrank? */
+  glassesInCab?: boolean;
   /** Senseo: vergessene Tassen im Keller, Tassen neben der Spüle, Wasser im Tank. */
   kaffee?: { unten?: number; spuele?: number; tank?: number };
   napfFutter?: { odin?: number; apollo?: number };

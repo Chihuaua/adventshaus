@@ -297,8 +297,9 @@ let haus2, tick2;
   const folge = [];
   let handyBei = [];
   let letzteOrt = null;
-  for (let i = 0; i < 9000 && !(h.westeAn && !h.tagAktiv && !h.kAblauf); i++) {
+  for (let i = 0; i < 9000 && !h.sockenLauf; i++) {
     tick2(h, .05);
+    if (h.sockenLauf) break; // ab hier beginnen die Socken
     if (h.handyOrt !== letzteOrt) { letzteOrt = h.handyOrt; handyBei.push(`${letzteOrt}@${h.bedWach ?? (h.kAblauf?.schritte[h.kAblauf.i]?.was ?? h.tagWas ?? "frei")}`); }
     const w = h.kAblauf?.schritte[h.kAblauf.i]?.was;
     if (w && folge.at(-1) !== w) folge.push(w);
@@ -315,6 +316,10 @@ let haus2, tick2;
   // Das Handy liegt nie gleichzeitig an zwei Orten
   const orte = new Set([h.handyOrt]);
   assert.equal(orte.size, 1);
+  // Danach kommen die Socken (test-socken.mjs); anschließend holt sie das Handy vom Nachttisch und steckt es ein.
+  for (let i = 0; i < 3000 && h.handyOrt !== "tasche"; i++) tick2(h, .05);
+  assert.equal(h.handyOrt, "tasche", "nach den Socken steckt sie das Handy in die Tasche");
+  assert.ok(h.sockenAn, "die Socken sitzen vorher");
 }
 
 // 17) Sitzende Handynutzung: das Handy kommt aus der Tasche, nicht vom Nachttisch
@@ -323,8 +328,10 @@ let haus2, tick2;
   const h = haus2("normal", 6, 30);
   h.command("stein_aufsteh");
   for (let i = 0; i < 6000 && (h.tagAktiv || h.kAblauf); i++) tick2(h, .05);
-  assert.ok(h.westeAn && !h.tagAktiv && !h.kAblauf, "Morgenroutine ist abgeschlossen");
-  assert.equal(h.handyOrt, "nachttisch");
+  assert.ok(h.westeAn && !h.tagAktiv && !h.kAblauf, "Morgenroutine ist abgeschlossen (bis zu den zwei Kaffees)");
+  assert.equal(h.handyOrt, "tasche", "das Handy hat sie morgens vom Nachttisch geholt");
+  // Wie nach dem Abend: das Handy liegt auf dem Nachttisch.
+  h.handyOrt = "nachttisch";
   // Der automatische Morgenkaffee würde dazwischenfunken: als erledigt markieren.
   h.tagErledigt.kaffee = 20261122;
   h.lf = 0; h.lx = 690; h.pack = 3;
