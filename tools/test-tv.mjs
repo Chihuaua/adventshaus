@@ -5,7 +5,7 @@ import { build } from "esbuild";
 
 const source = readFileSync("src/game/house.ts", "utf8");
 const b = await build({
-  stdin: { contents: source + '\nexport { drawHouse, micStand };\nexport * from "./tv";\nexport { drawSternennacht, STERNENNACHT_FARBEN, STERNENNACHT_STERNE, sternenLicht, staubImRaum } from "./sternennacht";\nexport { TVKlang } from "./audio/tvVoice";\nexport * from "./audio/riroNoten";\nexport { createState as neuesGOL } from "./gol";',
+  stdin: { contents: source + '\nexport { drawHouse, micStand };\nexport * from "./tv";\nexport * from "./tv-sendungen";\nexport { drawSternennacht, STERNENNACHT_FARBEN, STERNENNACHT_STERNE, sternenLicht, staubImRaum } from "./sternennacht";\nexport { TVKlang } from "./audio/tvVoice";\nexport { sfx } from "./audio";\nexport * from "./audio/riroNoten";\nexport { createState as neuesGOL } from "./gol";',
     resolveDir: path.resolve("src/game"), loader: "ts" },
   bundle: true, write: false, platform: "node", format: "esm",
 });
@@ -76,21 +76,26 @@ test("Beide TV-Vergroesserungen zeigen die Fernbedienung auch im Standby", () =>
     h.tvZoom = id; h.tvManual[id] = an;
     const c = canvas(); h.drawTvFullscreen(c.ctx);
     assert.ok(c.ops.some(o => o.text === "FERNBEDIENUNG"));
-    for (const key of ["P -", "P +", "VOL -", "VOL +", "I/O"]) assert.ok(c.ops.some(o => o.text === key), key);
+    for (const key of ["P -", "P +", "VOL -", "VOL +", "MUTE", "I/O"]) assert.ok(c.ops.some(o => o.text === key), key);
   }
 });
 
 test("TV: Kanaltasten schalten wirklich um, unabhaengig je Geraet", () => {
   const h = haus();
-  h.tvBefehl("kanal_hoch"); assert.equal(h.tvContent("tv_e"), "musik");
-  assert.equal(h.tvContent("tv_d"), "cozy");
+  const wzListe = G.tvKanaele("tv_e", false);
+  assert.equal(wzListe[0], "musik", "das TV-Programm beginnt ohne Spiel beim Musikvideo");
+  assert.ok(!wzListe.includes("garten") && !G.TV_SENDUNGEN.includes("werkstatt"), "Garten-Spiel und Werkstatt-Zeitraffer sind entfernt");
   h.tvBefehl("kanal_hoch"); assert.equal(h.tvContent("tv_e"), "sterne");
-  h.tvBefehl("kanal_hoch"); assert.equal(h.tvContent("tv_e"), "garten");
-  h.tvBefehl("kanal_runter"); assert.equal(h.tvContent("tv_e"), "sterne");
+  assert.equal(h.tvContent("tv_d"), "musik", "der zweite Fernseher bleibt unabhängig beim Musikvideo");
+  h.tvBefehl("kanal_hoch"); assert.equal(h.tvContent("tv_e"), "malfreude");
+  for (let i = 0; i < wzListe.length - 2; i++) h.tvBefehl("kanal_hoch");
+  assert.equal(h.tvContent("tv_e"), "musik", "ein voller Umlauf über alle 12 Sendungen kehrt zum Musikvideo zurück");
+  h.tvBefehl("kanal_runter"); assert.equal(h.tvContent("tv_e"), "quizshow");
   h.tvZoom = "tv_d";
-  h.tvBefehl("kanal_hoch"); h.tvBefehl("kanal_hoch"); h.tvBefehl("kanal_hoch");
+  const dgListe = G.tvKanaele("tv_d", false);
+  for (let i = 0; i < dgListe.length - 1; i++) h.tvBefehl("kanal_hoch");
   assert.equal(h.tvContent("tv_d"), "konsole");
-  h.tvBefehl("kanal_hoch"); assert.equal(h.tvContent("tv_d"), "garten", "ohne Modul kein GOL");
+  h.tvBefehl("kanal_hoch"); assert.equal(h.tvContent("tv_d"), "musik", "ohne Modul kein GOL");
   h.golInserted = true; h.golState = G.neuesGOL(0);
   const cells = h.golState.cells;
   h.tvBefehl("kanal_runter"); assert.equal(h.tvContent("tv_d"), "gol");
@@ -106,8 +111,8 @@ test("TV: Kanaltasten schalten wirklich um, unabhaengig je Geraet", () => {
 
 test("NMS: helles Bild mit genau einer Person, ruhige Szene und sehr langsames Sternenlicht", () => {
   assert.equal(G.TV_KANAL_NAMEN.sterne, "NMS", "das helle Bild heisst NMS");
-  assert.deepEqual(G.tvKanaele("tv_e", false), ["garten", "musik", "sterne"]);
-  assert.deepEqual(G.tvKanaele("tv_d", false), ["garten", "musik", "sterne", "konsole"]);
+  assert.deepEqual(G.tvKanaele("tv_e", false), ["musik", "sterne", ...G.TV_SENDUNGEN]);
+  assert.deepEqual(G.tvKanaele("tv_d", false), ["musik", "sterne", ...G.TV_SENDUNGEN, "konsole"]);
   assert.ok(!("sterne_hell" in G.TV_KANAL_NAMEN), "der Zweitkanal NMS 2 ist entfernt");
   assert.equal(G.leseTVStand({ tv_e: { kanal: "sterne", lautstaerke: 40 } }).tv_e.kanal, "sterne");
   assert.equal(G.leseTVStand({ tv_d: { kanal: "sterne_hell", lautstaerke: 30 } }).tv_d.kanal, "sterne",
@@ -172,7 +177,7 @@ test("NMS: Senderkennung steht an der Stelle von CH1 in dessen Schrift", () => {
       if (modus === "sterne") assert.deepEqual(texte.map(o => o.text), ["NMS"]);
       return texte.find(o => o.text === name);
     };
-    const alt = kennung("garten", "CH1"), nms = kennung("sterne", "NMS");
+    const alt = kennung("musik", "CH1"), nms = kennung("sterne", "NMS");
     assert.ok(alt && nms);
     assert.deepEqual(nms, { ...alt, text: "NMS" });
     assert.equal(nms.x, x + 2); assert.equal(nms.y, y + 5);
@@ -236,15 +241,21 @@ test("TV: Lautstaerke bleibt zwischen 0 und 100, Power und Maus funktionieren", 
   h.tvBefehl("power"); assert.equal(h.tvContent("tv_e"), "off");
   const next = G.TV_FERN_STATIONS.find(s => s.id === "kanal_hoch");
   h.onTvFullscreenClick(next.x + 10, next.y + 10);
-  assert.equal(h.tvContent("tv_e"), "musik", "Kanaltaste schaltet TV wieder ein");
+  assert.equal(h.tvContent("tv_e"), "sterne", "Kanaltaste schaltet TV wieder ein");
   h.openTvZoom("tv_d"); h.openTvZoom("tv_e");
   assert.equal(h.tvDaten.tv_e.lautstaerke, 100, "beim Schliessen/Oeffnen bleibt der Pegel");
 });
 
 test("TV-Speicher: getrennte Werte, alte Staende und ungueltige Daten", () => {
   const leer = G.neuerTVStand(); assert.notEqual(leer.tv_e, leer.tv_d);
+  assert.equal(leer.tv_e.stumm, null, "Standard je Kanal: NMS & CH1 mit Ton, Sendungen stumm");
+  assert.equal(G.tvStandardStumm("sterne"), false);
+  assert.equal(G.tvStandardStumm("musik"), false);
+  assert.equal(G.tvStandardStumm("malfreude"), true);
   const geladen = G.leseTVStand({ tv_e: { kanal: "musik", lautstaerke: 170 }, tv_d: { kanal: "falsch", lautstaerke: -20 } });
-  assert.deepEqual(geladen, { tv_e: { kanal: "musik", lautstaerke: 100 }, tv_d: { kanal: null, lautstaerke: 0 } });
+  assert.deepEqual(geladen, { tv_e: { kanal: "musik", lautstaerke: 100, stumm: null }, tv_d: { kanal: null, lautstaerke: 0, stumm: null } });
+  assert.equal(G.leseTVStand({ tv_e: { kanal: "garten" } }).tv_e.kanal, "musik", "alter Garten-Kanal wird zum Musikvideo");
+  assert.equal(G.leseTVStand({ tv_e: { stumm: false } }).tv_e.stumm, false, "freigegebener Ton bleibt gespeichert");
   assert.deepEqual(G.leseTVStand(null), leer);
   assert.deepEqual(G.leseTVStand({ tv_e: { lautstaerke: NaN } }), leer);
   assert.deepEqual(G.leseTVStand(JSON.parse(JSON.stringify(geladen))), geladen);
@@ -332,6 +343,142 @@ test("Musikvideo: riro.mid mit allen 297 MIDI-Noten, Akkorden und Wiederholung v
     wz.dispose(); dg.dispose();
     globalThis.setInterval = setzeTimer; globalThis.clearInterval = loescheTimer;
   }
+});
+
+test("12 TV-Sendungen: jede Sendung entwickelt sich über 5 Minuten und lässt sich schalten", () => {
+  assert.equal(G.TV_SENDUNGEN.length, 12);
+  assert.equal(G.SENDUNG_DAUER, 300);
+  for (const id of G.TV_SENDUNGEN) {
+    assert.ok(G.TV_KANAL_NAMEN[id], `Name für ${id}`);
+    assert.equal(G.leseTVStand({ tv_e: { kanal: id, lautstaerke: 45 } }).tv_e.kanal, id, `${id} speicherbar`);
+    const a = canvas(), b = canvas(), e = canvas(), klein = canvas();
+    G.drawTvSendung(a.ctx, 0, 0, 560, 364, id, 8, 20000);
+    G.drawTvSendung(b.ctx, 0, 0, 560, 364, id, 150, 20000);
+    G.drawTvSendung(e.ctx, 0, 0, 560, 364, id, 285, 20000);
+    G.drawTvSendung(klein.ctx, 0, 0, 40, 26, id, 90, 20000);
+    assert.ok(a.ops.length > 10 && b.ops.length > 10 && e.ops.length > 10, `${id}: zeichnet in allen Akten`);
+    assert.ok(klein.ops.length > 8, `${id}: zeichnet auch im kleinen Wohnzimmer-TV`);
+    assert.notDeepEqual(a.ops, b.ops, `${id}: verändert sich bis zur Mitte`);
+    assert.notDeepEqual(b.ops, e.ops, `${id}: verändert sich bis zum Finale`);
+    assert.ok(a.ops.every(o => typeof o.farbe !== "string" || !o.farbe.includes("NaN")), `${id}: keine fehlerhaften Farben`);
+    assert.ok(b.ops.every(o => typeof o.farbe !== "string" || !o.farbe.includes("NaN")), `${id}: keine fehlerhaften Farben (Mitte)`);
+    assert.ok(e.ops.every(o => typeof o.farbe !== "string" || !o.farbe.includes("NaN")), `${id}: keine fehlerhaften Farben (Finale)`);
+  }
+});
+
+test("TV-Ton: Sendungen starten stumm, MUTE gibt den Ton frei und stummt wieder", () => {
+  const h = haus();
+  // Der echte TVKlang misst den Pegel an seinem Ausgangs-Gain (kein AudioContext in Node nötig).
+  const gains = [];
+  const ctx = {
+    currentTime: 0,
+    createGain() {
+      const g = { gain: { value: 0, setTargetAtTime(v) { this.value = v; }, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {}, disconnect() {} };
+      gains.push(g); return g;
+    },
+    createOscillator() { return { frequency: { value: 0 }, connect() {}, disconnect() {}, start() {}, stop() {} }; },
+  };
+  const pegelJetzt = () => { h.updateTVAudio(); return Math.round(gains[0].gain.value * 1000) / 1000; };
+  h.tvKlang = { tv_e: new G.TVKlang(ctx, {}), tv_d: new G.TVKlang(ctx, {}) };
+  const vorher = G.sfx.peekSharedAudio;
+  G.sfx.peekSharedAudio = () => ({ ctx, master: {} });
+  const vorherDoc = globalThis.document;
+  globalThis.document = { visibilityState: "visible" };
+  try {
+    h.tvDaten.tv_e.kanal = "malfreude";
+    assert.equal(pegelJetzt(), 0, "Sendung ist standardmäßig stumm");
+    h.tvBefehl("stumm");
+    assert.equal(h.tvDaten.tv_e.stumm, false);
+    assert.ok(pegelJetzt() > 0, "MUTE gibt auch der Sendung den Ton frei");
+    h.tvBefehl("stumm");
+    assert.equal(pegelJetzt(), 0, "MUTE stummt die Sendung wieder");
+    // NMS und CH1 sind von Haus aus hörbar (kein Standard-Mute).
+    assert.equal(G.tvStandardStumm("sterne"), false, "NMS hat standardmäßig Ton");
+    assert.equal(G.tvStandardStumm("musik"), false, "CH1 hat standardmäßig Ton");
+    assert.equal(G.tvStandardStumm("malfreude"), true, "Sendungen sind standardmäßig stumm");
+    h.tvDaten.tv_e.stumm = null;
+    h.tvDaten.tv_e.kanal = "quizshow";
+    assert.equal(pegelJetzt(), 0, "andere Sendungen bleiben standardmäßig stumm");
+    assert.ok(gains.every(g => Number.isFinite(g.gain.value)), "nur endliche Pegel");
+  } finally {
+    h.tvKlang.tv_e.dispose(); h.tvKlang.tv_d.dispose();
+    G.sfx.peekSharedAudio = vorher;
+    globalThis.document = vorherDoc;
+  }
+  const c = canvas();
+  G.drawFernbedienung(c.ctx, "musik", 50, true, null, null, true);
+  assert.ok(c.ops.some(o => o.text === "STUMM"), "Fernbedienung zeigt STUMM");
+  const c2 = canvas();
+  G.drawFernbedienung(c2.ctx, "musik", 50, true, null, null, false);
+  assert.ok(c2.ops.some(o => o.text === "50%"), "Fernbedienung zeigt Pegel, wenn Ton an");
+});
+
+test("Frog News: der Moderator bewegt den Mund (Silben, Pausen, Blinzeln)", () => {
+  const mund = t => {
+    const c = canvas(); G.drawTvSendung(c.ctx, 0, 0, 560, 364, "froschnews", t, 20000);
+    // Rachenfarbe des geöffneten Mundes
+    return c.ops.filter(o => o.farbe === "#3a1418").length;
+  };
+  const werte = [], formen = new Set();
+  for (let t = 1; t < 12; t += 0.1) {
+    const c = canvas(); G.drawTvSendung(c.ctx, 0, 0, 560, 364, "froschnews", t, 20000);
+    const rachen = c.ops.find(o => o.farbe === "#3a1418");
+    werte.push(rachen ? 1 : 0);
+    if (rachen) {
+      const ys = rachen.pfad.filter(p => Array.isArray(p) && p.length === 7).map(p => p[3]);
+      formen.add(ys.map(v => Math.round(v * 10)).join("/"));
+    }
+  }
+  assert.ok(werte.some(v => v > 0), "Mund öffnet sich beim Sprechen");
+  assert.ok(formen.size >= 8, "der Mund nimmt viele verschiedene Öffnungen an (Silben statt Standbild)");
+  const laecheln = canvas(); G.drawTvSendung(laecheln.ctx, 0, 0, 560, 364, "froschnews", 4.7, 20000);
+  assert.ok(!laecheln.ops.some(o => o.farbe === "#3a1418"), "in der Sprechpause liegt wieder das Lächeln an");
+  void mund;
+});
+
+test("Täglicher TV-Plan: NMS überproportional, CH1 höchstens drei Schleifen, jeden Tag anders", () => {
+  assert.ok(G.TV_CH1_SCHLEIFE > 10);
+  const pläne = [];
+  for (const tag of [20000, 20001, 20002, 20003, 20004, 20005, 20006]) {
+    const plan = G.tvTagesplan(tag, 13);
+    assert.ok(plan.length >= 10, "genug Blöcke für einen Fernsehabend");
+    assert.equal(plan[0].kanal, "musik", "sie schaltet mit CH1 ein");
+    assert.ok(plan[0].dauer <= 3 * G.TV_CH1_SCHLEIFE + 0.01, "CH1 höchstens drei Schleifen");
+    for (const b of plan) {
+      assert.ok(G.tvKanaele("tv_e", false).includes(b.kanal), `${b.kanal} ist ein gültiger Sender`);
+      assert.ok(b.dauer > 0);
+    }
+    const nms = plan.filter(b => b.kanal === "sterne").length / plan.length;
+    assert.ok(nms >= 0.15, `NMS kommt oft genug (${(nms * 100).toFixed(0)} %)`);
+    pläne.push(plan.map(b => `${b.kanal}:${Math.round(b.dauer)}`).join("|"));
+  }
+  assert.equal(new Set(pläne).size, pläne.length, "jeder Tag ergibt eine andere Routine");
+  assert.deepEqual(G.tvTagesplan(20000, 13), G.tvTagesplan(20000, 13), "am selben Tag reproduzierbar");
+  const viele = Array.from({ length: 60 }, (_, i) => G.tvTagesplan(21000 + i, 13));
+  assert.ok(viele.some(p => p.slice(1).some(b => b.dauer < 70)), "manche Tage zappt sie viel");
+  assert.ok(viele.some(p => p.slice(1).some(b => b.dauer > 150)), "an anderen Tagen schaut sie Sendungen fast ganz");
+});
+
+test("Lunis TV-Routine: sie zappt selbst, CH1 endet nach drei Schleifen, NMS zum Essen", () => {
+  const h = haus();
+  h.clock = { year: 2026, month: 12, day: 12, hour: 12, min: 20 };
+  h.welt = "adventshaus";
+  h.activity = { id: "sofa", label: "Sofa", floor: 1, x: 372, face: 1, state: "sit", expr: "happy", hits: [], screen: "tv_e" };
+  h.cur = null; h.tvManual.tv_e = null; h.tvDaten.tv_e.kanal = "musik";
+  // CH1 läuft höchstens drei Schleifen, dann schaltet die Routine weiter.
+  const start = h.tvDaten.tv_e.kanal;
+  for (let i = 0; i < 1200 && h.tvDaten.tv_e.kanal === start; i++) h.updateTvRoutine(0.1);
+  assert.notEqual(h.tvDaten.tv_e.kanal, "musik", "nach drei CH1-Schleifen wird umgeschaltet");
+  assert.ok(!h.tvManual.tv_e, "die Routine bleibt automatisch (kein Spieler-Eingriff)");
+  // Zum Essen schaltet sie bevorzugt NMS ein.
+  h.tagEssen = true;
+  let aufNms = false;
+  for (let i = 0; i < 3000; i++) { h.updateTvRoutine(0.1); if (h.tvDaten.tv_e.kanal === "sterne") { aufNms = true; break; } }
+  assert.ok(aufNms, "beim Essen ist NMS dran");
+  // Ein Spieler-Klick beendet die Automatik, der Kanal bleibt, wie der Spieler ihn will.
+  h.tvManual.tv_e = true; h.tvDaten.tv_e.kanal = "quizshow";
+  h.updateTvRoutine(1);
+  assert.equal(h.tvDaten.tv_e.kanal, "quizshow", "Spielerwahl wird nicht überschrieben");
 });
 
 console.log(`\n${n} TV- und Hauswelt-Tests bestanden.`);

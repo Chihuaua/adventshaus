@@ -214,6 +214,16 @@ export interface LuniOpts {
   schrankRuecken?: boolean;
   /** Beide Augen und Schulterseiten zeigen beim Putzen zur Betrachterin. */
   zahnfrontal?: boolean;
+  /** Dünnes weißes Unterhemd statt Pyjamaoberteil (Umziehen am Morgen). */
+  unterhemd?: boolean;
+  /** Schwarzes Höschen mit zwei Schleifen an den Hüften statt Hose. */
+  hoeschen?: boolean;
+  /** Weißer Pullover statt Pyjamaoberteil (ohne Pyjama-Knopfleiste). */
+  pullover?: boolean;
+  /** Auf die Zehenspitzen stellen (0..1): Fersen heben, Zehen bleiben am Boden. */
+  zehen?: number;
+  /** Irisfarbe, z. B. lila durch Kontaktlinsen. */
+  iris?: string;
   mundSchaum?: number;
   /** Nur bei der langen Abendpflege: Zeit für Längen, Spitzen und Seitensträhne. */
   buerstenzeit?: number;
@@ -2014,6 +2024,9 @@ function drawEyeRoll(ctx: C, p: number) {
 
 /* ------------------------------ Gesicht -------------------------------- */
 
+/** Gesetzt von drawLuni: Irisfarbe der Kontaktlinsen (null = normale dunkle Augen). */
+let irisFarbe: string | null = null;
+
 function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = true, gaze = 0, queasy = 0, singOpen = 0, pinsel?: LuniZeichenpinsel, frontal = false, lid = 0) {
   if (pinsel) {
     ctx.save(); ctx.translate(0, HEAD_Y);
@@ -2027,6 +2040,8 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
   const farX = frontal ? -3.25 : -2.6;
   const nearX = frontal ? 3.25 : 3.6;
   const eyeY = 0.4;
+  // Ohne Brille (z. B. mit Kontaktlinsen) wirken die Augen etwas größer.
+  const gross = glasses ? 1 : 1.28;
 
   ctx.save();
   ctx.translate(0, HEAD_Y);
@@ -2048,10 +2063,15 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
     ctx.arc(x, eyeY - 1.1, w, Math.PI * 0.15, Math.PI * 0.85);
     ctx.stroke();
   };
-  const dot = (x: number, r: number) => {
+  const dot = (x: number, r0: number) => {
+    const r = r0 * gross;
     ctx.beginPath();
     ctx.arc(x, eyeY, r, 0, Math.PI * 2);
-    ctx.fill();
+    if (irisFarbe) {
+      // Lila Kontaktlinsen: farbige Iris mit kleiner dunkler Pupille.
+      ctx.fillStyle = irisFarbe; ctx.fill();
+      ctx.fillStyle = LUNI_COLORS.eye; ctx.beginPath(); ctx.arc(x, eyeY, r * 0.46, 0, Math.PI * 2); ctx.fill();
+    } else ctx.fill();
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(x + r * 0.2, eyeY - r * 0.75, 0.55, 0.55);
     ctx.fillStyle = LUNI_COLORS.eye;
@@ -2081,7 +2101,7 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
     arcUp(nearX, 2.1);
   } else if (frontal) {
     for (const x of [farX, nearX]) {
-      ctx.fillStyle = "#faf6ec"; ctx.beginPath(); ctx.ellipse(x, eyeY, 1.88, 1.55, 0, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = "#faf6ec"; ctx.beginPath(); ctx.ellipse(x, eyeY, 1.88 * gross, 1.55 * gross, 0, 0, 2 * Math.PI); ctx.fill();
       ctx.fillStyle = LUNI_COLORS.eye; dot(x, 1.1);
     }
   } else if (expr === "wink") {
@@ -2111,11 +2131,11 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
     ] as [number, number][]) {
       ctx.fillStyle = "#ffffff";
       ctx.beginPath();
-      ctx.arc(x, eyeY, r, 0, Math.PI * 2);
+      ctx.arc(x, eyeY, r * gross, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = LUNI_COLORS.eye;
       ctx.beginPath();
-      ctx.arc(x + 0.2 + Math.max(-1, Math.min(1, gaze)) * .6, eyeY + 0.2, r * 0.52, 0, Math.PI * 2);
+      ctx.arc(x + 0.2 + Math.max(-1, Math.min(1, gaze)) * .6, eyeY + 0.2, r * gross * 0.52, 0, Math.PI * 2);
       ctx.fill();
     }
   } else if (expr === "tired") {
@@ -2140,7 +2160,7 @@ function drawFace(ctx: C, expr: LuniExpr, blink: number, t: number, glasses = tr
   } else if (expr === "think") {
     dot(farX, 1.4);
     ctx.beginPath();
-    ctx.arc(nearX + 0.5, eyeY - 0.5, 1.5, 0, Math.PI * 2);
+    ctx.arc(nearX + 0.5, eyeY - 0.5, 1.5 * gross, 0, Math.PI * 2);
     ctx.fill();
   } else {
     dot(farX, 1.4);
@@ -2854,6 +2874,61 @@ function drawHairAside(ctx: C, k: number) {
   ctx.restore();
 }
 
+/** Dünnes weißes Unterhemd mit Trägern: Zwischenzustand beim Umziehen. */
+function drawUnterhemd(ctx: C, r: Rig, _rueck: boolean) {
+  const topY = r.shoulderY, botY = r.hipY;
+  ctx.fillStyle = "#f7f4ee";
+  rr(ctx, -6.5, topY + 2.4, 13, botY - topY - 0.6, 3);
+  ctx.fill();
+  ctx.fillRect(-5.2, topY - 0.4, 1.7, 3.4);
+  ctx.fillRect(3.5, topY - 0.4, 1.7, 3.4);
+  ctx.fillStyle = "#e4dfd4";
+  ctx.fillRect(-6.5, botY - 2.0, 13, 1.1);
+}
+
+/** Eine kleine Schleife wie an einem Schuh: zwei Schlaufen, Knoten und zwei Bänder – groß genug, um gut zu sehen zu sein. */
+function drawSchleife(ctx: C, x: number, y: number, seite: 1 | -1) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.lineCap = "round";
+  // Bänder
+  ctx.strokeStyle = "#2a2830"; ctx.lineWidth = 0.95;
+  ctx.beginPath(); ctx.moveTo(-0.2, 0.6); ctx.lineTo(-1.9 + seite * 0.3, 4.0); ctx.moveTo(0.2, 0.6); ctx.lineTo(1.9 + seite * 0.3, 4.0); ctx.stroke();
+  ctx.strokeStyle = "#b9b5c8"; ctx.lineWidth = 0.3;
+  ctx.beginPath(); ctx.moveTo(-0.9, 1.0); ctx.lineTo(-1.9 + seite * 0.3, 4.0); ctx.moveTo(0.9, 1.0); ctx.lineTo(1.9 + seite * 0.3, 4.0); ctx.stroke();
+  // Schlaufen mit hellem Rand
+  ctx.lineWidth = 0.5;
+  for (const sg of [-1, 1] as const) {
+    ctx.fillStyle = "#26242c"; ctx.strokeStyle = "#c4c0d2";
+    ctx.beginPath(); ctx.ellipse(sg * 2.7, -0.6, 2.7, 1.75, sg * 0.45, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,.3)";
+    ctx.beginPath(); ctx.ellipse(sg * 2.9, -1.0, 1.2, 0.45, sg * 0.45, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = "#3b3844"; ctx.strokeStyle = "#c4c0d2";
+  ctx.beginPath(); ctx.arc(0, 0, 1.0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+
+/** Feines schwarzes Höschen mit je einer Schleife an der rechten und linken Hüfte. */
+function drawHoeschen(ctx: C, r: Rig) {
+  const y = r.hipY + 1.2;
+  ctx.fillStyle = "#1f1d24";
+  ctx.beginPath();
+  ctx.moveTo(-7.0, y);
+  ctx.lineTo(7.0, y);
+  ctx.lineTo(6.8, y + 2.6);
+  ctx.quadraticCurveTo(3.9, y + 5.8, 0.7, y + 3.7);
+  ctx.lineTo(-0.7, y + 3.7);
+  ctx.quadraticCurveTo(-3.9, y + 5.8, -6.8, y + 2.6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#3a3742";
+  rr(ctx, -7.1, y - 0.2, 14.2, 1.0, 0.5);
+  ctx.fill();
+  drawSchleife(ctx, -6.2, y + 2.0, -1);
+  drawSchleife(ctx, 6.2, y + 2.0, 1);
+}
+
 /** Pyjama-Saum, Bündchen und Schleifen am Höschen. */
 function drawPajamaDetails(ctx: C, r: Rig, top: string, bottom: string) {
   const dark = mixCol(top, "#000000", 0.22);
@@ -3402,6 +3477,15 @@ export function luniRigBauen(x: number, y: number, opts: LuniOpts = {}): Rig {
     }
   }
 
+  // Zehenspitzen: die Fersen heben sich, die Zehen bleiben am Boden – kein Hüpfen.
+  if (opts.zehen && opts.zehen > 0.001) {
+    const hub = 3.0 * clamp01(opts.zehen);
+    const ang = Math.asin(Math.min(1, hub / 5.2));
+    r.rootY -= hub;
+    r.footNearAng += ang;
+    r.footFarAng += ang;
+  }
+
   return r;
 }
 
@@ -3460,6 +3544,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
     socken,
   } = opts;
 
+  irisFarbe = opts.iris ?? null;
   // Kränkliche Haut: je höher `sick`, desto grüner das Gesicht
   const K0 = sick > 0.01
     ? {
@@ -3517,8 +3602,8 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
         teeShade: bekleidet.teeShade,
         leggings: kleidung.hose ? bekleidet.leggings : haut.leggings,
         leggingsLight: kleidung.hose ? bekleidet.leggingsLight : haut.leggingsLight,
-        sockL: kleidung.hose ? bekleidet.sockL : haut.sockL,
-        sockR: kleidung.hose ? bekleidet.sockR : haut.sockR,
+        sockL: kleidung.hose || opts.hoeschen ? bekleidet.sockL : haut.sockL,
+        sockR: kleidung.hose || opts.hoeschen ? bekleidet.sockR : haut.sockR,
       }
     : outfit === "dressed" ? bekleidet : haut;
   // Weste über dem Schlafanzug: oben trägt sie die helle Standardweste mit
@@ -3769,13 +3854,14 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
       drawHand(ctx, armFront.elbow, armFront.hand, K.skin, K.skinShade, daumenSeite(-1, armFront), gesteFern, pinsel);
     });
 
-  if (P && oberteil === "dressed" && !back && !vampir && !westeOben) upperLean(() => drawPajamaDetails(ctx, r, P.top, P.bottom));
+  if (P && oberteil === "dressed" && !back && !vampir && !westeOben && !opts.pullover) upperLean(() => drawPajamaDetails(ctx, r, P.top, P.bottom));
 
   if (back) {
     /* --- Rückansicht: Arme seitlich, Oberkörper von hinten --- */
     const verdeckt = rueckenarme?.behind && state !== "undress" && state !== "wrap";
     if (!schrank && verdeckt) armeVonHinten();
     drawTorsoBack(ctx, r, oberteil, K, pinsel);
+    if (opts.unterhemd && oberteil === "none") drawUnterhemd(ctx, r, true);
     if (P?.flausch && oberteil === "dressed" && !westeOben) flauschJacke(ctx, r, P.top, true);
     if (westeGleit && oberteil === "dressed") {
       // Die Weste gleitet beim Überziehen fließend von den Schultern bis zum Saum hinab.
@@ -3797,6 +3883,7 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
       rr(ctx, -6.8, r.hipY - 1.6, 13.6, 3.6, 1.6);
       ctx.fill();
     }
+    if (opts.hoeschen) upperLean(() => drawHoeschen(ctx, r));
     if (vampir && oberteil === "dressed") drawVampirRuecken(ctx, r, vampir);
     // Beim Umziehen greifen die Hände über den Kopf: ohne diese Reihenfolge verschwänden sie
     // unter den Haaren und wirkten wie hinter dem Rücken versteckt.
@@ -3838,9 +3925,11 @@ function renderFig(ctx: C, x: number, y: number, opts: LuniOpts = {}, pinsel?: L
         ctx.fillStyle = K.skin;
         rr(ctx, -6.4, r.shoulderY, 12.8, r.hipY - r.shoulderY + 2, 5);
         ctx.fill();
+        if (opts.unterhemd) drawUnterhemd(ctx, r, false);
       }
       ctx.restore();
     });
+    if (opts.hoeschen) upperLean(() => drawHoeschen(ctx, r));
 
     /* --- Instrument vor dem Rumpf, Arme davor --- */
     // Ohne diese Reihenfolge verdeckt der Saxophon-Korpus beide Arme, und das

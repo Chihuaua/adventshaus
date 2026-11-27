@@ -98,8 +98,8 @@ test("Rufsteine erscheinen mit ihrer Ausbaustufe (9 Raum-Steine im Kiesteil imme
   const raumAktionen = ["musikzimmer", "gaming", "schlafzimmer", "badezimmer", "treppenhaus", "flur", "wohnzimmer", "kueche", "keller"];
   const leer = haus("adventshaus");
   leer.steineSetzen();
-  assert.equal(leer.steine.length, 21, "3 Wechselsteine plus alle Funktions- und Raumsteine");
-  assert.equal(leer.steinStationen.length, 21);
+  assert.equal(leer.steine.length, 38, "3 Wechselsteine plus alle Funktions-, TV- und Raumsteine");
+  assert.equal(leer.steinStationen.length, 38);
   assert.deepEqual(leer.steine.filter((s) => !s.aktion).map((s) => s.ziel).sort(), ["normal", "traum", "weihnacht"]);
   for (const r of raumAktionen) assert.ok(leer.steine.some((s) => s.aktion === r), `Raumstein ${r} fehlt`);
 
@@ -111,13 +111,16 @@ test("Rufsteine erscheinen mit ihrer Ausbaustufe (9 Raum-Steine im Kiesteil imme
 
   const voll = haus("adventshaus", alle);
   voll.steineSetzen();
-  assert.equal(voll.steine.length, 21);
-  assert.equal(voll.steinStationen.length, 21);
+  assert.equal(voll.steine.length, 38);
+  assert.equal(voll.steinStationen.length, 38);
   for (const aktion of ["post", "nikolaus", "abend", "abendEZ", "aufsteh", "aufstehEZ", "kaffee", "kaffeeEZ", ...raumAktionen]) {
     assert.ok(voll.steine.some((s) => s.aktion === aktion), aktion);
   }
-  // Klickziele bleiben fernsehtauglich (mindestens 24 × 24).
-  for (const s of voll.steine) assert.ok(s.hit[2] >= 24 && s.hit[3] >= 24, s.label);
+  // Welt-, Routinen- und Raumsteine bleiben ≥ 24×24; kompakte TV-Kontrollsteine ≥ 20×20.
+  for (const s of voll.steine) {
+    const min = s.tv ? 20 : 24;
+    assert.ok(s.hit[2] >= min && s.hit[3] >= min, s.label);
+  }
 });
 
 test("Meldung nach einem Türchen: erst still, dann eine Box mit Text", () => {

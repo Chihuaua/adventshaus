@@ -14,6 +14,7 @@
 
 import type { WeltId } from "./welten";
 import type { RenoRaumId } from "./renovierung";
+import { TV_SENDUNGEN, TV_SENDUNG_NAMEN, type TVSendungId } from "./tv-sendungen";
 
 type C = CanvasRenderingContext2D;
 type Rect4 = [number, number, number, number];
@@ -30,24 +31,33 @@ export type RaumSteinArt =
   | "kueche"
   | "keller";
 
+/** Die 12 TV-Sendungs-Steine (Kontrollknöpfe unter den Welten & Kochsteinen). */
+export type TvSteinArt = `tv_${TVSendungId}`;
+
 export type SteinArt =
   | "wach" | "traum" | "horror" | "weihnacht" | "advent"
   | "bote" | "kranz" | "nikolaus" | "bett" | "ezbett" | "aufsteh" | "ezaufsteh" | "kaffee" | "ezkaffee"
+  | "morgenroutine" | "zaehne" | "pfannengericht" | "topfgericht" | "fertigpizza"
+  | TvSteinArt
   | RaumSteinArt;
 
-/** Erdreich-Platz: 26 x 30 groß, Mittelpunkt = x+13 / yTop+15. */
+/** Erdreich-Platz für Welt- & Routinensteine: 24 × 24, Mittelpunkt = x+12 / yTop+12. */
 const erd = (x: number, yTop: number): { x: number; y: number; hit: Rect4 } =>
-  ({ x: x + 13, y: yTop + 15, hit: [x, yTop, 26, 30] });
+  ({ x: x + 12, y: yTop + 12, hit: [x, yTop, 24, 24] });
+
+/** Kompakter Kontroll-Platz für TV- & Spielesteine: 20 × 20, klares Symbol & Hovertext. */
+const erdKlein = (x: number, yTop: number): { x: number; y: number; hit: Rect4 } =>
+  ({ x: x + 10, y: yTop + 10, hit: [x, yTop, 20, 20] });
 
 /* ---- Gruppe 1: Routinen (dicht in einer Reihe unter der Erde) ---- */
-/** Sechs Routinensteine nebeneinander: Bett, EZ-Bett, Aufsteh, EZ-Aufsteh, Kaffee, EZ-Kaffee. */
+/** Acht Routinensteine nebeneinander: Bett, EZ-Bett, Aufsteh, EZ-Aufsteh, Kaffee, EZ-Kaffee, Morgenroutine, Zähne. */
 export const ROUTINEN_PLAETZE: readonly { x: number; y: number; hit: Rect4 }[] =
-  [99, 129, 159, 189, 219, 249].map((x) => erd(x, 462));
+  [98, 124, 150, 176, 202, 228, 254, 280].map((x) => erd(x, 460));
 
 /* ---- Gruppe 2: Weltsteine (eine Reihe darunter, nach Welt sortiert) ---- */
 /** Wach, Traum, Horror, Weihnacht, Advent – jeweils eigener, fester Platz. */
 export const WELT_PLAETZE: readonly { x: number; y: number; hit: Rect4 }[] =
-  [99, 129, 159, 189, 219].map((x) => erd(x, 500));
+  [98, 124, 150, 176, 202].map((x) => erd(x, 486));
 
 /** Kompatibilität: Weltsteine an ihren festen Plätzen. */
 export const STEIN = WELT_PLAETZE[0];
@@ -62,6 +72,31 @@ export const AUFSTEH_STEIN = ROUTINEN_PLAETZE[2];
 export const EZ_AUFSTEH_STEIN = ROUTINEN_PLAETZE[3];
 export const KAFFEE_STEIN = ROUTINEN_PLAETZE[4];
 export const EZ_KAFFEE_STEIN = ROUTINEN_PLAETZE[5];
+/** Der Morgenroutine-Stein: die ganze beschriebene Kette am Stück. */
+export const MORGENROUTINE_STEIN = ROUTINEN_PLAETZE[6];
+/** Zahnputz-Stein: die Zahn-Pflege allein, direkt im Bad. */
+export const ZAHN_STEIN = ROUTINEN_PLAETZE[7];
+
+/** Mittagsküche: drei Kochsteine in der zweiten Reihe, rechts neben den Weltsteinen. */
+export const KOCH_PLAETZE: readonly { x: number; y: number; hit: Rect4 }[] =
+  [228, 254, 280].map((x) => erd(x, 486));
+export const PFANNE_STEIN = KOCH_PLAETZE[0];
+export const TOPF_STEIN = KOCH_PLAETZE[1];
+export const PIZZA_STEIN = KOCH_PLAETZE[2];
+
+/** Gruppe 3: 12 TV-Sendungen unter den Welt- und Kochsteinen (20×20, 2 Reihen, Platz für Spiele darunter). */
+export const TV_PLAETZE: readonly { x: number; y: number; hit: Rect4 }[] = [
+  ...Array.from({ length: 9 }, (_, i) => erdKlein(98 + i * 23, 514)),
+  ...Array.from({ length: 3 }, (_, i) => erdKlein(98 + i * 23, 537)),
+];
+
+export const TV_STEINE: readonly { art: TvSteinArt; tv: TVSendungId; label: string; platz: number }[] =
+  TV_SENDUNGEN.map((tv, platz) => ({
+    art: `tv_${tv}` as TvSteinArt,
+    tv,
+    label: `TV: ${TV_SENDUNG_NAMEN[tv]}`,
+    platz,
+  }));
 
 /**
  * Linker Kiesteil (x 5..92, y 463..568): sauber im 3×3-Raster aufgeteilt
@@ -131,6 +166,23 @@ export const STEIN_NAMEN: Record<SteinArt, string> = {
   kaffee: "Kaffee",
   ezkaffee: "EZ-Kaffee",
   ezaufsteh: "EZ-Aufsteh",
+  morgenroutine: "Morgenroutine",
+  zaehne: "Zähne putzen",
+  pfannengericht: "Pfannengericht",
+  topfgericht: "Kochtopf & Pfanne",
+  fertigpizza: "Fertigpizza",
+  tv_malfreude: "TV: Malfreude",
+  tv_zugfahrt: "TV: Zugfahrt",
+  tv_tiefsee: "TV: Tiefsee",
+  tv_domino: "TV: Domino",
+  tv_wald: "TV: Natur-Doku",
+  tv_krimi: "TV: Nachtzug-Krimi",
+  tv_expedition: "TV: Weltraum-Reise",
+  tv_theater: "TV: Puppentheater",
+  tv_kochshow: "TV: Kochshow",
+  tv_froschnews: "TV: Frosch-News",
+  tv_rennen: "TV: Retro-Rennen",
+  tv_quizshow: "TV: Bilderrätsel",
   musikzimmer: "Musikzimmer",
   gaming: "Gaming",
   schlafzimmer: "Schlafzimmer",
@@ -151,9 +203,11 @@ export interface SteinSlot {
   hit: Rect4;
   label: string;
   /** Rufsteine lösen statt eines Weltwechsels eine Aktion oder Raum-Renovierung aus. */
-  aktion?: "post" | "kranz" | "nikolaus" | "abend" | "abendEZ" | "aufsteh" | "aufstehEZ" | "kaffee" | "kaffeeEZ" | RaumSteinArt;
+  aktion?: "post" | "kranz" | "nikolaus" | "abend" | "abendEZ" | "aufsteh" | "aufstehEZ" | "kaffee" | "kaffeeEZ" | "morgen" | "zaehne" | "kochPfanne" | "kochTopf" | "kochPizza" | TvSteinArt | RaumSteinArt;
   /** Zugehöriger Raum für die Renovierungssteine im linken Kiesteil. */
   raum?: RenoRaumId;
+  /** Zugehörige TV-Sendung für die TV-Kontrollsteine. */
+  tv?: TVSendungId;
   /** Liegt auf dem 9-Platz-Kiesteil links (x 2..94, y 460..570). */
   kies?: boolean;
 }
@@ -192,13 +246,26 @@ export function steinSlots(welt: WeltId): SteinSlot[] {
     { ...EZ_AUFSTEH_STEIN, art: "ezaufsteh", ziel: welt, label: STEIN_NAMEN.ezaufsteh, aktion: "aufstehEZ" },
     { ...KAFFEE_STEIN, art: "kaffee", ziel: welt, label: STEIN_NAMEN.kaffee, aktion: "kaffee" },
     { ...EZ_KAFFEE_STEIN, art: "ezkaffee", ziel: welt, label: STEIN_NAMEN.ezkaffee, aktion: "kaffeeEZ" },
+    // Ganze Morgenroutine: Aufwachen, Handy und Brille, Weste, Socken, zwei Kaffees, Zähne.
+    { ...MORGENROUTINE_STEIN, art: "morgenroutine", ziel: welt, label: STEIN_NAMEN.morgenroutine, aktion: "morgen" },
+    // Zahn-Pflege allein: startet direkt im Bad, ohne den ganzen Morgen vorher.
+    { ...ZAHN_STEIN, art: "zaehne", ziel: welt, label: STEIN_NAMEN.zaehne, aktion: "zaehne" },
+    // Mittagsküche: je ein Startknopf für Pfannengericht, Kochtopf & Pfanne und Fertigpizza
+    { ...PFANNE_STEIN, art: "pfannengericht", ziel: welt, label: STEIN_NAMEN.pfannengericht, aktion: "kochPfanne" },
+    { ...TOPF_STEIN, art: "topfgericht", ziel: welt, label: STEIN_NAMEN.topfgericht, aktion: "kochTopf" },
+    { ...PIZZA_STEIN, art: "fertigpizza", ziel: welt, label: STEIN_NAMEN.fertigpizza, aktion: "kochPizza" },
   ];
-  // Raumsteine: neun Stück im Raster darunter
+  // TV-Sendungs-Steine: 13 kompakte Kontrollknöpfe unter den Welten & Kochsteinen
+  const tvSteine: SteinSlot[] = TV_STEINE.map((t): SteinSlot => ({
+    ...TV_PLAETZE[t.platz], art: t.art, ziel: welt, label: t.label,
+    aktion: t.art, tv: t.tv,
+  }));
+  // Raumsteine: neun Stück im Raster links
   const raeume: SteinSlot[] = RAUM_STEINE.map((r): SteinSlot => ({
     ...KIES_PLAETZE[r.platz], art: r.art, ziel: welt, label: r.label,
     aktion: r.art, raum: r.raum, kies: true,
   }));
-  return [...wechsel, ...advent, ...ereignisse, ...routine, ...raeume];
+  return [...wechsel, ...advent, ...ereignisse, ...routine, ...tvSteine, ...raeume];
 }
 
 export function steinAn(slots: SteinSlot[], x: number, y: number): SteinSlot | null {
@@ -230,9 +297,26 @@ const FARBEN: Record<SteinArt, { main: string; edge: string; glow: string }> = {
   bett: { main: "#51465f", edge: "#dccde7", glow: "rgba(198,177,222,.18)" },
   ezbett: { main: "#33405f", edge: "#f0d68e", glow: "rgba(240,214,142,.2)" },
   aufsteh: { main: "#6b5a49", edge: "#ffe6a8", glow: "rgba(255,230,168,.2)" },
+  morgenroutine: { main: "#2f6b70", edge: "#ffd98a", glow: "rgba(255,217,138,.22)" },
+  zaehne: { main: "#2f5f9e", edge: "#e8f4ff", glow: "rgba(140,190,255,.26)" },
+  pfannengericht: { main: "#5a4a38", edge: "#ffd98a", glow: "rgba(255,200,120,.22)" },
+  topfgericht: { main: "#38546a", edge: "#cfe8f6", glow: "rgba(160,210,240,.22)" },
+  fertigpizza: { main: "#7a3a2a", edge: "#ffd070", glow: "rgba(255,170,80,.24)" },
   kaffee: { main: "#5a3d6e", edge: "#e8d2ff", glow: "rgba(214,180,255,.2)" },
   ezkaffee: { main: "#3e2a4e", edge: "#ffd98a", glow: "rgba(255,217,138,.22)" },
   ezaufsteh: { main: "#4a4034", edge: "#ffd089", glow: "rgba(255,208,137,.22)" },
+  tv_malfreude: { main: "#4c3b5c", edge: "#ffd68a", glow: "rgba(255,214,138,.2)" },
+  tv_zugfahrt: { main: "#2e4d63", edge: "#c8e6f5", glow: "rgba(160,215,245,.2)" },
+  tv_tiefsee: { main: "#194a66", edge: "#7ee8ff", glow: "rgba(110,225,255,.22)" },
+  tv_domino: { main: "#3f3b54", edge: "#f4d86c", glow: "rgba(244,216,108,.2)" },
+  tv_wald: { main: "#265239", edge: "#b9e8a8", glow: "rgba(155,225,140,.2)" },
+  tv_krimi: { main: "#4a3d2f", edge: "#eadcb8", glow: "rgba(234,220,184,.2)" },
+  tv_expedition: { main: "#282856", edge: "#88ecff", glow: "rgba(136,236,255,.22)" },
+  tv_theater: { main: "#782430", edge: "#ffd578", glow: "rgba(255,213,120,.22)" },
+  tv_kochshow: { main: "#305868", edge: "#ff9b70", glow: "rgba(255,155,112,.2)" },
+  tv_froschnews: { main: "#1f4a7a", edge: "#8ee68a", glow: "rgba(142,230,138,.22)" },
+  tv_rennen: { main: "#6b282c", edge: "#ffe070", glow: "rgba(255,224,112,.22)" },
+  tv_quizshow: { main: "#3b286b", edge: "#ffd966", glow: "rgba(255,217,102,.22)" },
   musikzimmer: { main: "#2c4638", edge: "#f0cb70", glow: "rgba(240,203,112,.22)" },
   gaming: { main: "#6b363c", edge: "#f2cf84", glow: "rgba(242,207,132,.2)" },
   schlafzimmer: { main: "#4c6266", edge: "#e8d7a6", glow: "rgba(232,215,166,.2)" },
@@ -245,6 +329,7 @@ const FARBEN: Record<SteinArt, { main: string; edge: string; glow: string }> = {
 };
 
 const RAUM_STEIN_SET = new Set<SteinArt>(RAUM_STEINE.map((r) => r.art));
+const TV_STEIN_SET = new Set<SteinArt>(TV_STEINE.map((t) => t.art));
 
 /**
  * Linkes Kiesfeld (x 2..94, y 460..571) mit 9 sauber eingeteilten Plätzen
@@ -445,55 +530,178 @@ function drawRaumStein(c: C, kind: RaumSteinArt, x: number, y: number, t: number
   c.restore();
 }
 
+/** Klare, kleine Symbole für die 12 TV-Sendungs-Steine (kompakte 20×20-Kiesel). */
+function drawTvSymbol(c: C, kind: TvSteinArt, x: number, y: number) {
+  c.lineCap = "round";
+  c.lineJoin = "round";
+  if (kind === "tv_malfreude") {
+    // Farbpalette + 3 Farbtupfer
+    c.fillStyle = "#d9ad74";
+    c.beginPath(); c.ellipse(x, y + 0.5, 6.2, 4.6, -0.2, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#e85d50"; c.beginPath(); c.arc(x - 2.6, y - 1.2, 1.3, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#ffd65c"; c.beginPath(); c.arc(x + 0.8, y - 1.8, 1.3, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#4fa8e8"; c.beginPath(); c.arc(x + 3.2, y + 0.4, 1.3, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#4c3b5c"; c.beginPath(); c.arc(x - 2.2, y + 2, 1.2, 0, Math.PI * 2); c.fill();
+  } else if (kind === "tv_zugfahrt") {
+    // Lokfront mit zwei Scheinwerfern
+    c.fillStyle = "#dce9f2"; c.beginPath(); c.roundRect(x - 5, y - 5.2, 10, 9.2, 2.2); c.fill();
+    c.fillStyle = "#2b4d63"; c.fillRect(x - 3.6, y - 3.8, 7.2, 3.6);
+    c.fillStyle = "#ffe078";
+    c.beginPath(); c.arc(x - 2.6, y + 1.8, 1.2, 0, Math.PI * 2); c.arc(x + 2.6, y + 1.8, 1.2, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = "#c8e6f5"; c.lineWidth = 1.1;
+    c.beginPath(); c.moveTo(x - 4.8, y + 5.6); c.lineTo(x - 2.4, y + 4); c.moveTo(x + 4.8, y + 5.6); c.lineTo(x + 2.4, y + 4); c.stroke();
+  } else if (kind === "tv_tiefsee") {
+    // Gelbes U-Boot
+    c.fillStyle = "#f4c83b";
+    c.fillRect(x - 1.5, y - 5.2, 3.4, 3);
+    c.beginPath(); c.ellipse(x, y + 0.4, 6.2, 3.6, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#8ef0ff";
+    c.beginPath(); c.arc(x - 2, y + 0.4, 1.3, 0, Math.PI * 2); c.arc(x + 2.2, y + 0.4, 1.3, 0, Math.PI * 2); c.fill();
+  } else if (kind === "tv_domino") {
+    // Zwei kippende Dominosteine
+    c.fillStyle = "#f4d86c"; c.fillRect(x - 5.2, y - 5, 4, 10);
+    c.save(); c.translate(x + 1.6, y + 5); c.rotate(0.38);
+    c.fillStyle = "#ff7f6e"; c.fillRect(-2, -10, 4, 10);
+    c.restore();
+    c.fillStyle = "#3f3b54";
+    c.beginPath(); c.arc(x - 3.2, y - 2.5, 0.9, 0, Math.PI * 2); c.arc(x - 3.2, y + 2.5, 0.9, 0, Math.PI * 2); c.fill();
+  } else if (kind === "tv_wald") {
+    // Tanne + kleine Sonne
+    c.fillStyle = "#ffe680"; c.beginPath(); c.arc(x + 4.2, y - 4, 2, 0, Math.PI * 2); c.fill();
+    poly(c, [[x - 1, y - 6], [x - 5.6, y + 3.4], [x + 3.6, y + 3.4]], "#64c472");
+    c.fillStyle = "#6e4828"; c.fillRect(x - 2, y + 3.4, 2, 2.8);
+  } else if (kind === "tv_krimi") {
+    // Detektiv-Lupe
+    c.strokeStyle = "#f2e2b4"; c.lineWidth = 1.6;
+    c.beginPath(); c.arc(x - 1.2, y - 1.2, 4, 0, Math.PI * 2); c.stroke();
+    c.beginPath(); c.moveTo(x + 1.8, y + 1.8); c.lineTo(x + 5.6, y + 5.6); c.stroke();
+  } else if (kind === "tv_expedition") {
+    // Ringplanet
+    c.fillStyle = "#a87be8"; c.beginPath(); c.arc(x, y, 4.1, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = "#88ecff"; c.lineWidth = 1.2;
+    c.beginPath(); c.ellipse(x, y, 6.8, 2.1, -0.35, 0, Math.PI * 2); c.stroke();
+  } else if (kind === "tv_theater") {
+    // Theatermaske / roter Vorhang mit Stern
+    c.fillStyle = "#ffd578";
+    c.beginPath(); c.roundRect(x - 5, y - 4.8, 10, 9.2, [2, 2, 4.5, 4.5]); c.fill();
+    c.fillStyle = "#782430";
+    c.beginPath(); c.arc(x - 2, y - 1, 1.1, 0, Math.PI * 2); c.arc(x + 2, y - 1, 1.1, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = "#782430"; c.lineWidth = 1.1;
+    c.beginPath(); c.arc(x, y + 0.6, 2.4, 0.15, Math.PI - 0.15); c.stroke();
+  } else if (kind === "tv_kochshow") {
+    // Hohe weiße Kochmütze
+    c.fillStyle = "#ffffff";
+    c.beginPath();
+    c.arc(x - 3, y - 2.2, 2.6, 0, Math.PI * 2);
+    c.arc(x, y - 3.6, 2.8, 0, Math.PI * 2);
+    c.arc(x + 3, y - 2.2, 2.6, 0, Math.PI * 2);
+    c.fill();
+    c.fillRect(x - 4.2, y - 0.8, 8.4, 5);
+    c.fillStyle = "#e0584e"; c.fillRect(x - 4.2, y + 2.8, 8.4, 1.5);
+  } else if (kind === "tv_froschnews") {
+    // Kleiner Nachrichtenfrosch mit roter Krawatte
+    c.fillStyle = "#5ec464";
+    c.beginPath(); c.ellipse(x, y + 0.8, 5.2, 3.8, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#ffffff";
+    c.beginPath(); c.arc(x - 2.5, y - 2.6, 1.9, 0, Math.PI * 2); c.arc(x + 2.5, y - 2.6, 1.9, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#111";
+    c.beginPath(); c.arc(x - 2.5, y - 2.6, 0.9, 0, Math.PI * 2); c.arc(x + 2.5, y - 2.6, 0.9, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#e0463c"; c.fillRect(x - 1, y + 4.2, 2, 2.4);
+  } else if (kind === "tv_rennen") {
+    // Zielflagge (Schachbrett)
+    for (let r = 0; r < 3; r++) for (let q = 0; q < 4; q++) {
+      c.fillStyle = (r + q) % 2 === 0 ? "#ffffff" : "#1c1f24";
+      c.fillRect(x - 5 + q * 2.6, y - 4.2 + r * 2.6, 2.6, 2.6);
+    }
+    c.fillStyle = "#ffe070"; c.fillRect(x - 6, y - 4.6, 1.2, 10.6);
+  } else {
+    // Bilderrätsel: goldener Fragezeichen-Bogen
+    c.strokeStyle = "#ffd966"; c.lineWidth = 2;
+    c.beginPath();
+    c.arc(x, y - 2.2, 3.1, Math.PI * 0.95, Math.PI * 0.2);
+    c.lineTo(x, y + 2.2);
+    c.stroke();
+    c.fillStyle = "#ffd966"; c.beginPath(); c.arc(x, y + 4.8, 1.15, 0, Math.PI * 2); c.fill();
+  }
+}
+
+/** Kompakter 20×20-Kieselstein für die 12 TV-Sendungs-Kontrollknöpfe. */
+function drawTvStein(c: C, kind: TvSteinArt, t: number, px: number, py: number) {
+  const { main, edge, glow } = FARBEN[kind];
+  const pulse = 0.8 + Math.sin(t * 1.7) * 0.08;
+  c.save();
+  const g = c.createRadialGradient(px, py, 1, px, py, 13);
+  g.addColorStop(0, glow);
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  c.fillStyle = g;
+  c.beginPath(); c.arc(px, py, 13, 0, Math.PI * 2); c.fill();
+  c.fillStyle = "rgba(10,12,16,.34)";
+  c.beginPath(); c.ellipse(px, py + 9.2, 8.8, 2.1, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = main;
+  c.beginPath(); c.roundRect(px - 9.5, py - 9.5, 19, 19, 5); c.fill();
+  c.fillStyle = "rgba(255,250,235,.09)";
+  c.beginPath(); c.roundRect(px - 7.5, py - 8, 15, 4.5, 2.2); c.fill();
+  c.strokeStyle = edge;
+  c.globalAlpha = pulse;
+  c.lineWidth = 1.1;
+  c.beginPath(); c.roundRect(px - 9.5, py - 9.5, 19, 19, 5); c.stroke();
+  c.globalAlpha = 1;
+  drawTvSymbol(c, kind, px, py);
+  c.restore();
+}
+
 /** Halb eingegrabener Stein; Symbol und Farbe zeigen eindeutig, wohin er führt. */
 export function drawStein(c: C, kind: SteinArt, t = 0, px: number = STEIN.x, py: number = STEIN.y) {
   if (RAUM_STEIN_SET.has(kind)) {
     drawSteinKern(c, kind, t, px, py);
     return;
   }
-  // Alle Orts- und Rufsteine: flacher Kiesel in exakt derselben Form und Größe
-  // wie die Renovierungssteine im Kiesteil (24 x 26, Radius 7).
+  if (TV_STEIN_SET.has(kind)) {
+    drawTvStein(c, kind as TvSteinArt, t, px, py);
+    return;
+  }
+  // Alle Orts- und Rufsteine: flacher Kiesel in einheitlicher Form (23 x 23, Radius 6, passend für 24×24-Plätze).
   const { main, edge, glow } = FARBEN[kind];
   const pulse = 0.78 + Math.sin(t * 1.7) * 0.08;
   c.save();
   // weicher Schein
-  const g = c.createRadialGradient(px, py, 1, px, py, 17);
+  const g = c.createRadialGradient(px, py, 1, px, py, 15);
   g.addColorStop(0, glow);
   g.addColorStop(1, "rgba(0,0,0,0)");
   c.fillStyle = g;
   c.beginPath();
-  c.arc(px, py, 17, 0, Math.PI * 2);
+  c.arc(px, py, 15, 0, Math.PI * 2);
   c.fill();
   // Bodenschatten
   c.fillStyle = "rgba(10,12,16,.36)";
   c.beginPath();
-  c.ellipse(px, py + 12, 11.4, 2.8, 0, 0, Math.PI * 2);
+  c.ellipse(px, py + 10.6, 10.6, 2.5, 0, 0, Math.PI * 2);
   c.fill();
   // Kieselkorpus
   c.fillStyle = main;
   c.beginPath();
-  c.roundRect(px - 12, py - 13, 24, 26, 7);
+  c.roundRect(px - 11.5, py - 11.5, 23, 23, 6);
   c.fill();
   // Symbol des Steins, auf dieselbe Symbolgröße wie im Kiesteil gebracht
   c.save();
   c.beginPath();
-  c.roundRect(px - 12, py - 13, 24, 26, 7);
+  c.roundRect(px - 11.5, py - 11.5, 23, 23, 6);
   c.clip();
   c.translate(px, py);
-  c.scale(0.62, 0.62);
+  c.scale(0.58, 0.58);
   c.translate(-px, -py);
   drawSteinKern(c, kind, t, px, py);
   c.restore();
   // zarter Glanz oben + warmer Rand
   c.fillStyle = "rgba(255,250,235,.09)";
   c.beginPath();
-  c.roundRect(px - 9.5, py - 11, 19, 6, 3);
+  c.roundRect(px - 9, py - 10, 18, 5.2, 2.5);
   c.fill();
   c.strokeStyle = edge;
   c.globalAlpha = pulse;
-  c.lineWidth = 1.25;
+  c.lineWidth = 1.2;
   c.beginPath();
-  c.roundRect(px - 12, py - 13, 24, 26, 7);
+  c.roundRect(px - 11.5, py - 11.5, 23, 23, 6);
   c.stroke();
   c.restore();
 }
@@ -713,6 +921,68 @@ function drawSteinKern(c: C, kind: SteinArt, t = 0, px: number = STEIN.x, py: nu
       c.arc(bx, by, 1.05, 0, Math.PI * 2);
       c.fill();
     }
+  } else if (kind === "pfannengericht") {
+    // Pfanne von der Seite mit Spiegelei
+    c.fillStyle = "#6a4a2c"; c.fillRect(x + 7, y - 9, 10, 2.4);
+    c.fillStyle = "#2a2f35"; c.beginPath(); c.ellipse(x, y - 8, 9.4, 3.4, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#14171b"; c.beginPath(); c.ellipse(x, y - 8.4, 8, 2.6, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#faf9f2"; c.beginPath(); c.ellipse(x - 0.4, y - 8.5, 5.2, 1.9, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#f4b52a"; c.beginPath(); c.arc(x - 0.4, y - 8.9, 1.7, 0, Math.PI * 2); c.fill();
+  } else if (kind === "topfgericht") {
+    // Kochtopf mit Dampf
+    c.fillStyle = "#9aa3a8"; c.fillRect(x - 7.5, y - 12, 15, 11);
+    c.fillStyle = "#c4cacb"; c.fillRect(x - 8.6, y - 14.4, 17.2, 2.6);
+    c.fillStyle = "#6b7479"; c.fillRect(x - 11, y - 9, 3.6, 1.8); c.fillRect(x + 7.4, y - 9, 3.6, 1.8);
+    c.strokeStyle = "rgba(240,248,252,.85)"; c.lineWidth = 1.1; c.lineCap = "round";
+    for (const dx of [-3, 2]) {
+      c.beginPath(); c.moveTo(x + dx, y - 16.4); c.quadraticCurveTo(x + dx + 2, y - 19, x + dx - 0.6, y - 21.6); c.stroke();
+    }
+  } else if (kind === "fertigpizza") {
+    // Pizza mit Salami und herausgeschnittenem Stück
+    c.fillStyle = "#b57b32"; c.beginPath(); c.arc(x, y - 8, 9.4, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#e4a93e"; c.beginPath(); c.arc(x, y - 8, 7.8, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#b8322a";
+    for (const [dx, dy] of [[-3.4, -3.2], [3, -4.4], [-1, 2.6], [4, 2]] as const) { c.beginPath(); c.arc(x + dx, y - 8 + dy, 1.5, 0, Math.PI * 2); c.fill(); }
+    c.strokeStyle = "rgba(120,70,20,.7)"; c.lineWidth = 0.7;
+    c.beginPath(); c.moveTo(x, y - 8); c.lineTo(x + 7.8, y - 8); c.moveTo(x, y - 8); c.lineTo(x + 4, y - 14.8); c.stroke();
+  } else if (kind === "zaehne") {
+    // Zahn mit zwei Wurzeln – die Zahn-Pflege am Morgen.
+    c.fillStyle = "#f4f8fb";
+    c.beginPath();
+    c.moveTo(x - 5.4, y - 5.4);
+    c.quadraticCurveTo(x, y - 9.6, x + 5.4, y - 5.4);
+    c.quadraticCurveTo(x + 6.6, y + 0.6, x + 4.2, y + 6.4);
+    c.lineTo(x + 2.2, y + 6.4);
+    c.quadraticCurveTo(x + 1.1, y + 1.6, x, y + 1.6);
+    c.quadraticCurveTo(x - 1.1, y + 1.6, x - 2.2, y + 6.4);
+    c.lineTo(x - 4.2, y + 6.4);
+    c.quadraticCurveTo(x - 6.6, y + 0.6, x - 5.4, y - 5.4);
+    c.closePath();
+    c.fill();
+    c.strokeStyle = "rgba(40,70,110,.55)";
+    c.lineWidth = 0.7;
+    c.stroke();
+  } else if (kind === "morgenroutine") {
+    // Aufgehende Sonne über dem Horizont: der Morgen des ganzen Hauses.
+    c.fillStyle = edge;
+    c.beginPath();
+    c.arc(x, y - 4, 6.2, Math.PI, 0);
+    c.fill();
+    c.strokeStyle = edge;
+    c.lineWidth = 1.1;
+    c.lineCap = "round";
+    for (let i = 0; i <= 4; i++) {
+      const a = Math.PI + (i / 4) * Math.PI;
+      c.beginPath();
+      c.moveTo(x + Math.cos(a) * 8, y - 4 + Math.sin(a) * 8);
+      c.lineTo(x + Math.cos(a) * 10.6, y - 4 + Math.sin(a) * 10.6);
+      c.stroke();
+    }
+    c.lineWidth = 1.4;
+    c.beginPath();
+    c.moveTo(x - 11, y + 3.6);
+    c.lineTo(x + 11, y + 3.6);
+    c.stroke();
   } else {
     // Totenkopf mit Glutaugen
     c.fillStyle = "#e8e0cc";

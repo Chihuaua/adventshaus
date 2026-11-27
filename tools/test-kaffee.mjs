@@ -228,7 +228,8 @@ test("Körperhaltung, Armrichtungen und fließende Schranktüren beim Stopfen un
     const w = h.kAblauf?.schritte[h.kAblauf.i]?.was;
     if (!kp || h.cur) continue;
     if (kp.back && w) rueckenSchritte.add(w);
-    if (!kp.back && kp.face) {
+    // In der Frontalansicht (Blick zur Kamera) liegen die Hände vor Gesicht und Körper, nicht hinter dem Rücken.
+    if (!kp.back && kp.face && !kp.frontal) {
       for (const ziel of [kp.hand, kp.hand2]) {
         if (!ziel) continue;
         assert.ok((ziel[0] - h.lx) * kp.face >= -0.5, `${w}: Hand (${ziel[0].toFixed(1)}) greift nicht hinter den Rücken (${h.lx}, face=${kp.face})`);
@@ -244,7 +245,9 @@ test("Körperhaltung, Armrichtungen und fließende Schranktüren beim Stopfen un
 test("Morgenroutine: offene Schleusentür wird nicht noch einmal geöffnet; nach der zweiten Tasse Hunde rein, alle Türen zu", () => {
   const alt = Math.random;
   const draussen = (h) => ["odin", "apollo"].filter((id) => h.hunde.istImGarten(id));
-  const hundeRaus = (h) => { for (const [id, x] of [["odin", 880], ["apollo", 905]]) { const d = h.hunde.get(id); d.floor = 0; d.x = x; d.schritte = []; d.gartenPause = 0; d.gerufen = false; d.gartenZeit = 0; } };
+  // Beide Hunde wirklich in den Garten stellen – auch wenn einer vorher
+  // aus dem Bild gelaufen ist (20-%-Ausreißer) oder gerade zum Automaten unterwegs.
+  const hundeRaus = (h) => { for (const [id, x] of [["odin", 880], ["apollo", 905]]) { const d = h.hunde.get(id); d.floor = 0; d.x = x; d.schritte = []; d.gartenPause = 0; d.gerufen = false; d.gartenZeit = 0; d.weggelaufen = false; d.renntWeg = false; d.automatZiel = false; d.schuldig = false; } };
   const faelle = [
     // [Name, Schleuse zu Beginn offen, Gartentür vor der letzten Rauchpause offen, Hunde dann draußen]
     ["Schleuse offen, Garten offen, beide Hunde draußen", true, true, true],

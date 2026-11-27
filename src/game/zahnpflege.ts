@@ -118,13 +118,13 @@ export function zahnbild(ph: Zahnschritt, t: number, x: number, f: number, dauer
   switch (ph) {
     case "zNehmen":
       // Die hintere Hand nimmt die Bürste aus dem Becher hinter dem Kopf.
-      buersteNah = false; l = ruheNah;
-      r = hoch(ruheFern, becher, haltenFern);
+      buersteNah = false; l = ruheFern;
+      r = hoch(ruheNah, becher, haltenFern);
       winkel = -Math.PI / 2 + glatt((p - .5) * 2) * (Math.PI / 2 - .35);
       break;
     case "zTube":
       buersteNah = false;
-      l = hoch(ruheNah, tube, druecken);
+      l = hoch(ruheFern, tube, druecken);
       r = weg(haltenFern, aufrecht, abschnitt(.3, .9));
       winkel = zahl(-.35, -1.25, glatt(abschnitt(.3, .9)));
       tubeWinkel = zahl(1.45, .18, glatt(abschnitt(.5, .75)));
@@ -137,10 +137,9 @@ export function zahnbild(ph: Zahnschritt, t: number, x: number, f: number, dauer
       // Tube zurück, dann wechselt die Bürste vor dem Bauch in die vordere Hand.
       belag = 1;
       tubeWinkel = zahl(.18, 1.45, glatt(abschnitt(.2, .4)));
-      buersteNah = p >= .82;
-      const nahWeg: Pt = p < .4 ? weg(druecken, tube, p / .4) : p < .82 ? weg(tube, uebergabe, abschnitt(.4, .8)) : weg(uebergabe, halten, abschnitt(.82, 1));
-      const fernWeg: Pt = p < .4 ? aufrecht : p < .82 ? weg(aufrecht, uebergabe, abschnitt(.4, .8)) : weg(uebergabe, ruheFern, abschnitt(.82, 1));
-      if (buersteNah) { r = nahWeg; l = fernWeg; } else { r = fernWeg; l = nahWeg; }
+      // Die Bürste bleibt in ihrer Hand und geht ruhig an die Seite; die andere Hand stellt die Tube zurück.
+      l = p < .4 ? weg(druecken, tube, p / .4) : weg(tube, ruheFern, abschnitt(.4, 1));
+      r = p < .4 ? aufrecht : weg(aufrecht, halten, abschnitt(.4, 1));
       winkel = zahl(-1.25, -.35, glatt(abschnitt(.4, .8)));
       break;
     }
@@ -212,8 +211,8 @@ export function zahnbild(ph: Zahnschritt, t: number, x: number, f: number, dauer
     case "zMundNehmen":
       // Die vordere Hand nimmt die Flasche aus dem Schrank; die Bürste ruht in der hinteren.
       buersteNah = false; flascheHand = p >= .45;
-      l = hoch(ruheNah, flasche, [st + 3.6, f - 34], .55);
-      r = haltenFern;
+      l = hoch(ruheFern, flasche, [st + 3.6, f - 34], .55);
+      r = weg(halten, haltenFern, glatt(p / .3));
       break;
     case "zMundSpuelen": {
       // Die hintere Hand setzt die Flasche an den Mund, der Kopf geht in den Nacken.
@@ -230,7 +229,7 @@ export function zahnbild(ph: Zahnschritt, t: number, x: number, f: number, dauer
     case "zMundSpucken":
       // Über das Becken beugen und ausspucken; die Flasche bleibt in der hinteren Hand.
       l = [st - 1.5, f - 30];
-      r = weg(halten, [st + 3.2, f - 39], glatt(p / .3));
+      r = weg([st - 1.5, f - 30], [st + 3.2, f - 39], glatt(p / .3));
       buersteNah = true;
       neigung = glatt(p / .3) * (1 - glatt((p - .7) / .3));
       flascheHand = p < .8;
@@ -239,24 +238,26 @@ export function zahnbild(ph: Zahnschritt, t: number, x: number, f: number, dauer
       break;
     case "zMundZurueck": {
       // Flasche zurück ins Fach, die Bürste wechselt beim Gehen nach vorn.
-      buersteNah = p >= .55; flascheHand = p < .55;
-      l = p < .55 ? weg([st + 3.6, f - 34], flasche, glatt(p / .55)) : ruheFern;
-      r = p < .55 ? [st - 1.5, f - 30] : (buersteNah ? uebergabe : halten);
+      flascheHand = p < .55;
+      l = p < .55 ? weg([st - 1.5, f - 30], flasche, glatt(p / .55)) : weg(flasche, ruheFern, glatt(abschnitt(.55, 1)));
+      r = weg([st + 3.2, f - 39], halten, glatt(p));
       break;
     }
     case "zZurueck": {
       // Vor dem Bauch zurück in die hintere Hand, die stellt die Bürste in den Becher hinter dem Kopf.
-      buersteNah = p < .3;
-      const nahWeg: Pt = p < .3 ? weg(halten, uebergabe, p / .28) : weg(uebergabe, ruheNah, abschnitt(.3, .6));
-      const fernWeg: Pt = p < .3 ? weg(ruheFern, uebergabe, p / .28) : p < .65 ? weg(uebergabe, becher, abschnitt(.3, .65)) : weg(becher, ruheFern, abschnitt(.65, 1));
-      if (buersteNah) { r = nahWeg; l = fernWeg; } else { r = fernWeg; l = nahWeg; }
+      // Dieselbe Hand stellt die Bürste in den Becher hinter dem Kopf und geht dann zurück an ihre Seite.
+      r = p < .6 ? weg(halten, becher, glatt(p / .6)) : weg(becher, ruheNah, glatt(abschnitt(.6, 1)));
+      l = ruheFern;
       winkel = p < .3 ? -.35 : -.35 - (Math.PI / 2 - .35) * glatt(abschnitt(.3, .65));
       break;
     }
   }
+  void buersteNah; void uebergabe; // frühere Armwechsel entfallen: die Bürste bleibt in einer Hand
   // Der Schaum ist bewusster sparsam: ein Drittel weniger als früher.
   const schaumWeniger = schaum * (2 / 3);
-  return { r, l, p, ph, t, winkel, neigung: neigung + nicken * 0.5, buersteHand, buersteNah, tubeHand, tubeWinkel, fluss,
+  return { r, l, p, ph, t, winkel, neigung: neigung + nicken * 0.5, buersteHand,
+    /** Die Bürste bleibt in jedem Schritt in derselben Hand (nie mehr zwischen den Armen springen). */
+    buersteNah: true as boolean, tubeHand, tubeWinkel, fluss,
     schaum: schaumWeniger, belag: belag > 0 ? Math.min(belag, 1 - schaumWeniger * 0.35) : belag,
     tropfen, tropfenVon, tropfenNach, strich, spuckt, putzt,
     /** Mouthwater: Flasche in der Hand, Wasser in der hohlen Hand, Rücken zum Spieler. */
@@ -306,7 +307,10 @@ function zahnpasta(c: C, x: number, y: number, winkel: number, offen: boolean, d
   c.restore();
 }
 
-export function zahnfach(c: C, x: number, f: number, z: Zahnbild | null) {
+export function zahnfach(c: C, x: number, f: number, z: Zahnbild | null, linsen: { dose: boolean; flasche: boolean } = { dose: true, flasche: true }) {
+  // Kontaktlinsen: lila Dose oben auf dem Zwischenboden, die Flüssigkeit rechts unten.
+  if (linsen.dose) { const [dx, dy] = LINSEN_ORT.dose(x, f); zeichneLinsenDose(c, dx, dy); }
+  if (linsen.flasche) { const [fx, fy] = LINSEN_ORT.flasche(x, f); zeichneLinsenFlasche(c, fx, fy); }
   if (!z?.buersteHand) zahnbuerste(c, x + 8.8, f - 53, -Math.PI / 2, 0);
   rund(c, x + 5.3, f - 55.6, 7, 5.7, 1.4, "#73adc0");
   rund(c, x + 4.9, f - 56.1, 7.8, 1.25, .55, "#b5dce0");
@@ -335,49 +339,37 @@ export function zahnWasser(c: C, x: number, f: number, z: Zahnbild) {
 }
 
 /** Bürste und Tube in den Händen, die Zahnpasta beim Auftragen und die Tropfen beim Ausspucken. */
-/** `nah`/`fern`: die gezeichneten Hände des vorderen und des hinteren Arms. */
-/** `seite`: nur die Objekte einer Hand zeichnen – die hintere Hand liegt HINTER dem Körper. */
+/** `nah`: Hand mit der Bürste (bleibt immer dieselbe), `fern`: die andere Hand für Tube und Mundwasser. */
+/** `seite`: Mit dem Rücken zur Kamera liegt alles vor ihrem Körper HINTER Körper und Haaren ("hinten"),
+ *  sonst davor ("vorn"). So scheint die Bürste nie durch Luni hindurch. */
 export function zahnHandobjekte(c: C, z: Zahnbild, nah: Pt, fern: Pt, _x: number, _f: number, seite: "beide" | "vorn" | "hinten" = "beide") {
-  const hand = z.buersteNah ? nah : fern, andere = z.buersteNah ? fern : nah;
-  if (seite === "vorn" && z.buersteNah === false) {
-    if (z.flascheHand) mundwasserFlasche(c, ...andere, z.ph === "zMundSpuelen" ? -.5 : .2, true);
-    if (z.tubeHand) zahnpasta(c, ...andere, z.tubeWinkel, true, z.ph === "zPaste" ? Math.sin(Math.PI * z.p) : 0);
-  }
-  if (seite === "hinten") {
-    if (z.buersteNah === false) return;
-    if (!z.tubeHand && !z.flascheHand) return;
-    c.save(); c.globalAlpha = 0.55;
-    if (z.tubeHand) zahnpasta(c, ...andere, z.tubeWinkel, true, 0);
-    else if (z.flascheHand) mundwasserFlasche(c, ...andere, .2, true);
-    c.restore();
-    return;
-  }
-  if (seite !== "beide") {
+  const hand = nah, andere = fern;
+  const dran = seite === "beide" || (seite === "hinten") === z.ruecken;
+  if (dran) {
     if (z.buersteHand) zahnbuerste(c, ...hand, z.winkel, z.belag);
-    return;
+    if (z.tubeHand) zahnpasta(c, ...andere, z.tubeWinkel, true, z.ph === "zPaste" ? Math.sin(Math.PI * z.p) : 0);
+    if (z.flascheHand) mundwasserFlasche(c, ...andere, z.ph === "zMundSpuelen" ? -.5 : .2, true);
+    if (z.ph === "zPaste" && z.p > .24 && z.p < .77) {
+      const duese = dreh([0, 5.3], z.tubeWinkel), kopf = dreh([7.4, -3.3], z.winkel);
+      c.strokeStyle = "#c4e9dc"; c.lineWidth = 1.05; c.lineCap = "round"; c.beginPath();
+      c.moveTo(andere[0] + duese[0], andere[1] + duese[1]);
+      c.lineTo(hand[0] + kopf[0], hand[1] + kopf[1]); c.stroke();
+    }
+    if (z.handWasser > 0.02) {
+      const [hx, hy] = hand;
+      c.save(); c.globalAlpha *= Math.min(1, z.handWasser);
+      punkt(c, hx + .4, hy - 1.1, 1.5, "#9fd9e8");
+      punkt(c, hx + .4, hy - 1.4, .8, "#e6f8fb");
+      c.restore();
+    }
+    if (z.ph === "zMundSpuelen" && z.p > .18) {
+      c.save(); c.globalAlpha *= .55;
+      punkt(c, z.l[0] + 2.2, z.l[1] - 2.4, 1.15, "#8fe0cb");
+      c.restore();
+    }
   }
-  if (z.buersteHand) zahnbuerste(c, ...hand, z.winkel, z.belag);
-  if (z.tubeHand) zahnpasta(c, ...andere, z.tubeWinkel, true, z.ph === "zPaste" ? Math.sin(Math.PI * z.p) : 0);
-  if (z.flascheHand) mundwasserFlasche(c, ...andere, z.ph === "zMundSpuelen" ? -.5 : .2, true);
-  if (z.ph === "zPaste" && z.p > .24 && z.p < .77) {
-    const duese = dreh([0, 5.3], z.tubeWinkel), kopf = dreh([7.4, -3.3], z.winkel);
-    c.strokeStyle = "#c4e9dc"; c.lineWidth = 1.05; c.lineCap = "round"; c.beginPath();
-    c.moveTo(andere[0] + duese[0], andere[1] + duese[1]);
-    c.lineTo(hand[0] + kopf[0], hand[1] + kopf[1]); c.stroke();
-  }
-  if (z.handWasser > 0.02) {
-    const [hx, hy] = hand;
-    c.save(); c.globalAlpha *= Math.min(1, z.handWasser);
-    punkt(c, hx + .4, hy - 1.1, 1.5, "#9fd9e8");
-    punkt(c, hx + .4, hy - 1.4, .8, "#e6f8fb");
-    c.restore();
-  }
-  if (z.ph === "zMundSpuelen" && z.p > .18) {
-    c.save(); c.globalAlpha *= .55;
-    punkt(c, z.l[0] + 2.2, z.l[1] - 2.4, 1.15, "#8fe0cb");
-    c.restore();
-  }
-  if (z.tropfen !== null) {
+  // Die Tropfen starten am Mund: von hinten gesehen liegen sie hinter Kopf und Haaren (kein heller Fleck im Haar).
+  if (dran && z.tropfen !== null) {
     const [ax, ay] = z.tropfenVon, [bx, by] = z.tropfenNach;
     for (let i = 0; i < 3; i++) {
       const k = Math.min(1, Math.max(0, (z.tropfen - i * .09) * 1.22));
@@ -385,3 +377,41 @@ export function zahnHandobjekte(c: C, z: Zahnbild, nah: Pt, fern: Pt, _x: number
     }
   }
 }
+
+/* --------------------------- Kontaktlinsen --------------------------- */
+
+/** Lila Kontaktlinse: kleine durchscheinende Kuppel. */
+export function zeichneLinse(c: C, x: number, y: number, groesse = 1) {
+  c.save(); c.translate(x, y); c.scale(groesse, groesse);
+  c.fillStyle = "rgba(154,107,214,.85)"; c.beginPath(); c.ellipse(0, 0, 1.5, 1.05, 0, 0, tau); c.fill();
+  c.fillStyle = "rgba(235,220,255,.8)"; c.beginPath(); c.ellipse(-.4, -.3, .6, .35, 0, 0, tau); c.fill();
+  c.restore();
+}
+/** Aufbewahrungsdose: weißes Gehäuse, lila Deckel; `offen` 0..1 klappt den Deckel auf. */
+export function zeichneLinsenDose(c: C, x: number, y: number, offen = 0, mitLinse = true) {
+  c.save(); c.translate(x, y);
+  rund(c, -3.6, -2.2, 7.2, 4.4, 1.1, "#f1ecf7");
+  rund(c, -3.6, 0.6, 7.2, 1.4, .6, "#d9d0e6");
+  punkt(c, -1.7, 0, 1.0, "#cfc3e2"); punkt(c, 1.7, 0, 1.0, "#cfc3e2");
+  if (mitLinse && offen > 0.5) { zeichneLinse(c, -1.7, -.2, .8); zeichneLinse(c, 1.7, -.2, .8); }
+  // Der Deckel klappt nach hinten und liegt dann flach hinter der Dose (kein senkrechter Balken vor dem Gesicht).
+  c.save(); c.translate(0, -2.2 - offen * 1.0); c.scale(1, 1 - 0.62 * offen);
+  rund(c, -3.6, -1.8, 7.2, 1.9, .8, offen > 0.5 ? "#7f55b8" : "#9a6bd6");
+  if (offen < 0.5) { c.fillStyle = "rgba(255,255,255,.35)"; c.fillRect(-3, -1.5, 4.2, .5); }
+  c.restore();
+  c.restore();
+}
+/** Kontaktlinsenflüssigkeit: kleine Flasche mit lila Kappe; `winkel` kippt sie zum Tropfen. */
+export function zeichneLinsenFlasche(c: C, x: number, y: number, winkel = 0) {
+  c.save(); c.translate(x, y); c.rotate(winkel);
+  rund(c, -1.7, -3.2, 3.4, 6.4, 1.1, "#cfe3f5");
+  rund(c, -1.4, -.8, 2.8, 2.8, .6, "#ffffff");
+  c.fillStyle = "#9a6bd6"; c.fillRect(-.7, 0, 1.4, .6);
+  rund(c, -1.0, -4.6, 2.0, 1.7, .5, "#9a6bd6");
+  c.restore();
+}
+/** Platz von Dose und Flasche im Spiegelschrank (Weltkoordinaten bei SINK_X = x, Boden f). */
+export const LINSEN_ORT = {
+  dose: (x: number, f: number): Pt => [x + 18.2, f - 66.4],
+  flasche: (x: number, f: number): Pt => [x + 31.6, f - 53.4],
+};
