@@ -104,7 +104,7 @@ export class Sfx {
    *              (Schuhe kommen später ins Spiel, der Klang liegt bereit)
    * Schuhe kommen später; der Wert bleibt kompatibel: `true` = barfuß.
    */
-  step(pitch = 1, belag: boolean | "barfuss" | "socke" | "schuh" = "schuh") {
+  step(pitch = 1, belag: boolean | "barfuss" | "socke" | "schuh" = "schuh", pegel = 1) {
     const art = belag === true ? "barfuss" : belag === false ? "schuh" : belag;
     if (art === "barfuss") {
       // Haut auf Holz: sehr kurz, tief, fast ohne Zischen.
@@ -115,14 +115,36 @@ export class Sfx {
     if (art === "socke") {
       // Stoffsohle: gedämpftes Aufsetzen (tief und weich) plus ein hauchfeines
       // Rascheln, das nach dem Auftritt kurz nachschwingt.
-      this.noise(0.05, 0.30, 1100 * pitch, 0.5);
-      this.tone({ f: 118 * pitch, f2: 74 * pitch, dur: 0.085, type: "sine", gain: 0.17, attack: 0.006 });
-      this.noise(0.11, 0.10, 2400 * pitch, 0.35, 0.028);
+      // `pegel` < 1 macht den Sockenschritt leiser (z. B. im Adventshaus am frühen Morgen).
+      this.noise(0.05, 0.30 * pegel, 1100 * pitch, 0.5);
+      this.tone({ f: 118 * pitch, f2: 74 * pitch, dur: 0.085, type: "sine", gain: 0.17 * pegel, attack: 0.006 });
+      this.noise(0.11, 0.10 * pegel, 2400 * pitch, 0.35, 0.028);
       return;
     }
     // Schuh / bekleidet: heller Aufprall mit kurzem Hall auf den Dielen.
     this.noise(0.055, 0.38, 760 * pitch, 0.85);
     this.tone({ f: 260 * pitch, f2: 125 * pitch, dur: 0.068, type: "triangle", gain: 0.24, attack: 0.004 });
+  }
+
+  /** Küche: Brutzeln in der Pfanne (kurzer Knister-Stoß). */
+  brutzeln(pegel = 1) {
+    this.noise(0.06, 0.055 * pegel, 3800 + Math.random() * 2200, 0.7);
+  }
+  /** Küche: blubberndes Kochwasser. */
+  blubbern(pegel = 1) {
+    const f = 150 + Math.random() * 120;
+    this.tone({ f, f2: f * 1.6, dur: 0.07, type: "sine", gain: 0.05 * pegel, attack: 0.005 });
+    this.noise(0.05, 0.03 * pegel, 900, 0.4);
+  }
+  /** Küche: der Backofen meldet sich. */
+  ping() {
+    this.tone({ f: 1320, dur: 0.5, type: "triangle", gain: 0.12, attack: 0.004 });
+    this.tone({ f: 1760, dur: 0.35, type: "sine", gain: 0.06, attack: 0.004, delay: 0.02 });
+  }
+  /** Küche: Teller oder Topf auf Holz und Metall. */
+  klack() {
+    this.noise(0.03, 0.2, 1800, 0.8);
+    this.tone({ f: 520, f2: 340, dur: 0.05, type: "triangle", gain: 0.1, attack: 0.002 });
   }
 
   /**

@@ -398,3 +398,30 @@ renovierung-weihnachtsreferenz | src/game/house.ts | export function zeichneHaus
 haare-buecken-kurz | src/game/luni.ts | clamp01((r.bend - 0.22) / 0.5)
 steine-kieselform-einheitlich | src/game/steine.ts | Alle Orts- und Rufsteine: flacher Kiesel
 steine-thematisch-gruppiert | src/game/steine.ts | ROUTINEN_PLAETZE
+morgenroutine-stein | src/game/steine.ts | morgenroutine
+zahnputz-stein | src/game/steine.ts | zaehne
+schleuse-offen-bis-hunde | src/game/house.ts | schleuseHalten
+hunde-bellen-automaten | src/game/hunde.ts | zumAutomaten
+tasse-zum-mund-beim-sitzen | src/game/house.ts | Mund der Sitzpose
+kontaktlinsen-lila | src/game/zahnpflege.ts | zeichneLinsenDose
+umziehen-morgen | src/game/house.ts | pyjamaOberteilAus
+hoeschen-schleifen | src/game/luni.ts | drawSchleife
+zehenspitzen-statt-huepfen | src/game/luni.ts | opts.zehen
+zahnbuerste-eine-hand | src/game/zahnpflege.ts | Die Bürste bleibt in jedem Schritt in derselben Hand
+haare-kaemmen-morgen | src/game/house.ts | kaemmenBuersten
+zahnputz-stein-kette | src/game/house.ts | zahnputzStart
+koch-routine-ablauf | src/game/house.ts | kochSchritte
+koch-steine-startknoepfe | src/game/steine.ts | PFANNE_STEIN
+koch-zeichnung-herd-ofen | src/game/kochen.ts | zeichneKochSzene
+augen-ohne-brille-groesser | src/game/luni.ts | const gross = glasses
+tv-sendungen-15min | src/game/tv-sendungen.ts | export function drawTvSendung
+tv-sendungen-fernbedienung | src/game/tv.ts | TV_SENDUNGEN
+tv-sendungen-steine | src/game/steine.ts | TV_PLAETZE
+spieleregal-platz-frei | src/game/house.ts | leereFaecher = false
+tv-sendungen-stumm-mute | src/game/tv.ts | id: "stumm"
+frosch-news-sprechender-mund | src/game/tv-sendungen.ts | function sprechMund
+tv-ohne-spiel-und-werkstatt | src/game/tv.ts | export type TVKanal = "musik"
+tv-ton-standard-nach-kanal | src/game/tv.ts | tvStandardStumm
+tv-zapping-routine-taeglich | src/game/tv.ts | tvTagesplan
+ch1-max-drei-schleifen | src/game/tv.ts | TV_CH1_SCHLEIFE
+malfreude-konturen-dann-farbe | src/game/tv-sendungen.ts | Konturen vorzeichnen

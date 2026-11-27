@@ -66,12 +66,39 @@ export class TVKlang {
     while (this.anker + this.schritt * 0.25 <= now + 0.12) {
       const i = this.schritt++, when = Math.max(now, this.anker + i * 0.25);
       if (this.lautstaerke <= 0) continue;
-      if (this.programm === "garten" && i % 2 === 0) {
-        this.ton([72, 76, 79, 76, 74, 72, 67, 71][Math.floor(i / 2) % 8], when, 0.42, 0.16, "triangle");
-      } else if (this.programm === "konsole" && i % 2 === 0) {
+      if (this.programm === "konsole" && i % 2 === 0) {
         this.ton([60, 67, 72, 67][Math.floor(i / 2) % 4], when, 0.12, 0.05, "square");
       } else if (this.programm === "gol" && i % 4 === 0) {
         this.ton([72, 76, 79, 83][Math.floor(i / 4) % 4], when, 0.6, 0.09, "sine");
+      } else if (this.programm === "malfreude" && i % 4 === 0) {
+        this.ton([60, 64, 67, 71, 69, 67, 64, 62][Math.floor(i / 4) % 8], when, 0.72, 0.08, "sine");
+      } else if (this.programm === "zugfahrt") {
+        // Sanfter Schienentakt (tock-tock … tock-tock)
+        if (i % 4 === 0 || i % 4 === 1) this.ton(i % 4 === 0 ? 45 : 43, when, 0.08, 0.06, "triangle");
+      } else if (this.programm === "tiefsee" && i % 6 === 0) {
+        this.ton([55, 62, 60, 50, 57, 64][Math.floor(i / 6) % 6], when, 0.9, 0.07, "sine");
+      } else if (this.programm === "domino" && i % 2 === 0) {
+        this.ton([74, 76, 78, 81, 79, 76, 74, 71][Math.floor(i / 2) % 8], when, 0.14, 0.08, "triangle");
+      } else if (this.programm === "wald" && i % 6 === 0) {
+        this.ton([76, 79, 83, 81, 79, 74][Math.floor(i / 6) % 6], when, 0.55, 0.06, "sine");
+      } else if (this.programm === "krimi" && i % 2 === 0) {
+        // Stummfilm-Klavier im Ragtime-Takt
+        this.ton([60, 63, 67, 70, 67, 63, 62, 65][Math.floor(i / 2) % 8], when, 0.24, 0.09, "triangle");
+      } else if (this.programm === "expedition" && i % 4 === 0) {
+        this.ton([58, 65, 70, 74, 70, 65][Math.floor(i / 4) % 6], when, 0.78, 0.07, "sine");
+      } else if (this.programm === "theater" && i % 3 === 0) {
+        // Spieluhr-Walzer
+        this.ton([72, 76, 79, 74, 77, 81][Math.floor(i / 3) % 6], when, 0.36, 0.08, "triangle");
+      } else if (this.programm === "kochshow" && i % 2 === 0) {
+        this.ton([67, 71, 74, 76, 74, 71][Math.floor(i / 2) % 6], when, 0.18, 0.08, "triangle");
+      } else if (this.programm === "froschnews" && i % 4 === 0) {
+        // Nachrichten-Impuls
+        this.ton([67, 72, 72, 74][Math.floor(i / 4) % 4], when, 0.22, 0.08, "square");
+      } else if (this.programm === "rennen") {
+        // Flotter Retro-Renn-Beat
+        this.ton([52, 55, 59, 64, 59, 55, 57, 60][i % 8], when, 0.16, 0.06, "sawtooth");
+      } else if (this.programm === "quizshow" && i % 2 === 0) {
+        this.ton([64, 67, 72, 76, 72, 67][Math.floor(i / 2) % 6], when, 0.28, 0.08, "triangle");
       }
     }
   }

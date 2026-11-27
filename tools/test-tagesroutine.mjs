@@ -75,7 +75,9 @@ assert.equal(G.STEIN_NAMEN.ezaufsteh, "EZ-Aufsteh");
 const boxen = normal.map((s) => s.hit);
 for (let i = 0; i < boxen.length; i++) {
   const [x, y, w, h] = boxen[i];
-  assert.ok(w >= 24 && h >= 24, `Klickziel zu klein: ${normal[i].label}`);
+  // TV-Kontrollsteine sind kompakt 20×20; alle übrigen Steine bleiben ≥ 24×24.
+  const min = normal[i].tv ? 20 : 24;
+  assert.ok(w >= min && h >= min, `Klickziel zu klein: ${normal[i].label}`);
   for (let j = i + 1; j < boxen.length; j++) {
     const [x2, y2, w2, h2] = boxen[j];
     const getrennt = x + w <= x2 || x2 + w2 <= x || y + h <= y2 || y2 + h2 <= y;
@@ -327,8 +329,9 @@ let haus2, tick2;
   speicherLeer();
   const h = haus2("normal", 6, 30);
   h.command("stein_aufsteh");
-  for (let i = 0; i < 6000 && (h.tagAktiv || h.kAblauf); i++) tick2(h, .05);
-  assert.ok(h.westeAn && !h.tagAktiv && !h.kAblauf, "Morgenroutine ist abgeschlossen (bis zu den zwei Kaffees)");
+  // Die Morgenroutine endet mit Zähnen, Kontaktlinsen, Kämmen und Umziehen (kAblauf).
+  for (let i = 0; i < 30000 && (h.tagAktiv || h.kAblauf || h.bedWach || h.asleep); i++) tick2(h, .05);
+  assert.ok(h.westeAn && !h.tagAktiv && !h.kAblauf, "Morgenroutine ist abgeschlossen (bis zum Umziehen nach den Zähnen)");
   assert.equal(h.handyOrt, "tasche", "das Handy hat sie morgens vom Nachttisch geholt");
   // Wie nach dem Abend: das Handy liegt auf dem Nachttisch.
   h.handyOrt = "nachttisch";

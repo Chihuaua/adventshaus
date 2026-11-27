@@ -2,7 +2,7 @@
    Patch-Dateien der aktuellen Sitzung (Inhalt der UFO-/Schlitten-Station)
 
    Dieses Modul wird von tools/ufo-bauen.mjs erzeugt. Das Menü oben rechts
-   bietet LCL-Hunde-Ausreisser-146.zip, die TXT-Datei und die Code-Vorschau an.
+   bietet LCL-TV-Routine-Malfreude-153.zip, die TXT-Datei und die Code-Vorschau an.
    ======================================================================= */
 
 export interface PatchDatei {
@@ -11,8 +11,8 @@ export interface PatchDatei {
   inhalt: string;
 }
 
-export const PATCH_KURZ = "Hunde-Ausreisser";
-export const PATCH_NUMMER = 146;
+export const PATCH_KURZ = "TV-Routine-Malfreude";
+export const PATCH_NUMMER = 153;
 export const PATCH_ZIP =
   `LCL-${PATCH_KURZ}-${String(PATCH_NUMMER).padStart(2, "0")}.zip`;
 export const PATCH_TXT =

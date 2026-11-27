@@ -715,7 +715,7 @@ test("TV-Geräte: beide Fernseher öffnen die große Fernseh-Ansicht unabhängig
   assert.ok(ce.texte.some(t => t.inhalt === "zurück"), "Zurück-Knopf sichtbar");
   assert.ok(ce.texte.some(t => t.inhalt === "STANDBY"), "Aus-Zustand ohne Luni sichtbar");
 
-  // Einschalten über den Power-Knopf zeigt das TV-Programm (Harvest CH1)
+  // Einschalten über den Power-Knopf zeigt das TV-Programm (Musikvideo CH1, kein Spiel mehr)
   h.onTvFullscreenClick(780, 390);
   const ceAn = canvas(); h.drawTvFullscreen(ceAn.ctx);
   assert.ok(ceAn.texte.some(t => t.inhalt === "CH1"), "laufendes TV-Programm groß im Fernseher");
@@ -1243,11 +1243,13 @@ test("Weihnachtshaus & Weihnacht: vierte Hauswelt, drei überlappungsfreie Wechs
     assert.equal(wechsel.some(s => s.ziel === w), false, `${w}: eigener Wechselstein fehlt`);
     const raumAktionen = ["musikzimmer", "gaming", "schlafzimmer", "badezimmer", "treppenhaus", "flur", "wohnzimmer", "kueche", "keller"];
     // In jedem Haus sind alle Knöpfe und Steine sichtbar.
-    const erwartetAktionen = ["kranz", "post", "nikolaus", "abend", "abendEZ", "aufsteh", "aufstehEZ", "kaffee", "kaffeeEZ", ...raumAktionen];
+    const tvAktionen = ["tv_malfreude", "tv_zugfahrt", "tv_tiefsee", "tv_domino", "tv_wald", "tv_krimi", "tv_expedition", "tv_theater", "tv_kochshow", "tv_froschnews", "tv_rennen", "tv_quizshow"];
+    const erwartetAktionen = ["kranz", "post", "nikolaus", "abend", "abendEZ", "aufsteh", "aufstehEZ", "kaffee", "kaffeeEZ", "morgen", "zaehne", "kochPfanne", "kochTopf", "kochPizza", ...tvAktionen, ...raumAktionen];
     assert.deepEqual(slots.filter(s => s.aktion).map(s => s.aktion), erwartetAktionen, `${w}: passende Rufsteine`);
     for (let i = 0; i < slots.length; i++) {
       const [hx, hy, hw, hh] = slots[i].hit;
-      assert.ok(hw >= 24 && hh >= 24, `${slots[i].label}: mindestens 24×24`);
+      const min = slots[i].tv ? 20 : 24;
+      assert.ok(hw >= min && hh >= min, `${slots[i].label}: mindestens ${min}×${min}`);
       if (slots[i].kies) {
         assert.ok(hx >= 2 && hx + hw <= 94 && hy >= 460 && hy + hh <= 570, `${slots[i].label}: im linken Kiesteil`);
       } else {

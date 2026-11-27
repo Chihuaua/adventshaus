@@ -913,6 +913,8 @@ export interface HundZustand {
   renntWeg: boolean;
   /** Schuldbewusst unterwegs (Kopf tief, Rute eingezogen). */
   schuldig: boolean;
+  /** Läuft gerade zum Kaffeeautomaten und bellt ihn an. */
+  automatZiel: boolean;
 }
 
 export interface HausUmgebung {
@@ -931,6 +933,12 @@ export interface HausUmgebung {
   rauchNeu?: boolean;
   /** Rückruf für ein sanftes Bellen (tief = true für Apollo). */
   onWuff?: (tief: boolean) => void;
+  /** Der Kaffeeautomat macht gerade Lärm (heizen, brühen, Milch). */
+  automatAn?: boolean;
+  /** Ort des Automaten (Stockwerk und x), zu dem die Hunde rennen. */
+  automatOrt?: { floor: number; x: number };
+  /** Die Hunde schieben eine geschlossene Tür auf, wenn sie im Weg steht. */
+  oeffneTuer?: (art: "garten" | "keller") => void;
 }
 
 /** Lieblingsplätze im Erdgeschoss (Flur, Wohnzimmerteppich, Küche). */
@@ -964,6 +972,7 @@ function erzeugeHund(id: HundId, x: number, face: 1 | -1, startPose: HundPose, t
     weggelaufen: false,
     renntWeg: false,
     schuldig: false,
+    automatZiel: false,
   };
 }
 
@@ -974,6 +983,9 @@ export class HundeWelt {
   /** Einmalige Gelegenheiten (kein Dauerwürfeln). */
   private rauchGelegenheit = false;
   private gartenGelegenheit: Record<HundId, boolean> = { odin: false, apollo: false };
+  /** Der Kaffeeautomat lief zuletzt / läuft gerade (Übergang zum Bellen). */
+  private automatVorher = false;
+  private automatLaeuft = false;
 
   constructor(zufall?: () => number) {
     // Stabiler Zufallsstrom: gleiche Ausgangslage, gleiche Hundetage – und
@@ -998,6 +1010,8 @@ export class HundeWelt {
 
   istImGarten(id: HundId): boolean {
     const h = this.get(id);
+    // Aus dem Bild gelaufene Hunde sind nicht mehr im Garten zu sehen.
+    if (h.weggelaufen) return false;
     return h.floor === 0 && h.x > HAUS_RECHTS + 2;
   }
 
@@ -1198,6 +1212,28 @@ export class HundeWelt {
 
   update(dt: number, env: HausUmgebung) {
     this.grussPause = Math.max(0, this.grussPause - dt);
+    // Kaffeeautomat an: beide Hunde rennen bellend hin, egal wo sie sind.
+    const maschineLaert = !!env.automatAn && !!env.automatOrt;
+    if (maschineLaert && !this.automatVorher) {
+      for (const h of this.hunde) {
+        if (h.weggelaufen || h.renntWeg) continue;
+        h.automatZiel = true;
+        h.schritte = [];
+        h.pose = "stand";
+        h.timer = 0.4;
+        h.wartetAufLuni = false;
+      }
+    } else if (!maschineLaert && this.automatVorher) {
+      for (const h of this.hunde) {
+        if (!h.automatZiel) continue;
+        h.automatZiel = false;
+        h.schritte = [];
+        h.pose = "stand";
+        h.timer = 1.2;
+      }
+    }
+    this.automatVorher = maschineLaert;
+    this.automatLaeuft = maschineLaert;
     // 20 % pro Gelegenheit: Rauchbeginn oder ein neuer Gartenbesuch.
     if (env.rauchNeu && !this.rauchGelegenheit) {
       this.rauchGelegenheit = true;
@@ -1283,6 +1319,20 @@ export class HundeWelt {
       return;
     }
 
+    // Zum Kaffeeautomaten: hinrennen und ihn anbellen (hat Vorrang vor allem anderen).
+    if (h.automatZiel) {
+      const z = env.automatOrt;
+      if (!this.automatLaeuft || !z) {
+        h.automatZiel = false;
+        h.schritte = [];
+        h.pose = "stand";
+        h.timer = 1.2;
+      } else {
+        this.zumAutomaten(h, dt, env, z);
+        return;
+      }
+    }
+
     const imGarten = h.floor === 0 && h.x > HAUS_RECHTS + 2;
 
     // Garten-Rückkehr-Logik (Spielkonzept 1.2 & 8.1):
@@ -1361,6 +1411,43 @@ export class HundeWelt {
 
     // Neue ruhige Entscheidung treffen
     this.naechsteAktion(h, env);
+  }
+
+  /** Gemeinsamer Bell-Takt: unterwegs und vor der Maschine gleich oft. */
+  private bellTakt(h: HundZustand, dt: number, env: HausUmgebung) {
+    h.timer -= dt;
+    if (h.timer <= 0) {
+      env.onWuff?.(h.id === "apollo");
+      h.timer = 1.3 + this.zufall() * 0.9;
+    }
+  }
+
+  /**
+   * Zum Kaffeeautomaten: geschlossene Türen aufschieben, hinrennen und dann
+   * bellend davor stehen, dem Apparat zugewandt. Die Hunde kennen auf dem Weg
+   * nichts anderes.
+   */
+  private zumAutomaten(h: HundZustand, dt: number, env: HausUmgebung, z: { floor: number; x: number }) {
+    if (h.schritte.length) {
+      this.bellTakt(h, dt, env);
+      this.bewegeSchritt(h, dt, env);
+      return;
+    }
+    if (h.floor === z.floor && Math.abs(h.x - z.x) <= 46) {
+      h.face = z.x >= h.x ? 1 : -1;
+      h.pose = "bark";
+      this.bellTakt(h, dt, env);
+      return;
+    }
+    // Geschlossene Türen im Weg: die Hunde schieben sie auf und gehen weiter.
+    if (h.floor === 0) {
+      if (h.x > HAUS_RECHTS && env.gardenDoor < 0.55) { env.oeffneTuer?.("garten"); return; }
+      if (h.x > KELLER_TUER_X && env.cellarDoor < 0.55) { env.oeffneTuer?.("keller"); return; }
+    }
+    if (!this.schickeNach(h, z.floor as 0 | 1 | 2, z.x, true, env)) {
+      // Kein Weg: meist eine geschlossene Tür – aufmachen, im nächsten Bild erneut.
+      env.oeffneTuer?.(h.floor === 0 && h.x > HAUS_RECHTS ? "garten" : "keller");
+    }
   }
 
   private bewegeSchritt(h: HundZustand, dt: number, env: HausUmgebung) {
